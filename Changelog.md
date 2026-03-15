@@ -1,6 +1,5 @@
-# Change log for template project
+# Change log for haskell-mobile
 
-## Version 0.0.0 
+## Version 1.0.0
 
-import [template](https://github.com/jappeace/template).
-
+Initial release of haskell-mobile.

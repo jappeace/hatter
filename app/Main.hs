@@ -1,7 +1,7 @@
 
 module Main where
 
-import qualified Template
+import qualified HaskellMobile
 
 main :: IO ()
-main = Template.main
+main = HaskellMobile.main

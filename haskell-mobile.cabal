@@ -1,12 +1,12 @@
 cabal-version:      3.0
 
-name:           template
+name:           haskell-mobile
 version:        1.0.0
-homepage:       https://github.com/jappeace/template#readme
-bug-reports:    https://github.com/jappeace/template/issues
+homepage:       https://github.com/jappeace/haskell-mobile#readme
+bug-reports:    https://github.com/jappeace/haskell-mobile/issues
 author:         Jappie Klooster
 maintainer:     hi@jappie.me
-copyright:      2025 Jappie Klooster
+copyright:      2026 Jappie Klooster
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
@@ -18,7 +18,7 @@ extra-doc-files:
 
 source-repository head
   type: git
-  location: https://github.com/jappeace/template
+  location: https://github.com/jappeace/haskell-mobile
 
 common common-options
   default-extensions: 
@@ -61,9 +61,9 @@ common common-options
 library
   import: common-options
   exposed-modules:
-      Template
+      HaskellMobile
   other-modules:
-      Paths_template
+      Paths_haskell_mobile
   hs-source-dirs:
       src
 
@@ -73,7 +73,7 @@ executable exe
   hs-source-dirs:
       app
   build-depends:
-      template
+      haskell-mobile
   ghc-options: -Wno-unused-packages
 
 test-suite unit
@@ -82,11 +82,11 @@ test-suite unit
   main-is: Test.hs
   ghc-options: -Wno-unused-packages
   other-modules:
-      Paths_template
+      Paths_haskell_mobile
   hs-source-dirs:
       test
   build-depends:
       tasty,
       tasty-hunit,
       tasty-quickcheck,
-      template
+      haskell-mobile

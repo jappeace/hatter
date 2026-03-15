@@ -8,6 +8,6 @@ pkgs.haskellPackages.override {
   overrides = hnew: hold: {
     # NB this is a bit silly because nix files are now considered for the build
     # bigger projects should consider putting haskell stuff in a subfolder
-    template-project = hnew.callCabal2nix "template-project" ../. { };
+    haskell-mobile-project = hnew.callCabal2nix "haskell-mobile" ../. { };
   };
 }

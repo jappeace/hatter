@@ -1,4 +1,4 @@
-module Template
+module HaskellMobile
   ( main
   )
 where
