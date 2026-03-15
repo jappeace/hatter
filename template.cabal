@@ -1,0 +1,92 @@
+cabal-version:      3.0
+
+name:           template
+version:        1.0.0
+homepage:       https://github.com/jappeace/template#readme
+bug-reports:    https://github.com/jappeace/template/issues
+author:         Jappie Klooster
+maintainer:     hi@jappie.me
+copyright:      2025 Jappie Klooster
+license:        MIT
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    Readme.md
+    LICENSE
+extra-doc-files:
+    Changelog.md
+
+source-repository head
+  type: git
+  location: https://github.com/jappeace/template
+
+common common-options
+  default-extensions: 
+      EmptyCase
+      FlexibleContexts
+      FlexibleInstances
+      InstanceSigs
+      MultiParamTypeClasses
+      LambdaCase
+      MultiWayIf
+      NamedFieldPuns
+      TupleSections
+      DeriveFoldable
+      DeriveFunctor
+      DeriveGeneric
+      DeriveLift
+      DeriveTraversable
+      DerivingStrategies
+      GeneralizedNewtypeDeriving
+      StandaloneDeriving
+      OverloadedStrings
+      TypeApplications
+      NumericUnderscores
+      ImportQualifiedPost
+
+  ghc-options:
+    -O2 -Wall -Werror -Wincomplete-uni-patterns
+    -Wincomplete-record-updates -Widentities -Wredundant-constraints
+    -Wcpp-undef -fwarn-tabs -Wpartial-fields
+    -fdefer-diagnostics -Wunused-packages
+    -fenable-th-splice-warnings
+    -fno-omit-yields
+    -threaded -rtsopts "-with-rtsopts=-N -M7G -T -Iw10"
+
+  build-depends:
+      base >=4.9.1.0 && <4.22.0
+
+  default-language: Haskell2010
+
+library
+  import: common-options
+  exposed-modules:
+      Template
+  other-modules:
+      Paths_template
+  hs-source-dirs:
+      src
+
+executable exe
+  import: common-options
+  main-is: Main.hs
+  hs-source-dirs:
+      app
+  build-depends:
+      template
+  ghc-options: -Wno-unused-packages
+
+test-suite unit
+  import: common-options
+  type: exitcode-stdio-1.0
+  main-is: Test.hs
+  ghc-options: -Wno-unused-packages
+  other-modules:
+      Paths_template
+  hs-source-dirs:
+      test
+  build-depends:
+      tasty,
+      tasty-hunit,
+      tasty-quickcheck,
+      template

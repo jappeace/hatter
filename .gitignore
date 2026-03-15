@@ -1,0 +1,11 @@
+.stack-work/
+network-uri-lenses.cabal
+.ghc.environment*
+dist*
+.#*
+result
+TAGS
+
+*.hi
+*.o
+.envrc
