@@ -5,7 +5,7 @@ import Test.Tasty.QuickCheck as QC
 import Test.Tasty.HUnit
 
 import Data.List(sort)
-import qualified Template
+import qualified HaskellMobile
 
 main :: IO ()
 main = defaultMain tests
@@ -36,5 +36,5 @@ unitTests = testGroup "Unit tests"
   , testCase "List comparison (same length)" $
       oneTwoThree `compare` [1,2,3] @?= EQ
   , testCase "run main" $ do
-      Template.main
+      HaskellMobile.main
   ]
