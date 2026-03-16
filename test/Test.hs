@@ -4,7 +4,9 @@ import Test.Tasty
 import Test.Tasty.QuickCheck as QC
 import Test.Tasty.HUnit
 
-import Data.List(sort)
+import Data.List (sort)
+import Foreign.C.String (newCString, peekCString)
+import Foreign.Marshal.Alloc (free)
 import qualified HaskellMobile
 
 main :: IO ()
@@ -37,4 +39,18 @@ unitTests = testGroup "Unit tests"
       oneTwoThree `compare` [1,2,3] @?= EQ
   , testCase "run main" $ do
       HaskellMobile.main
+  , testCase "haskellGreet returns correct greeting" $ do
+      cname <- newCString "World"
+      cresult <- HaskellMobile.haskellGreet cname
+      result <- peekCString cresult
+      free cresult
+      free cname
+      result @?= "Hello from Haskell, World!"
+  , testCase "haskellGreet with different input" $ do
+      cname <- newCString "Android"
+      cresult <- HaskellMobile.haskellGreet cname
+      result <- peekCString cresult
+      free cresult
+      free cname
+      result @?= "Hello from Haskell, Android!"
   ]
