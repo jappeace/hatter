@@ -9,9 +9,9 @@
       },
       "branch": "armv7a",
       "submodules": false,
-      "revision": "4c2b9c3f2437d83b7985b718daa0566c475cc531",
-      "url": "https://github.com/input-output-hk/haskell.nix/archive/4c2b9c3f2437d83b7985b718daa0566c475cc531.tar.gz",
-      "hash": "sha256-+d62lMcyfmj/gDATw8jW32Lm2jZqyAkP+jUiZYBD3og="
+      "revision": "d0c35e75cbbc6858770af42ac32b0b85495fbd71",
+      "url": "https://github.com/input-output-hk/haskell.nix/archive/d0c35e75cbbc6858770af42ac32b0b85495fbd71.tar.gz",
+      "hash": "sha256-rUIr6JNbCedt1g4gVYVvE9t0oFU6FUspCA0DS5cA8Bg="
     },
     "nixpkgs": {
       "type": "Channel",

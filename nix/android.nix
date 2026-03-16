@@ -3,20 +3,26 @@ let
   # Import haskell.nix from the armv7a branch (provides Android cross-compiler)
   haskellNix = import sources."haskell.nix" {};
 
-  # Override aarch64-android to target API level 26 (Android 8.0)
+  # Use nixpkgs-2305 which has LLVM 14. nixpkgs-unstable has LLVM 19 whose
+  # compiler-rt is broken for Android (os_version_check.c needs pthread.h
+  # which is unavailable in the builtins-only sysroot).
+  # See: https://github.com/NixOS/nixpkgs/issues/380604
+
+  # Android API 26 (Android 8.0 Oreo) overlay — re-imports nixpkgs with
+  # modified crossSystem, same approach as simplex-chat.
   android26 = final: prev: {
     pkgsCross = prev.pkgsCross // {
       aarch64-android = import prev.path {
-        inherit (prev) system overlays;
         crossSystem = prev.lib.systems.examples.aarch64-android // {
           sdkVer = "26";
         };
+        localSystem = prev.buildPlatform;
+        inherit (prev) config overlays;
       };
     };
   };
 
-  # Use haskell.nix's own nixpkgs for better IOHK binary cache hits
-  pkgs = import haskellNix.sources.nixpkgs-unstable (haskellNix.nixpkgsArgs // {
+  pkgs = import haskellNix.sources.nixpkgs-2305 (haskellNix.nixpkgsArgs // {
     overlays = haskellNix.nixpkgsArgs.overlays ++ [ android26 ];
   });
 
