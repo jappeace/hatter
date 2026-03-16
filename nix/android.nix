@@ -54,6 +54,9 @@ let
   };
 
 in {
-  inherit androidIconv androidFFI;
+  inherit pkgs androidPkgs androidIconv androidFFI;
   lib = project.projectCross.aarch64-android.hsPkgs.haskell-mobile.components.library;
+  crossLib = project.projectCross.aarch64-android.hsPkgs.haskell-mobile.components.library;
+  # Expose all cross-compiled haskell packages for linking
+  hsPkgs = project.projectCross.aarch64-android.hsPkgs;
 }

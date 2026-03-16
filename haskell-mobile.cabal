@@ -65,6 +65,8 @@ library
       Paths_haskell_mobile
   hs-source-dirs:
       src
+  c-sources:
+      cbits/android_stubs.c
 
 executable exe
   import: common-options
