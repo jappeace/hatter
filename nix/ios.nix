@@ -8,7 +8,8 @@ let
   # and has macOS build issues with GHC 8.10.7 patching)
   haskellNix = import sources."haskell.nix-master" {};
 
-  pkgs = import haskellNix.sources.nixpkgs-unstable (haskellNix.nixpkgsArgs // {});
+  # Use nixpkgs-2305 (nixpkgs-unstable has ghc943 bootstrap incompatibility)
+  pkgs = import haskellNix.sources.nixpkgs-2305 (haskellNix.nixpkgsArgs // {});
 
   project = import ./project.nix { inherit pkgs; };
 
