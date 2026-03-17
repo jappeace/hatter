@@ -49,13 +49,11 @@ jobs:
       with:
         extra_nix_config: |
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
-          extra-substituters = https://cache.iog.io
-          extra-trusted-public-keys = hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=
     - uses: cachix/cachix-action@v15
       with:
         name: jappie
         signingKey: '${{ secrets.CACHIX_SIGNING_KEY }}'
-    - run: nix-build nix/android.nix -A lib
+    - run: nix-build nix/android.nix
     - name: Cancel workflow on failure
       if: failure()
       continue-on-error: true
@@ -76,8 +74,6 @@ jobs:
       with:
         extra_nix_config: |
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
-          extra-substituters = https://cache.iog.io
-          extra-trusted-public-keys = hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=
     - uses: cachix/cachix-action@v15
       with:
         name: jappie
