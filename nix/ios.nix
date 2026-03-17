@@ -2,46 +2,41 @@
 # Builds Haskell to a single .a using GHC -staticlib, then patches
 # Mach-O platform tags from macOS to iOS using mac2ios.
 # This is a macOS-only build (same ISA as iOS aarch64).
+#
+# Uses pre-built GHC from nixpkgs (cache.nixos.org) instead of
+# haskell.nix, which tries to build GHC from source and OOMs on
+# CI runners with limited RAM.
 { sources ? import ../npins }:
 let
-  # Use haskell.nix master branch (not armv7a which is Android-specific
-  # and has macOS build issues with GHC 8.10.7 patching)
-  haskellNix = import sources."haskell.nix-master" {};
+  pkgs = import sources.nixpkgs {};
 
-  # Use nixpkgs-2305 (nixpkgs-unstable has ghc943 bootstrap incompatibility)
-  pkgs = import haskellNix.sources.nixpkgs-2305 (haskellNix.nixpkgsArgs // {});
-
-  project = import ./project.nix { inherit pkgs; };
+  ghc = pkgs.haskellPackages.ghc;
 
   mac2ios = import ./mac2ios.nix { inherit sources pkgs; };
 
-  nativeLib = project.hsPkgs.haskell-mobile.components.library;
+in pkgs.stdenv.mkDerivation {
+  pname = "haskell-mobile-ios";
+  version = "0.1.0.0";
 
-  # Override the library component to produce a rolled-up static archive.
-  # GHC -staticlib bundles all Haskell code + RTS + dependencies into one .a.
-  # mac2ios then patches LC_BUILD_VERSION / LC_VERSION_MIN_MACOSX to iOS.
-  iosLib = nativeLib.override (p: {
-    enableShared = false;
-    enableStatic = true;
+  src = ../src;
 
-    setupBuildFlags = p.component.setupBuildFlags
-      ++ map (x: "--ghc-option=${x}") [
-        "-staticlib"
-        "-o" "libHaskellMobile.a"
-        "-optl-lffi"
-      ]
-      # Force foreign export symbols to stay — macOS/iOS uses _ prefix
-      ++ map (sym: "--ghc-option=-optl-Wl,-u,_${sym}") [
-        "haskellInit"
-        "haskellGreet"
-      ];
+  nativeBuildInputs = [ ghc ];
+  buildInputs = [ pkgs.libffi ];
 
-    postInstall = ''
-      mkdir -p $out/lib $out/include
-      ${mac2ios}/bin/mac2ios libHaskellMobile.a
-      cp libHaskellMobile.a $out/lib/
-      cp ${../include/HaskellMobile.h} $out/include/
-    '';
-  });
+  buildPhase = ''
+    ghc -staticlib \
+      -O2 \
+      -o libHaskellMobile.a \
+      -optl-lffi \
+      -optl-Wl,-u,_haskellInit \
+      -optl-Wl,-u,_haskellGreet \
+      HaskellMobile.hs
+  '';
 
-in iosLib
+  installPhase = ''
+    mkdir -p $out/lib $out/include
+    ${mac2ios}/bin/mac2ios libHaskellMobile.a
+    cp libHaskellMobile.a $out/lib/
+    cp ${../include/HaskellMobile.h} $out/include/
+  '';
+}
