@@ -13,6 +13,16 @@
 /* Haskell foreign exports */
 extern void haskellInit(void);
 extern char* haskellGreet(const char* name);
+extern void haskellOnLifecycle(int eventType);
+
+/* Lifecycle event codes (must match HaskellMobile.h) */
+#define LIFECYCLE_CREATE     0
+#define LIFECYCLE_START      1
+#define LIFECYCLE_RESUME     2
+#define LIFECYCLE_PAUSE      3
+#define LIFECYCLE_STOP       4
+#define LIFECYCLE_DESTROY    5
+#define LIFECYCLE_LOW_MEMORY 6
 
 JNIEXPORT jint JNICALL
 JNI_OnLoad(JavaVM *vm, void *reserved)
@@ -43,4 +53,47 @@ Java_me_jappie_haskellmobile_MainActivity_greet(JNIEnv *env, jobject thiz, jstri
     free(cresult);
 
     return jresult;
+}
+
+/* Lifecycle JNI callbacks */
+JNIEXPORT void JNICALL
+Java_me_jappie_haskellmobile_MainActivity_onLifecycleCreate(JNIEnv *env, jobject thiz)
+{
+    haskellOnLifecycle(LIFECYCLE_CREATE);
+}
+
+JNIEXPORT void JNICALL
+Java_me_jappie_haskellmobile_MainActivity_onLifecycleStart(JNIEnv *env, jobject thiz)
+{
+    haskellOnLifecycle(LIFECYCLE_START);
+}
+
+JNIEXPORT void JNICALL
+Java_me_jappie_haskellmobile_MainActivity_onLifecycleResume(JNIEnv *env, jobject thiz)
+{
+    haskellOnLifecycle(LIFECYCLE_RESUME);
+}
+
+JNIEXPORT void JNICALL
+Java_me_jappie_haskellmobile_MainActivity_onLifecyclePause(JNIEnv *env, jobject thiz)
+{
+    haskellOnLifecycle(LIFECYCLE_PAUSE);
+}
+
+JNIEXPORT void JNICALL
+Java_me_jappie_haskellmobile_MainActivity_onLifecycleStop(JNIEnv *env, jobject thiz)
+{
+    haskellOnLifecycle(LIFECYCLE_STOP);
+}
+
+JNIEXPORT void JNICALL
+Java_me_jappie_haskellmobile_MainActivity_onLifecycleDestroy(JNIEnv *env, jobject thiz)
+{
+    haskellOnLifecycle(LIFECYCLE_DESTROY);
+}
+
+JNIEXPORT void JNICALL
+Java_me_jappie_haskellmobile_MainActivity_onLifecycleLowMemory(JNIEnv *env, jobject thiz)
+{
+    haskellOnLifecycle(LIFECYCLE_LOW_MEMORY);
 }

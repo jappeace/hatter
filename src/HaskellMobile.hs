@@ -3,10 +3,13 @@ module HaskellMobile
   ( main
   , haskellInit
   , haskellGreet
+  , LifecycleEvent(..)
+  , setLifecycleCallback
   )
 where
 
 import Foreign.C.String (CString, newCString, peekCString)
+import HaskellMobile.Lifecycle (LifecycleEvent(..), setLifecycleCallback)
 
 main :: IO ()
 main = putStrLn "hello, world flaky"

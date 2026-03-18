@@ -63,7 +63,8 @@ in pkgs.stdenv.mkDerivation {
       -optl-Wl,-z,max-page-size=16384 \
       -optl$(pwd)/jni_bridge.o \
       -optl-Wl,-u,haskellInit \
-      -optl-Wl,-u,haskellGreet
+      -optl-Wl,-u,haskellGreet \
+      -optl-Wl,-u,haskellOnLifecycle
   '';
 
   installPhase = ''

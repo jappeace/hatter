@@ -5,15 +5,23 @@ import Test.Tasty.QuickCheck as QC
 import Test.Tasty.HUnit
 
 import Data.List (sort)
+import Data.IORef (newIORef, readIORef, modifyIORef')
 import Foreign.C.String (newCString, peekCString)
 import Foreign.Marshal.Alloc (free)
 import qualified HaskellMobile
+import HaskellMobile.Lifecycle
+  ( LifecycleEvent(..)
+  , lifecycleFromInt
+  , lifecycleToInt
+  , setLifecycleCallback
+  , haskellOnLifecycle
+  )
 
 main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tests" [qcProps, unitTests]
+tests = testGroup "Tests" [qcProps, unitTests, lifecycleTests]
 
 qcProps :: TestTree
 qcProps = testGroup "(checked by QuickCheck)"
@@ -53,4 +61,40 @@ unitTests = testGroup "Unit tests"
       free cresult
       free cname
       result @?= "Hello from Haskell, Android!"
+  ]
+
+allEvents :: [LifecycleEvent]
+allEvents = [Create, Start, Resume, Pause, Stop, Destroy, LowMemory]
+
+lifecycleTests :: TestTree
+lifecycleTests = testGroup "Lifecycle"
+  [ testCase "lifecycleToInt produces sequential codes 0-6" $
+      map lifecycleToInt allEvents @?= [0, 1, 2, 3, 4, 5, 6]
+  , testCase "lifecycleFromInt roundtrips for all events" $
+      mapM_ (\event ->
+        lifecycleFromInt (lifecycleToInt event) @?= Just event
+      ) allEvents
+  , testCase "lifecycleFromInt returns Nothing for unknown codes" $ do
+      lifecycleFromInt 7 @?= Nothing
+      lifecycleFromInt (-1) @?= Nothing
+      lifecycleFromInt 100 @?= Nothing
+  , testCase "setLifecycleCallback + haskellOnLifecycle dispatches correctly" $ do
+      ref <- newIORef ([] :: [LifecycleEvent])
+      setLifecycleCallback $ \event -> modifyIORef' ref (++ [event])
+      haskellOnLifecycle 2
+      received <- readIORef ref
+      received @?= [Resume]
+  , testCase "unknown event codes are silently ignored" $ do
+      ref <- newIORef (0 :: Int)
+      setLifecycleCallback $ \_ -> modifyIORef' ref (+ 1)
+      haskellOnLifecycle 99
+      haskellOnLifecycle (-1)
+      count <- readIORef ref
+      count @?= 0
+  , testCase "all 7 event types received in order" $ do
+      ref <- newIORef ([] :: [LifecycleEvent])
+      setLifecycleCallback $ \event -> modifyIORef' ref (++ [event])
+      mapM_ (haskellOnLifecycle . lifecycleToInt) allEvents
+      received <- readIORef ref
+      received @?= allEvents
   ]
