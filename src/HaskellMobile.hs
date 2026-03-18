@@ -7,6 +7,8 @@ module HaskellMobile
   , LifecycleEvent(..)
   , MobileContext(..)
   , defaultMobileContext
+  , loggingMobileContext
+  , platformLog
   , newMobileContext
   , freeMobileContext
   )
@@ -19,6 +21,8 @@ import HaskellMobile.Lifecycle
   ( LifecycleEvent(..)
   , MobileContext(..)
   , defaultMobileContext
+  , loggingMobileContext
+  , platformLog
   , newMobileContext
   , freeMobileContext
   )
@@ -44,6 +48,6 @@ foreign export ccall haskellGreet :: CString -> IO CString
 -- | Create a default 'MobileContext' and return it as an opaque pointer
 -- for C code. Called by platform bridges after 'haskellInit'.
 haskellCreateContext :: IO (Ptr ())
-haskellCreateContext = castStablePtrToPtr <$> newMobileContext defaultMobileContext
+haskellCreateContext = castStablePtrToPtr <$> newMobileContext loggingMobileContext
 
 foreign export ccall haskellCreateContext :: IO (Ptr ())

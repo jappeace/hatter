@@ -12,6 +12,9 @@ char *haskellGreet(const char *name);
  * Call after haskellInit(). */
 void *haskellCreateContext(void);
 
+/* Platform-aware logging (Android logcat / Apple os_log / stderr) */
+void haskellMobileLog(const char *msg);
+
 /* Lifecycle event codes */
 #define LIFECYCLE_CREATE     0
 #define LIFECYCLE_START      1

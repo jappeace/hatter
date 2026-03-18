@@ -5,12 +5,15 @@ module HaskellMobile.Lifecycle
   , lifecycleToInt
   , MobileContext(..)
   , defaultMobileContext
+  , loggingMobileContext
+  , platformLog
   , newMobileContext
   , freeMobileContext
   , haskellOnLifecycle
   )
 where
 
+import Foreign.C.String (CString, withCString)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr)
 import Foreign.StablePtr (StablePtr, castPtrToStablePtr, newStablePtr, deRefStablePtr, freeStablePtr)
@@ -59,6 +62,19 @@ data MobileContext = MobileContext
 defaultMobileContext :: MobileContext
 defaultMobileContext = MobileContext
   { onLifecycle = \_ -> pure ()
+  }
+
+foreign import ccall "haskellMobileLog" c_haskellMobileLog :: CString -> IO ()
+
+-- | Log a message using the platform-appropriate mechanism:
+-- Android logcat, Apple os_log, or stderr on desktop.
+platformLog :: String -> IO ()
+platformLog msg = withCString msg c_haskellMobileLog
+
+-- | A context that logs every lifecycle event via 'platformLog'.
+loggingMobileContext :: MobileContext
+loggingMobileContext = MobileContext
+  { onLifecycle = \event -> platformLog ("Lifecycle: " ++ show event)
   }
 
 -- | Pin a 'MobileContext' on the GHC heap and return a 'StablePtr' to it.

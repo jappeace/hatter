@@ -32,6 +32,7 @@ in pkgs.stdenv.mkDerivation {
       -optl-Wl,-u,_haskellGreet \
       -optl-Wl,-u,_haskellOnLifecycle \
       -optl-Wl,-u,_haskellCreateContext \
+      ${../cbits/platform_log.c} \
       HaskellMobile.hs
   '';
 

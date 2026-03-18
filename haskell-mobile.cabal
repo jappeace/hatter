@@ -68,6 +68,7 @@ library
       src
   c-sources:
       cbits/android_stubs.c
+      cbits/platform_log.c
 
 executable exe
   import: common-options

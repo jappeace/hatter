@@ -57,9 +57,11 @@ in pkgs.stdenv.mkDerivation {
       -o libhaskellmobile.so \
       HaskellMobile.hs \
       ${../cbits/android_stubs.c} \
+      ${../cbits/platform_log.c} \
       -optl-L${androidPkgs.gmp}/lib \
       -optl-L${androidPkgs.libffi}/lib \
       -optl-lffi \
+      -optl-llog \
       -optl-Wl,-z,max-page-size=16384 \
       -optl$(pwd)/jni_bridge.o \
       -optl-Wl,-u,haskellInit \

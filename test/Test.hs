@@ -16,6 +16,7 @@ import HaskellMobile.Lifecycle
   , MobileContext(..)
   , lifecycleFromInt
   , lifecycleToInt
+  , loggingMobileContext
   , newMobileContext
   , freeMobileContext
   , haskellOnLifecycle
@@ -111,4 +112,6 @@ lifecycleTests = testGroup "Lifecycle"
         mapM_ (haskellOnLifecycle ctx . lifecycleToInt) allEvents
       received <- readIORef ref
       received @?= allEvents
+  , testCase "loggingMobileContext handles all events without throwing" $
+      mapM_ (onLifecycle loggingMobileContext) allEvents
   ]
