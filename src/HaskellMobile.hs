@@ -3,13 +3,25 @@ module HaskellMobile
   ( main
   , haskellInit
   , haskellGreet
+  , haskellCreateContext
   , LifecycleEvent(..)
-  , setLifecycleCallback
+  , MobileContext(..)
+  , defaultMobileContext
+  , newMobileContext
+  , freeMobileContext
   )
 where
 
 import Foreign.C.String (CString, newCString, peekCString)
-import HaskellMobile.Lifecycle (LifecycleEvent(..), setLifecycleCallback)
+import Foreign.Ptr (Ptr)
+import Foreign.StablePtr (castStablePtrToPtr)
+import HaskellMobile.Lifecycle
+  ( LifecycleEvent(..)
+  , MobileContext(..)
+  , defaultMobileContext
+  , newMobileContext
+  , freeMobileContext
+  )
 
 main :: IO ()
 main = putStrLn "hello, world flaky"
@@ -28,3 +40,10 @@ haskellGreet cname = do
   newCString ("Hello from Haskell, " ++ name ++ "!")
 
 foreign export ccall haskellGreet :: CString -> IO CString
+
+-- | Create a default 'MobileContext' and return it as an opaque pointer
+-- for C code. Called by platform bridges after 'haskellInit'.
+haskellCreateContext :: IO (Ptr ())
+haskellCreateContext = castStablePtrToPtr <$> newMobileContext defaultMobileContext
+
+foreign export ccall haskellCreateContext :: IO (Ptr ())

@@ -31,6 +31,7 @@ in pkgs.stdenv.mkDerivation {
       -optl-Wl,-u,_haskellInit \
       -optl-Wl,-u,_haskellGreet \
       -optl-Wl,-u,_haskellOnLifecycle \
+      -optl-Wl,-u,_haskellCreateContext \
       HaskellMobile.hs
   '';
 

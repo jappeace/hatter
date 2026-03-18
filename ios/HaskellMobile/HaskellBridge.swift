@@ -11,10 +11,14 @@ class HaskellBridge {
     static let lifecycleDestroy: Int32    = 5
     static let lifecycleLowMemory: Int32  = 6
 
+    /// Opaque Haskell context pointer, created during initialization.
+    private static var context: UnsafeMutableRawPointer?
+
     /// Initialize the Haskell RTS. Must be called before any other Haskell function.
     static func initialize() {
         hs_init(nil, nil)
         haskellInit()
+        context = haskellCreateContext()
     }
 
     /// Call Haskell's haskellGreet and return the result as a Swift String.
@@ -28,6 +32,6 @@ class HaskellBridge {
 
     /// Notify Haskell of a lifecycle event.
     static func onLifecycle(_ event: Int32) {
-        haskellOnLifecycle(event)
+        haskellOnLifecycle(context, event)
     }
 }

@@ -3,14 +3,17 @@ module HaskellMobile.Lifecycle
   ( LifecycleEvent(..)
   , lifecycleFromInt
   , lifecycleToInt
-  , setLifecycleCallback
+  , MobileContext(..)
+  , defaultMobileContext
+  , newMobileContext
+  , freeMobileContext
   , haskellOnLifecycle
   )
 where
 
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Foreign.C.Types (CInt(..))
-import System.IO.Unsafe (unsafePerformIO)
+import Foreign.Ptr (Ptr)
+import Foreign.StablePtr (StablePtr, castPtrToStablePtr, newStablePtr, deRefStablePtr, freeStablePtr)
 
 -- | Lifecycle events that can be received from the host platform.
 -- Maps to Android Activity lifecycle and iOS ScenePhase transitions.
@@ -45,28 +48,37 @@ lifecycleToInt Stop      = 4
 lifecycleToInt Destroy   = 5
 lifecycleToInt LowMemory = 6
 
--- | Global mutable callback for lifecycle events.
-lifecycleCallbackRef :: IORef (LifecycleEvent -> IO ())
-lifecycleCallbackRef = unsafePerformIO $ newIORef defaultLifecycleCallback
-{-# NOINLINE lifecycleCallbackRef #-}
+-- | Opaque context holding user-defined callbacks for mobile platform events.
+-- Passed through the C FFI as a 'StablePtr', so each platform bridge
+-- (or test) owns its own independent context — no global mutable state.
+data MobileContext = MobileContext
+  { onLifecycle :: LifecycleEvent -> IO ()
+  }
 
--- | Default callback that prints the event to stdout.
-defaultLifecycleCallback :: LifecycleEvent -> IO ()
-defaultLifecycleCallback event = putStrLn $ "Lifecycle event: " ++ show event
+-- | A no-op context. Suitable as a default when no callbacks are needed.
+defaultMobileContext :: MobileContext
+defaultMobileContext = MobileContext
+  { onLifecycle = \_ -> pure ()
+  }
 
--- | Register a callback to be invoked on lifecycle events.
--- Replaces any previously registered callback.
-setLifecycleCallback :: (LifecycleEvent -> IO ()) -> IO ()
-setLifecycleCallback = writeIORef lifecycleCallbackRef
+-- | Pin a 'MobileContext' on the GHC heap and return a 'StablePtr' to it.
+-- The caller must eventually call 'freeMobileContext' to release the pointer.
+newMobileContext :: MobileContext -> IO (StablePtr MobileContext)
+newMobileContext = newStablePtr
+
+-- | Release a 'StablePtr' previously created by 'newMobileContext'.
+freeMobileContext :: StablePtr MobileContext -> IO ()
+freeMobileContext = freeStablePtr
 
 -- | FFI entry point called from platform code.
--- Dispatches to the registered callback. Unknown event codes are silently ignored.
-haskellOnLifecycle :: CInt -> IO ()
-haskellOnLifecycle code =
+-- Takes an opaque context pointer and an event code.
+-- Dispatches to the 'onLifecycle' callback. Unknown event codes are silently ignored.
+haskellOnLifecycle :: Ptr () -> CInt -> IO ()
+haskellOnLifecycle ctxPtr code =
   case lifecycleFromInt code of
     Just event -> do
-      callback <- readIORef lifecycleCallbackRef
-      callback event
+      ctx <- deRefStablePtr (castPtrToStablePtr ctxPtr)
+      onLifecycle ctx event
     Nothing -> pure ()
 
-foreign export ccall haskellOnLifecycle :: CInt -> IO ()
+foreign export ccall haskellOnLifecycle :: Ptr () -> CInt -> IO ()

@@ -64,7 +64,8 @@ in pkgs.stdenv.mkDerivation {
       -optl$(pwd)/jni_bridge.o \
       -optl-Wl,-u,haskellInit \
       -optl-Wl,-u,haskellGreet \
-      -optl-Wl,-u,haskellOnLifecycle
+      -optl-Wl,-u,haskellOnLifecycle \
+      -optl-Wl,-u,haskellCreateContext
   '';
 
   installPhase = ''

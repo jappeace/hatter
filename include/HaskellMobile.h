@@ -8,6 +8,10 @@ void hs_init(int *argc, char **argv[]);
 void haskellInit(void);
 char *haskellGreet(const char *name);
 
+/* Create a default mobile context. Returns an opaque pointer.
+ * Call after haskellInit(). */
+void *haskellCreateContext(void);
+
 /* Lifecycle event codes */
 #define LIFECYCLE_CREATE     0
 #define LIFECYCLE_START      1
@@ -17,7 +21,8 @@ char *haskellGreet(const char *name);
 #define LIFECYCLE_DESTROY    5
 #define LIFECYCLE_LOW_MEMORY 6
 
-/* Notify Haskell of a lifecycle event. Unknown codes are silently ignored. */
-void haskellOnLifecycle(int eventType);
+/* Notify Haskell of a lifecycle event. Unknown codes are silently ignored.
+ * ctx must be a pointer returned by haskellCreateContext(). */
+void haskellOnLifecycle(void *ctx, int eventType);
 
 #endif /* HASKELL_MOBILE_H */
