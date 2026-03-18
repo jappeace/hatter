@@ -78,23 +78,29 @@ lifecycleTests = testGroup "Lifecycle"
       lifecycleFromInt 7 @?= Nothing
       lifecycleFromInt (-1) @?= Nothing
       lifecycleFromInt 100 @?= Nothing
-  , testCase "setLifecycleCallback + haskellOnLifecycle dispatches correctly" $ do
-      ref <- newIORef ([] :: [LifecycleEvent])
-      setLifecycleCallback $ \event -> modifyIORef' ref (++ [event])
+  -- Callback tests are combined into one test case because
+  -- setLifecycleCallback mutates a global IORef, and tasty runs
+  -- tests in parallel by default.
+  , testCase "callback dispatch, unknown codes, and event ordering" $ do
+      -- Single event dispatch
+      ref1 <- newIORef ([] :: [LifecycleEvent])
+      setLifecycleCallback $ \event -> modifyIORef' ref1 (++ [event])
       haskellOnLifecycle 2
-      received <- readIORef ref
-      received @?= [Resume]
-  , testCase "unknown event codes are silently ignored" $ do
-      ref <- newIORef (0 :: Int)
-      setLifecycleCallback $ \_ -> modifyIORef' ref (+ 1)
+      received1 <- readIORef ref1
+      received1 @?= [Resume]
+
+      -- Unknown codes silently ignored
+      ref2 <- newIORef (0 :: Int)
+      setLifecycleCallback $ \_ -> modifyIORef' ref2 (+ 1)
       haskellOnLifecycle 99
       haskellOnLifecycle (-1)
-      count <- readIORef ref
+      count <- readIORef ref2
       count @?= 0
-  , testCase "all 7 event types received in order" $ do
-      ref <- newIORef ([] :: [LifecycleEvent])
-      setLifecycleCallback $ \event -> modifyIORef' ref (++ [event])
+
+      -- All 7 event types received in order
+      ref3 <- newIORef ([] :: [LifecycleEvent])
+      setLifecycleCallback $ \event -> modifyIORef' ref3 (++ [event])
       mapM_ (haskellOnLifecycle . lifecycleToInt) allEvents
-      received <- readIORef ref
-      received @?= allEvents
+      received3 <- readIORef ref3
+      received3 @?= allEvents
   ]
