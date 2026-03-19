@@ -231,10 +231,12 @@ jobs:
           ${{ runner.os }}-build-${{ env.cache-name }}-
     - name: Cabal update
       run: cabal update
+    # Backpack instantiation creates paths that exceed Windows MAX_PATH
+    # (260 chars).  Use a short absolute builddir to stay under the limit.
     - name: Build using cabal
-      run: cabal build all
+      run: cabal build all ${{ runner.os == 'Windows' && '--builddir=C:/b' || '' }}
     - name: Test
-      run: cabal test all
+      run: cabal test all ${{ runner.os == 'Windows' && '--builddir=C:/b' || '' }}
     - name: Cancel workflow on failure
       if: failure()
       continue-on-error: true
