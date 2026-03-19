@@ -24,10 +24,14 @@ in pkgs.stdenv.mkDerivation {
   buildInputs = [ pkgs.libffi ];
 
   buildPhase = ''
+    # Copy extra source modules into the writable build directory.
+    # GHC writes _stub.h files next to sources, so they can't live in
+    # the read-only nix store.
+    cp ${../src-lifecycle}/HaskellMobile/Lifecycle.hs HaskellMobile/
+    cp ${../default-app}/HaskellMobile/App.hs HaskellMobile/
+
     ghc -staticlib \
       -O2 \
-      -i${../src-lifecycle} \
-      -i${../default-app} \
       -o libHaskellMobile.a \
       -optl-lffi \
       -optl-Wl,-u,_haskellInit \

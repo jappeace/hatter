@@ -52,10 +52,14 @@ in pkgs.stdenv.mkDerivation {
       -o jni_bridge.o \
       ${../cbits/jni_bridge.c}
 
-    # Step 2: Compile Haskell to shared library with cross-GHC
+    # Step 2: Copy extra source modules into the writable build directory.
+    # GHC writes _stub.h files next to sources, so they can't live in
+    # the read-only nix store.
+    cp ${../src-lifecycle}/HaskellMobile/Lifecycle.hs HaskellMobile/
+    cp ${../default-app}/HaskellMobile/App.hs HaskellMobile/
+
+    # Step 3: Compile Haskell to shared library with cross-GHC
     ${ghcCmd} -shared -O2 \
-      -i${../src-lifecycle} \
-      -i${../default-app} \
       -o libhaskellmobile.so \
       HaskellMobile.hs \
       ${../cbits/android_stubs.c} \

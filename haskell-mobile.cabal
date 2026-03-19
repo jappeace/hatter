@@ -81,6 +81,7 @@ library
       Paths_haskell_mobile
   hs-source-dirs:
       src
+      src-sig
   build-depends:
       haskell-mobile:haskell-mobile-lifecycle
 
