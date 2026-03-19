@@ -11,6 +11,7 @@ import Foreign.Marshal.Alloc (free)
 import Foreign.Ptr (Ptr)
 import Foreign.StablePtr (castStablePtrToPtr)
 import qualified HaskellMobile
+import HaskellMobile (appContext)
 import HaskellMobile.Lifecycle
   ( LifecycleEvent(..)
   , MobileContext(..)
@@ -114,4 +115,6 @@ lifecycleTests = testGroup "Lifecycle"
       received @?= allEvents
   , testCase "loggingMobileContext handles all events without throwing" $
       mapM_ (onLifecycle loggingMobileContext) allEvents
+  , testCase "appContext handles all events without throwing" $
+      mapM_ (onLifecycle appContext) allEvents
   ]

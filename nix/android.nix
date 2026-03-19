@@ -54,6 +54,8 @@ in pkgs.stdenv.mkDerivation {
 
     # Step 2: Compile Haskell to shared library with cross-GHC
     ${ghcCmd} -shared -O2 \
+      -i${../src-lifecycle} \
+      -i${../default-app} \
       -o libhaskellmobile.so \
       HaskellMobile.hs \
       ${../cbits/android_stubs.c} \

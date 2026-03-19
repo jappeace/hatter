@@ -1,6 +1,6 @@
 module Main where
 
-import HaskellMobile (loggingMobileContext, platformLog)
+import HaskellMobile (appContext, platformLog)
 import HaskellMobile.Lifecycle (LifecycleEvent(..), MobileContext(onLifecycle))
 
 -- | Simulate a mobile app lifecycle.
@@ -10,7 +10,7 @@ import HaskellMobile.Lifecycle (LifecycleEvent(..), MobileContext(onLifecycle))
 main :: IO ()
 main = do
   platformLog "Waiting for lifecycle events..."
-  let listen = onLifecycle loggingMobileContext
+  let listen = onLifecycle appContext
 
   -- Simulate the platform sending lifecycle events
   listen Create

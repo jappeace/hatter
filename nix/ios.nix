@@ -26,6 +26,8 @@ in pkgs.stdenv.mkDerivation {
   buildPhase = ''
     ghc -staticlib \
       -O2 \
+      -i${../src-lifecycle} \
+      -i${../default-app} \
       -o libHaskellMobile.a \
       -optl-lffi \
       -optl-Wl,-u,_haskellInit \
