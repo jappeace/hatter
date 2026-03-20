@@ -55,6 +55,7 @@ in pkgs.stdenv.mkDerivation {
     # Step 2: Copy extra source modules into the writable build directory.
     # GHC writes _stub.h files next to sources, so they can't live in
     # the read-only nix store.
+    mkdir -p HaskellMobile
     cp ${../src-lifecycle}/HaskellMobile/Lifecycle.hs HaskellMobile/
     cp ${../default-app}/HaskellMobile/App.hs HaskellMobile/
 
