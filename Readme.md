@@ -1,5 +1,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/jappeace/haskell-mobile/ci.yaml?branch=master)](https://github.com/jappeace/haskell-mobile/actions)
 
+>  To see a need and wait to be asked, is to already refuse. 
+
 # Haskell Mobile
 
 Write mobile apps in Haskell.
