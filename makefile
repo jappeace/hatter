@@ -6,6 +6,10 @@ build:
 test:
 	cabal test -j --ghc-options $(OPTIMIZATION)
 
+test-emulator:
+	nix-build nix/emulator.nix -o result-emulator
+	./result-emulator/bin/test-lifecycle
+
 haddock:
 	cabal haddock all
 
