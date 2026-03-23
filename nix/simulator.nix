@@ -22,12 +22,14 @@ in pkgs.stdenv.mkDerivation {
   dontUnpack = true;
 
   buildPhase = ''
-    mkdir -p $out/bin $out/share/ios
+    mkdir -p $out/bin $out/share/ios/lib $out/share/ios/include
 
-    # Bundle the iOS Swift sources and project config so the test script
-    # can stage a complete Xcode project without depending on the repo checkout.
+    # Bundle everything the test script needs: Swift sources, project config,
+    # and the pre-built simulator library + header.
     cp -r ${../ios}/HaskellMobile $out/share/ios/
     cp ${../ios/project.yml} $out/share/ios/project.yml
+    cp ${iosLib}/lib/libHaskellMobile.a $out/share/ios/lib/
+    cp ${iosLib}/include/HaskellMobile.h $out/share/ios/include/
 
     cat > $out/bin/test-lifecycle-ios << 'SCRIPT'
 #!/usr/bin/env bash
@@ -37,7 +39,6 @@ set -euo pipefail
 BUNDLE_ID="me.jappie.haskellmobile"
 SCHEME="HaskellMobile"
 DEVICE_TYPE="iPhone 16"
-IOS_LIB="${iosLib}"
 SHARE_DIR="$(cd "$(dirname "$0")/../share/ios" && pwd)"
 
 # --- Temp working directory ---
@@ -64,8 +65,8 @@ echo "Working directory: $WORK_DIR"
 # --- Stage library and sources ---
 echo "=== Staging Xcode project ==="
 mkdir -p "$WORK_DIR/ios/lib" "$WORK_DIR/ios/include"
-cp "$IOS_LIB/lib/libHaskellMobile.a" "$WORK_DIR/ios/lib/"
-cp "$IOS_LIB/include/HaskellMobile.h" "$WORK_DIR/ios/include/"
+cp "$SHARE_DIR/lib/libHaskellMobile.a" "$WORK_DIR/ios/lib/"
+cp "$SHARE_DIR/include/HaskellMobile.h" "$WORK_DIR/ios/include/"
 cp -r "$SHARE_DIR/HaskellMobile" "$WORK_DIR/ios/"
 cp "$SHARE_DIR/project.yml" "$WORK_DIR/ios/"
 

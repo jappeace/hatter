@@ -49,6 +49,6 @@ in pkgs.stdenv.mkDerivation {
     mkdir -p $out/lib $out/include
     ${mac2ios}/bin/mac2ios ${if simulator then "-s" else ""} libHaskellMobile.a
     cp libHaskellMobile.a $out/lib/
-    cp ${../include/HaskellMobile.h} $out/include/
+    cp ${../include/HaskellMobile.h} $out/include/HaskellMobile.h
   '';
 }
