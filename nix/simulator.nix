@@ -80,11 +80,14 @@ xcodegen generate
 # --- Build for simulator ---
 echo "=== Building for iOS Simulator ==="
 
-# Xcode 16.4 ld-prime has a bug: it fails on -objc_abi_version before
-# reaching -ld_classic in OTHER_LDFLAGS. Use the classic linker directly.
-LD_CLASSIC="$(dirname "$(xcrun --find ld)")/ld-classic"
+# Xcode 16.4 ld-prime fails on -objc_abi_version before reaching
+# -ld_classic in OTHER_LDFLAGS. Use ld-classic from the Xcode toolchain
+# directly (not xcrun, which may find nix's ld via PATH).
+XCODE_TOOLCHAIN="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain"
+LD_CLASSIC="$XCODE_TOOLCHAIN/usr/bin/ld-classic"
 if [ ! -x "$LD_CLASSIC" ]; then
-    LD_CLASSIC="$(xcrun --find ld)"
+    echo "WARNING: ld-classic not found, falling back to default ld"
+    LD_CLASSIC="$XCODE_TOOLCHAIN/usr/bin/ld"
 fi
 echo "Using linker: $LD_CLASSIC"
 
