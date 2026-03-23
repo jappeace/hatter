@@ -16,6 +16,8 @@ let
 
   iosLib = import ./ios.nix { inherit sources; simulator = true; };
 
+  xcodegen = pkgs.xcodegen;
+
 in pkgs.stdenv.mkDerivation {
   name = "haskell-mobile-simulator-test";
 
@@ -75,22 +77,10 @@ chmod -R u+w "$WORK_DIR/ios"
 # --- Generate Xcode project ---
 echo "=== Generating Xcode project ==="
 cd "$WORK_DIR/ios"
-xcodegen generate
+${xcodegen}/bin/xcodegen generate
 
 # --- Build for simulator ---
 echo "=== Building for iOS Simulator ==="
-
-# Xcode 16.4 ld-prime fails on -objc_abi_version before reaching
-# -ld_classic in OTHER_LDFLAGS. Use ld-classic from the Xcode toolchain
-# directly (not xcrun, which may find nix's ld via PATH).
-XCODE_TOOLCHAIN="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain"
-LD_CLASSIC="$XCODE_TOOLCHAIN/usr/bin/ld-classic"
-if [ ! -x "$LD_CLASSIC" ]; then
-    echo "WARNING: ld-classic not found, falling back to default ld"
-    LD_CLASSIC="$XCODE_TOOLCHAIN/usr/bin/ld"
-fi
-echo "Using linker: $LD_CLASSIC"
-
 xcodebuild build \
     -project HaskellMobile.xcodeproj \
     -scheme "$SCHEME" \
@@ -100,7 +90,6 @@ xcodebuild build \
     -derivedDataPath "$WORK_DIR/build" \
     CODE_SIGN_IDENTITY=- \
     CODE_SIGNING_ALLOWED=NO \
-    LD="$LD_CLASSIC" \
     | tail -20
 
 echo "Build succeeded."
