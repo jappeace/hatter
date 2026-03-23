@@ -170,9 +170,12 @@ echo "App installed."
 echo "=== Starting log capture ==="
 LOG_FILE="$WORK_DIR/os_log.txt"
 
-# Capture os_log output for our process
+# Capture os_log output for our process.
+# --level info: OS_LOG_TYPE_INFO is not streamed by default (only default+error).
+# composedMessage: eventMessage has the format template, composedMessage has actual text.
 xcrun simctl spawn "$SIM_UDID" log stream \
-    --predicate "process == \"HaskellMobile\" AND eventMessage CONTAINS \"Lifecycle:\"" \
+    --level info \
+    --predicate "process == \"HaskellMobile\" AND composedMessage CONTAINS \"Lifecycle:\"" \
     --style compact \
     > "$LOG_FILE" 2>&1 &
 LOG_PID=$!
