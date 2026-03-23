@@ -28,7 +28,7 @@ in pkgs.stdenv.mkDerivation {
 
   src = ../src;
 
-  nativeBuildInputs = [ ghc ];
+  nativeBuildInputs = [ ghc pkgs.cctools ];
   buildInputs = [ pkgs.libffi gmpStatic ];
 
   buildPhase = ''
