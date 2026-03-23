@@ -83,10 +83,12 @@ xcodebuild build \
     -project HaskellMobile.xcodeproj \
     -scheme "$SCHEME" \
     -sdk iphonesimulator \
+    -configuration Release \
     -destination "platform=iOS Simulator,OS=latest,name=$DEVICE_TYPE" \
     -derivedDataPath "$WORK_DIR/build" \
     CODE_SIGN_IDENTITY=- \
     CODE_SIGNING_ALLOWED=NO \
+    ENABLE_DEBUG_DYLIB=NO \
     | tail -20
 
 echo "Build succeeded."
