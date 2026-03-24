@@ -51,6 +51,9 @@ set -euo pipefail
 
 # --- Configuration ---
 export ANDROID_SDK_ROOT="${sdkRoot}"
+export ANDROID_HOME="${sdkRoot}"
+# Prevent the emulator from finding the runner's pre-installed SDK
+unset ANDROID_NDK_HOME 2>/dev/null || true
 ADB="$ANDROID_SDK_ROOT/platform-tools/adb"
 EMULATOR="$ANDROID_SDK_ROOT/emulator/emulator"
 AVDMANAGER="${sdk}/bin/avdmanager"
@@ -58,6 +61,14 @@ APK_PATH="${apk}/haskell-mobile.apk"
 PACKAGE="me.jappie.haskellmobile"
 ACTIVITY=".MainActivity"
 DEVICE_NAME="test_ui"
+
+# --- Debug: show SDK structure ---
+echo "=== SDK structure ==="
+echo "SDK_ROOT: $ANDROID_SDK_ROOT"
+ls "$ANDROID_SDK_ROOT/" 2>/dev/null || echo "(cannot list SDK root)"
+echo "--- system-images ---"
+ls -R "$ANDROID_SDK_ROOT/system-images/" 2>/dev/null | head -20 || echo "(no system-images)"
+echo "=== End SDK structure ==="
 
 # Detect KVM
 if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
@@ -134,6 +145,31 @@ hw.gpu.enabled = yes
 hw.gpu.mode = swiftshader_indirect
 disk.dataPartition.size = 2G
 AVDCONF
+
+# Debug: show AVD config
+echo "=== AVD config.ini ==="
+cat "$ANDROID_AVD_HOME/$DEVICE_NAME.avd/config.ini"
+echo "=== End config.ini ==="
+
+# Fix system image path if needed: the nix SDK may store system images
+# in a different structure. Patch image.sysdir.1 to point to the actual location.
+SYSIMG_DIR="$ANDROID_SDK_ROOT/system-images/android-${platformVersion}/${systemImageType}/${abiVersion}"
+if [ ! -d "$SYSIMG_DIR" ]; then
+    echo "WARNING: Expected system image dir not found: $SYSIMG_DIR"
+    echo "Searching for system image..."
+    FOUND_SYSIMG=$(find "$ANDROID_SDK_ROOT" -name "system.img" -print -quit 2>/dev/null || echo "")
+    if [ -n "$FOUND_SYSIMG" ]; then
+        SYSIMG_DIR=$(dirname "$FOUND_SYSIMG")
+        echo "Found system image at: $SYSIMG_DIR"
+        # Patch the AVD config to point to the correct location
+        sed -i "s|^image.sysdir.1=.*|image.sysdir.1=$SYSIMG_DIR/|" "$ANDROID_AVD_HOME/$DEVICE_NAME.avd/config.ini"
+        echo "Patched image.sysdir.1 in AVD config"
+    else
+        echo "ERROR: Could not find system.img anywhere in SDK"
+    fi
+else
+    echo "System image dir exists: $SYSIMG_DIR"
+fi
 
 # --- Boot emulator ---
 echo "=== Booting emulator ==="
