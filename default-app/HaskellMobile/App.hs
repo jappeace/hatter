@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -- | Default implementation of the @HaskellMobile.App@ Backpack signature.
 -- Provides 'loggingMobileContext' as the application context and a simple
 -- counter demo as the default UI.
