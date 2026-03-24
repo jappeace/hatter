@@ -49,6 +49,8 @@ jobs:
       with:
         path: /nix/store
         key: "${{ runner.os }}-nix-android-cache"
+        restore-keys: |
+          ${{ runner.os }}-nix-android-
     - uses: cachix/install-nix-action@v31
       with:
         extra_nix_config: |
@@ -74,6 +76,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
 
   android-ui:
+    needs: [android]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -81,7 +84,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /nix/store
-        key: "${{ runner.os }}-nix-android-ui-cache"
+        key: "${{ runner.os }}-nix-android-cache"
+        restore-keys: |
+          ${{ runner.os }}-nix-android-
     - uses: cachix/install-nix-action@v31
       with:
         extra_nix_config: |
@@ -112,6 +117,8 @@ jobs:
       with:
         path: /nix/store
         key: "${{ runner.os }}-nix-ios-cache"
+        restore-keys: |
+          ${{ runner.os }}-nix-ios-
     - uses: cachix/install-nix-action@v31
       with:
         extra_nix_config: |
@@ -238,6 +245,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
 
   ios-ui:
+    needs: [ios]
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v4
@@ -245,7 +253,9 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /nix/store
-        key: "${{ runner.os }}-nix-ios-ui-cache"
+        key: "${{ runner.os }}-nix-ios-cache"
+        restore-keys: |
+          ${{ runner.os }}-nix-ios-
     - uses: cachix/install-nix-action@v31
       with:
         extra_nix_config: |
