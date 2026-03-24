@@ -45,6 +45,7 @@ in pkgs.stdenv.mkDerivation {
     ghc -staticlib \
       -O2 \
       -o libHaskellMobile.a \
+      -I${../include} \
       -optl-lffi \
       -optl-Wl,-u,_haskellInit \
       -optl-Wl,-u,_haskellGreet \
