@@ -79,11 +79,11 @@ xcodebuild build \
     -scheme "$SCHEME" \
     -sdk iphonesimulator \
     -configuration Release \
-    -destination "generic/platform=iOS Simulator" \
     -derivedDataPath "$WORK_DIR/build" \
     CODE_SIGN_IDENTITY=- \
     CODE_SIGNING_ALLOWED=NO \
     ARCHS=arm64 \
+    ONLY_ACTIVE_ARCH=NO \
     | tail -20
 
 echo "Build succeeded."
