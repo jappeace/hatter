@@ -1,6 +1,8 @@
 #ifndef HASKELL_MOBILE_H
 #define HASKELL_MOBILE_H
 
+#include <stdint.h>
+
 /* GHC RTS initialization (call before any Haskell function) */
 void hs_init(int *argc, char **argv[]);
 
@@ -27,5 +29,15 @@ void haskellMobileLog(const char *msg);
 /* Notify Haskell of a lifecycle event. Unknown codes are silently ignored.
  * ctx must be a pointer returned by haskellCreateContext(). */
 void haskellOnLifecycle(void *ctx, int eventType);
+
+/* Render the UI tree. Calls appView to get the widget description,
+ * then issues ui_* calls through the registered bridge callbacks.
+ * ctx must be a pointer returned by haskellCreateContext(). */
+void haskellRenderUI(void *ctx);
+
+/* Dispatch a UI event (e.g. button click). Fires the callback
+ * registered for the given callbackId, then re-renders.
+ * ctx must be a pointer returned by haskellCreateContext(). */
+void haskellOnUIEvent(void *ctx, int32_t callbackId);
 
 #endif /* HASKELL_MOBILE_H */

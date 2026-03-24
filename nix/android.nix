@@ -48,12 +48,20 @@ in pkgs.stdenv.mkDerivation {
     echo "GHC libdir: $GHC_LIBDIR"
     echo "RTS include: $RTS_INCLUDE"
 
-    # Step 1: Compile JNI bridge with NDK clang
+    # Step 1: Compile JNI bridge and Android UI bridge with NDK clang
     ${ndkCc} -c -fPIC \
       -I${sysroot}/usr/include \
       -I$RTS_INCLUDE \
+      -I${../include} \
       -o jni_bridge.o \
       ${../cbits/jni_bridge.c}
+
+    ${ndkCc} -c -fPIC \
+      -I${sysroot}/usr/include \
+      -I$RTS_INCLUDE \
+      -I${../include} \
+      -o ui_bridge_android.o \
+      ${../cbits/ui_bridge_android.c}
 
     # Step 2: Copy extra source modules into the writable build directory.
     # GHC writes _stub.h files next to sources, so they can't live in
@@ -61,6 +69,9 @@ in pkgs.stdenv.mkDerivation {
     mkdir -p HaskellMobile
     cp ${../src-lifecycle}/HaskellMobile/Lifecycle.hs HaskellMobile/
     cp ${../default-app}/HaskellMobile/App.hs HaskellMobile/
+    cp ${../src-ui}/HaskellMobile/Widget.hs HaskellMobile/
+    cp ${../src-ui}/HaskellMobile/UIBridge.hs HaskellMobile/
+    cp ${../src-ui}/HaskellMobile/Render.hs HaskellMobile/
 
     # Step 3: Compile Haskell to shared library with cross-GHC.
     # We use --whole-archive to statically link GHC's boot libraries
@@ -68,22 +79,31 @@ in pkgs.stdenv.mkDerivation {
     # can't find GHC's separate shared libraries at runtime.
     GHC_PKG_DIR="${ghcPkgDir}"
 
+    # Discover containers library archive (hash varies by GHC version)
+    CONTAINERS_LIB=$(find $GHC_PKG_DIR -name "libHScontainers-*.a" | head -1)
+    echo "Containers lib: $CONTAINERS_LIB"
+
     ${ghcCmd} -shared -O2 \
       -o libhaskellmobile.so \
+      -I${../include} \
       HaskellMobile.hs \
       ${../cbits/android_stubs.c} \
       ${../cbits/platform_log.c} \
       ${../cbits/numa_stubs.c} \
+      ${../cbits/ui_bridge.c} \
       -optl-L${androidPkgs.gmp}/lib \
       -optl-L${androidPkgs.libffi}/lib \
       -optl-lffi \
       -optl-llog \
       -optl-Wl,-z,max-page-size=16384 \
       -optl$(pwd)/jni_bridge.o \
+      -optl$(pwd)/ui_bridge_android.o \
       -optl-Wl,-u,haskellInit \
       -optl-Wl,-u,haskellGreet \
       -optl-Wl,-u,haskellOnLifecycle \
       -optl-Wl,-u,haskellCreateContext \
+      -optl-Wl,-u,haskellRenderUI \
+      -optl-Wl,-u,haskellOnUIEvent \
       -optl-Wl,--whole-archive \
       -optl$GHC_PKG_DIR/rts-1.0.2/libHSrts-1.0.2.a \
       -optl$GHC_PKG_DIR/ghc-prim-0.12.0-b5b0/libHSghc-prim-0.12.0-b5b0.a \
@@ -94,6 +114,7 @@ in pkgs.stdenv.mkDerivation {
       -optl$GHC_PKG_DIR/text-2.1.3-8cdf/libHStext-2.1.3-8cdf.a \
       -optl$GHC_PKG_DIR/array-0.5.8.0-39be/libHSarray-0.5.8.0-39be.a \
       -optl$GHC_PKG_DIR/deepseq-1.5.0.0-dd79/libHSdeepseq-1.5.0.0-dd79.a \
+      -optl$CONTAINERS_LIB \
       -optl-Wl,--no-whole-archive
   '';
 

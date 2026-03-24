@@ -38,6 +38,9 @@ in pkgs.stdenv.mkDerivation {
     mkdir -p HaskellMobile
     cp ${../src-lifecycle}/HaskellMobile/Lifecycle.hs HaskellMobile/
     cp ${../default-app}/HaskellMobile/App.hs HaskellMobile/
+    cp ${../src-ui}/HaskellMobile/Widget.hs HaskellMobile/
+    cp ${../src-ui}/HaskellMobile/UIBridge.hs HaskellMobile/
+    cp ${../src-ui}/HaskellMobile/Render.hs HaskellMobile/
 
     ghc -staticlib \
       -O2 \
@@ -47,15 +50,16 @@ in pkgs.stdenv.mkDerivation {
       -optl-Wl,-u,_haskellGreet \
       -optl-Wl,-u,_haskellOnLifecycle \
       -optl-Wl,-u,_haskellCreateContext \
+      -optl-Wl,-u,_haskellRenderUI \
+      -optl-Wl,-u,_haskellOnUIEvent \
       ${../cbits/platform_log.c} \
+      ${../cbits/ui_bridge.c} \
       HaskellMobile.hs
   '';
 
   installPhase = ''
     mkdir -p $out/lib $out/include
 
-    # Merge libgmp.a into the Haskell static library so downstream
-    # consumers don't need to link libgmp separately.
     # Merge libgmp.a into the Haskell static library so downstream
     # consumers don't need to link libgmp separately.
     echo "Merging libgmp.a into libHaskellMobile.a"
@@ -65,5 +69,6 @@ in pkgs.stdenv.mkDerivation {
     ${mac2ios}/bin/mac2ios ${if simulator then "-s" else ""} libHaskellMobile.a
     cp libHaskellMobile.a $out/lib/
     cp ${../include/HaskellMobile.h} $out/include/HaskellMobile.h
+    cp ${../include/UIBridge.h} $out/include/UIBridge.h
   '';
 }

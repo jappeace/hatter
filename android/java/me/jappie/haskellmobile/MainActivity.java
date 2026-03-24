@@ -2,15 +2,17 @@ package me.jappie.haskellmobile;
 
 import android.app.Activity;
 import android.os.Bundle;
-import android.widget.TextView;
+import android.view.View;
 
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements View.OnClickListener {
 
     static {
         System.loadLibrary("haskellmobile");
     }
 
     private native String greet(String name);
+    private native void renderUI();
+    private native void onButtonClick(View view);
     private native void onLifecycleCreate();
     private native void onLifecycleStart();
     private native void onLifecycleResume();
@@ -23,11 +25,13 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         onLifecycleCreate();
-        setContentView(R.layout.activity_main);
+        // Render UI from Haskell instead of XML layout
+        renderUI();
+    }
 
-        TextView greetingText = findViewById(R.id.greeting_text);
-        String greeting = greet("Android");
-        greetingText.setText(greeting);
+    @Override
+    public void onClick(View v) {
+        onButtonClick(v);
     }
 
     @Override

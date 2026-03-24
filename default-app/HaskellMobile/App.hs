@@ -1,10 +1,30 @@
 -- | Default implementation of the @HaskellMobile.App@ Backpack signature.
--- Provides 'loggingMobileContext' as the application context, which logs
--- every lifecycle event via 'platformLog'.
-module HaskellMobile.App (appContext) where
+-- Provides 'loggingMobileContext' as the application context and a simple
+-- counter demo as the default UI.
+module HaskellMobile.App (appContext, appView) where
 
+import Data.IORef (IORef, newIORef, readIORef, modifyIORef')
+import Data.Text (pack)
 import HaskellMobile.Lifecycle (MobileContext, loggingMobileContext)
+import HaskellMobile.Widget (Widget, text, button, column, row)
+import System.IO.Unsafe (unsafePerformIO)
 
 -- | The default application context — logs every lifecycle event.
 appContext :: MobileContext
 appContext = loggingMobileContext
+
+-- | Global counter state for the demo app.
+counter :: IORef Int
+counter = unsafePerformIO (newIORef 0)
+{-# NOINLINE counter #-}
+
+-- | Counter demo: displays current count with +/- buttons.
+appView :: IO Widget
+appView = do
+  n <- readIORef counter
+  pure $ column
+    [ text ("Counter: " <> pack (show n))
+    , row [ button "+" (modifyIORef' counter (+ 1))
+          , button "-" (modifyIORef' counter (subtract 1))
+          ]
+    ]

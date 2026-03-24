@@ -11,7 +11,7 @@ import Foreign.Marshal.Alloc (free)
 import Foreign.Ptr (Ptr)
 import Foreign.StablePtr (castStablePtrToPtr)
 import qualified HaskellMobile
-import HaskellMobile (appContext)
+import HaskellMobile (appContext, appView)
 import HaskellMobile.Lifecycle
   ( LifecycleEvent(..)
   , MobileContext(..)
@@ -22,12 +22,14 @@ import HaskellMobile.Lifecycle
   , freeMobileContext
   , haskellOnLifecycle
   )
+import HaskellMobile.Widget (Widget(..), text, button, column, row)
+import HaskellMobile.Render (newRenderState, renderWidget, dispatchEvent)
 
 main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tests" [qcProps, unitTests, lifecycleTests]
+tests = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests]
 
 qcProps :: TestTree
 qcProps = testGroup "(checked by QuickCheck)"
@@ -117,4 +119,83 @@ lifecycleTests = testGroup "Lifecycle"
       mapM_ (onLifecycle loggingMobileContext) allEvents
   , testCase "appContext handles all events without throwing" $
       mapM_ (onLifecycle appContext) allEvents
+  ]
+
+uiTests :: TestTree
+uiTests = testGroup "UI"
+  [ testCase "callback dispatch fires registered action" $ do
+      ref <- newIORef (0 :: Int)
+      rs <- newRenderState
+      let widget = button "click me" (modifyIORef' ref (+ 1))
+      renderWidget rs widget
+      -- After rendering, callback 0 should be the button's handler
+      dispatchEvent rs 0
+      count <- readIORef ref
+      count @?= 1
+
+  , testCase "multiple callbacks each fire independently" $ do
+      refA <- newIORef False
+      refB <- newIORef False
+      rs <- newRenderState
+      let widget = row
+            [ button "A" (modifyIORef' refA (const True))
+            , button "B" (modifyIORef' refB (const True))
+            ]
+      renderWidget rs widget
+      -- Only fire callback 0 (button A)
+      dispatchEvent rs 0
+      a <- readIORef refA
+      b <- readIORef refB
+      a @?= True
+      b @?= False
+      -- Now fire callback 1 (button B)
+      dispatchEvent rs 1
+      b' <- readIORef refB
+      b' @?= True
+
+  , testCase "re-render resets callback IDs" $ do
+      refOld <- newIORef False
+      refNew <- newIORef False
+      rs <- newRenderState
+      -- First render with old callback
+      renderWidget rs (button "old" (modifyIORef' refOld (const True)))
+      -- Second render replaces it
+      renderWidget rs (button "new" (modifyIORef' refNew (const True)))
+      dispatchEvent rs 0
+      old <- readIORef refOld
+      new <- readIORef refNew
+      old @?= False
+      new @?= True
+
+  , testCase "dispatching unknown callback ID is a no-op" $ do
+      rs <- newRenderState
+      renderWidget rs (text "no buttons")
+      -- Should not throw
+      dispatchEvent rs 42
+      dispatchEvent rs 999
+
+  , testCase "nested widget tree renders without error" $ do
+      rs <- newRenderState
+      let widget = column
+            [ text "header"
+            , row
+              [ button "a" (pure ())
+              , column
+                [ text "nested"
+                , button "b" (pure ())
+                ]
+              ]
+            , text "footer"
+            ]
+      -- Should not throw — exercises all node types
+      renderWidget rs widget
+
+  , testCase "appView returns a widget" $ do
+      widget <- appView
+      -- appView is the counter demo; verify it's a column
+      case widget of
+        WColumn _ -> pure ()
+        WText _   -> assertFailure "expected WColumn, got WText"
+        WButton _ _ -> assertFailure "expected WColumn, got WButton"
+        WRow _    -> assertFailure "expected WColumn, got WRow"
   ]

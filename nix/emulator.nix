@@ -217,7 +217,7 @@ sleep 10
 
 # --- Poll logcat for lifecycle events ---
 echo "=== Checking for lifecycle events (timeout: 120s) ==="
-EVENTS=("Lifecycle: Create" "Lifecycle: Start" "Lifecycle: Resume")
+EVENTS=("Lifecycle: Create" "Lifecycle: Start" "Lifecycle: Resume" "Android UI bridge initialized")
 POLL_TIMEOUT=120
 POLL_ELAPSED=0
 ALL_FOUND=0
@@ -246,7 +246,7 @@ kill "$LOGCAT_PID" 2>/dev/null || true
 echo ""
 echo "=== Results ==="
 echo "--- HaskellMobile logcat ---"
-grep -i "HaskellMobile\|haskellmobile\|loadLibrary\|FATAL\|CRASH\|System.load" "$LOGCAT_FILE" 2>/dev/null || echo "(no matching lines)"
+grep -i "HaskellMobile\|UIBridge\|haskellmobile\|loadLibrary\|FATAL\|CRASH\|System.load" "$LOGCAT_FILE" 2>/dev/null || echo "(no matching lines)"
 echo "--- End filtered logcat ---"
 echo ""
 
