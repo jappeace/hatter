@@ -83,6 +83,7 @@ xcodebuild build \
     -derivedDataPath "$WORK_DIR/build" \
     CODE_SIGN_IDENTITY=- \
     CODE_SIGNING_ALLOWED=NO \
+    ARCHS=arm64 \
     | tail -20
 
 echo "Build succeeded."
