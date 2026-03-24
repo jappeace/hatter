@@ -34,4 +34,19 @@ class HaskellBridge {
     static func onLifecycle(_ event: Int32) {
         haskellOnLifecycle(context, event)
     }
+
+    /// Render the Haskell UI tree via the registered bridge callbacks.
+    static func renderUI() {
+        haskellRenderUI(context)
+    }
+
+    /// Dispatch a UI event (e.g. button tap) to Haskell, which re-renders.
+    static func onUIEvent(_ callbackId: Int32) {
+        haskellOnUIEvent(context, callbackId)
+    }
+
+    /// Return the opaque Haskell context pointer (for passing to C bridge setup).
+    static func getContext() -> UnsafeMutableRawPointer? {
+        return context
+    }
 }

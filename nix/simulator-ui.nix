@@ -1,14 +1,14 @@
-# iOS Simulator test for lifecycle callbacks.
+# iOS Simulator UI rendering test.
 #
-# Uses simulator-app.nix for staged sources, then provides a test script that:
-#   1. Generates an Xcode project with xcodegen
-#   2. Builds the app with xcodebuild for iphonesimulator
-#   3. Boots an iOS Simulator, installs the .app, launches it
-#   4. Captures os_log output and checks for lifecycle events
+# Builds and installs the app with --autotest, then verifies:
+#   1. The counter app renders (os_log: setStrProp with "Counter: 0", setRoot, setHandler)
+#   2. The auto-tap fires after 3s (os_log: Click dispatched, Counter: 1)
+#
+# Independent from nix/simulator.nix (lifecycle test) — can run in parallel.
 #
 # Usage:
-#   nix-build nix/simulator.nix -o result-simulator
-#   ./result-simulator/bin/test-lifecycle-ios
+#   nix-build nix/simulator-ui.nix -o result-simulator-ui
+#   ./result-simulator-ui/bin/test-ui-ios
 { sources ? import ../npins }:
 let
   pkgs = import sources.nixpkgs {};
@@ -18,14 +18,14 @@ let
   xcodegen = pkgs.xcodegen;
 
 in pkgs.stdenv.mkDerivation {
-  name = "haskell-mobile-simulator-test";
+  name = "haskell-mobile-simulator-ui-test";
 
   dontUnpack = true;
 
   buildPhase = ''
     mkdir -p $out/bin
 
-    cat > $out/bin/test-lifecycle-ios << 'SCRIPT'
+    cat > $out/bin/test-ui-ios << 'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -36,7 +36,7 @@ DEVICE_TYPE="iPhone 16"
 SHARE_DIR="${simulatorApp}/share/ios"
 
 # --- Temp working directory ---
-WORK_DIR=$(mktemp -d /tmp/haskell-mobile-sim-XXXX)
+WORK_DIR=$(mktemp -d /tmp/haskell-mobile-sim-ui-XXXX)
 SIM_UDID=""
 
 cleanup() {
@@ -53,7 +53,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "=== iOS Simulator Lifecycle Test ==="
+echo "=== iOS Simulator UI Rendering Test ==="
 echo "Working directory: $WORK_DIR"
 
 # --- Stage library and sources ---
@@ -64,7 +64,6 @@ cp "$SHARE_DIR/include/HaskellMobile.h" "$WORK_DIR/ios/include/"
 cp "$SHARE_DIR/include/UIBridge.h" "$WORK_DIR/ios/include/"
 cp -r "$SHARE_DIR/HaskellMobile" "$WORK_DIR/ios/"
 cp "$SHARE_DIR/project.yml" "$WORK_DIR/ios/"
-# Nix store files are read-only; make writable so cleanup and xcodebuild work
 chmod -R u+w "$WORK_DIR/ios"
 
 # --- Generate Xcode project ---
@@ -111,7 +110,7 @@ echo "Runtime: $RUNTIME"
 
 # --- Create and boot simulator ---
 echo "=== Creating simulator ==="
-SIM_UDID=$(xcrun simctl create "test-lifecycle-ios" "$DEVICE_TYPE" "$RUNTIME" \
+SIM_UDID=$(xcrun simctl create "test-ui-ios" "$DEVICE_TYPE" "$RUNTIME" \
     | tr -d '[:space:]')
 
 if [ -z "$SIM_UDID" ]; then
@@ -163,12 +162,11 @@ echo "App installed."
 echo "=== Starting log capture ==="
 LOG_FILE="$WORK_DIR/os_log.txt"
 
-# Capture os_log output for our process.
-# --level info: OS_LOG_TYPE_INFO is not streamed by default (only default+error).
-# composedMessage: eventMessage has the format template, composedMessage has actual text.
+# Capture os_log for our process — broader filter than lifecycle test,
+# since we need UIBridge log messages too.
 xcrun simctl spawn "$SIM_UDID" log stream \
     --level info \
-    --predicate "process == \"HaskellMobile\" AND composedMessage CONTAINS \"Lifecycle:\"" \
+    --predicate "process == \"HaskellMobile\"" \
     --style compact \
     > "$LOG_FILE" 2>&1 &
 LOG_PID=$!
@@ -176,66 +174,118 @@ LOG_PID=$!
 # Give log stream a moment to attach
 sleep 2
 
-# --- Launch app ---
-echo "=== Launching $BUNDLE_ID ==="
-xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID"
+# --- Launch app with --autotest ---
+echo "=== Launching $BUNDLE_ID with --autotest ==="
+xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" --autotest
 
-# --- Poll for lifecycle events ---
-echo "=== Checking for lifecycle events (timeout: 60s) ==="
-EVENTS=("Lifecycle: Create" "Lifecycle: Resume")
+# --- Wait for initial render ---
+echo "=== Waiting for initial render (timeout: 60s) ==="
 POLL_TIMEOUT=60
 POLL_ELAPSED=0
-ALL_FOUND=0
+RENDER_DONE=0
 
 while [ $POLL_ELAPSED -lt $POLL_TIMEOUT ]; do
-    FOUND_COUNT=0
-    for event in "''${EVENTS[@]}"; do
-        if grep -q "$event" "$LOG_FILE" 2>/dev/null; then
-            FOUND_COUNT=$((FOUND_COUNT + 1))
-        fi
-    done
-
-    if [ $FOUND_COUNT -eq ''${#EVENTS[@]} ]; then
-        ALL_FOUND=1
+    if grep -q "setRoot" "$LOG_FILE" 2>/dev/null; then
+        RENDER_DONE=1
+        echo "Initial render detected after ~''${POLL_ELAPSED}s"
         break
     fi
-
     sleep 2
     POLL_ELAPSED=$((POLL_ELAPSED + 2))
 done
 
+if [ $RENDER_DONE -eq 0 ]; then
+    echo "WARNING: setRoot not found in os_log after ''${POLL_TIMEOUT}s"
+fi
+
+# --- Verify initial render ---
+echo ""
+echo "=== Verifying initial render (os_log) ==="
+EXIT_CODE=0
+
+if grep -q 'setStrProp.*Counter: 0' "$LOG_FILE" 2>/dev/null; then
+    echo "PASS: Initial render — Counter: 0 in os_log"
+else
+    echo "FAIL: Initial render — Counter: 0 in os_log"
+    EXIT_CODE=1
+fi
+
+if grep -q 'setRoot' "$LOG_FILE" 2>/dev/null; then
+    echo "PASS: Initial render — setRoot in os_log"
+else
+    echo "FAIL: Initial render — setRoot in os_log"
+    EXIT_CODE=1
+fi
+
+if grep -q 'setHandler.*click' "$LOG_FILE" 2>/dev/null; then
+    echo "PASS: Initial render — button handlers in os_log"
+else
+    echo "FAIL: Initial render — button handlers in os_log"
+    EXIT_CODE=1
+fi
+
+# --- Wait for auto-tap (3s delay in app + margin) ---
+echo ""
+echo "=== Waiting for auto-tap to fire (timeout: 30s) ==="
+POLL_ELAPSED=0
+POLL_TIMEOUT=30
+TAP_DONE=0
+
+while [ $POLL_ELAPSED -lt $POLL_TIMEOUT ]; do
+    if grep -q 'Click dispatched: callbackId=' "$LOG_FILE" 2>/dev/null; then
+        TAP_DONE=1
+        echo "Auto-tap detected after ~''${POLL_ELAPSED}s"
+        break
+    fi
+    sleep 2
+    POLL_ELAPSED=$((POLL_ELAPSED + 2))
+done
+
+if [ $TAP_DONE -eq 0 ]; then
+    echo "WARNING: Click dispatched not found after ''${POLL_TIMEOUT}s"
+fi
+
+# Extra settle time for re-render
+sleep 3
+
+# --- Verify re-render ---
+echo ""
+echo "=== Verifying re-render (os_log) ==="
+
+if grep -q 'Click dispatched: callbackId=' "$LOG_FILE" 2>/dev/null; then
+    echo "PASS: Button tap — Click dispatched in os_log"
+else
+    echo "FAIL: Button tap — Click dispatched in os_log"
+    EXIT_CODE=1
+fi
+
+if grep -q 'setStrProp.*Counter: 1' "$LOG_FILE" 2>/dev/null; then
+    echo "PASS: Re-render — Counter: 1 in os_log"
+else
+    echo "FAIL: Re-render — Counter: 1 in os_log"
+    EXIT_CODE=1
+fi
+
 # Stop log capture
 kill "$LOG_PID" 2>/dev/null || true
 
-# --- Report results ---
+# --- Report ---
 echo ""
-echo "=== Results ==="
-echo "--- Captured log ---"
-cat "$LOG_FILE" 2>/dev/null || echo "(no log output)"
-echo "--- End log ---"
-echo ""
-
-EXIT_CODE=0
-for event in "''${EVENTS[@]}"; do
-    if grep -q "$event" "$LOG_FILE" 2>/dev/null; then
-        echo "PASS: $event"
-    else
-        echo "FAIL: $event (not found in os_log)"
-        EXIT_CODE=1
-    fi
-done
+echo "=== Filtered log (UIBridge) ==="
+grep -i "UIBridge\|setRoot\|setStrProp\|setHandler\|Click dispatched\|Counter:" "$LOG_FILE" 2>/dev/null || echo "(no relevant lines)"
+echo "--- End filtered log ---"
 
 echo ""
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "All lifecycle events verified successfully!"
+    echo "All UI rendering checks passed!"
 else
-    echo "Some lifecycle events were not detected."
+    echo "Some UI rendering checks failed."
 fi
 
 exit $EXIT_CODE
 SCRIPT
 
-    chmod +x $out/bin/test-lifecycle-ios
+    chmod +x $out/bin/test-ui-ios
   '';
 
   installPhase = "true";

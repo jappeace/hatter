@@ -1,16 +1,24 @@
 import SwiftUI
+import UIKit
+
+/// Wraps a UIViewController whose view hierarchy is built by Haskell
+/// via the iOS UI bridge (UIBridgeIOS.m).
+struct HaskellUIView: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController {
+        let vc = UIViewController()
+        vc.view.backgroundColor = .systemBackground
+        let ptr = Unmanaged.passUnretained(vc).toOpaque()
+        setup_ios_ui_bridge(ptr, HaskellBridge.getContext())
+        HaskellBridge.renderUI()
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+}
 
 struct ContentView: View {
-    @State private var greeting: String = "Loading..."
-
     var body: some View {
-        VStack(spacing: 20) {
-            Text(greeting)
-                .font(.title)
-                .padding()
-        }
-        .onAppear {
-            greeting = HaskellBridge.greet("iOS")
-        }
+        HaskellUIView()
+            .edgesIgnoringSafeArea(.all)
     }
 }
