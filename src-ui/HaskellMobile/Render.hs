@@ -1,3 +1,4 @@
+{-# LANGUAGE ImportQualifiedPost #-}
 -- | Rendering engine that converts a 'Widget' tree into native UI
 -- via the C bridge.
 --
