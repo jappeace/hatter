@@ -21,7 +21,7 @@ source-repository head
   location: https://github.com/jappeace/haskell-mobile
 
 common common-options
-  default-extensions: 
+  default-extensions:
       EmptyCase
       FlexibleContexts
       FlexibleInstances
@@ -69,6 +69,22 @@ library haskell-mobile-lifecycle
       cbits/android_stubs.c
       cbits/platform_log.c
 
+library haskell-mobile-ui
+  import: common-options
+  exposed-modules:
+      HaskellMobile.Widget
+      HaskellMobile.UIBridge
+      HaskellMobile.Render
+  hs-source-dirs:
+      src-ui
+  build-depends:
+      text,
+      containers
+  c-sources:
+      cbits/ui_bridge.c
+  include-dirs:
+      include
+
 library
   import: common-options
   exposed-modules:
@@ -83,7 +99,8 @@ library
       src
       src-sig
   build-depends:
-      haskell-mobile:haskell-mobile-lifecycle
+      haskell-mobile:haskell-mobile-lifecycle,
+      haskell-mobile:haskell-mobile-ui
 
 library haskell-mobile-default-app
   import: common-options
@@ -92,7 +109,9 @@ library haskell-mobile-default-app
   hs-source-dirs:
       default-app
   build-depends:
-      haskell-mobile:haskell-mobile-lifecycle
+      haskell-mobile:haskell-mobile-lifecycle,
+      haskell-mobile:haskell-mobile-ui,
+      text
 
 -- | Instantiates the main library with the default 'HaskellMobile.App'
 -- implementation.  Consumers who want a custom app context should create
@@ -102,11 +121,14 @@ library haskell-mobile-app
   reexported-modules:
       HaskellMobile,
       HaskellMobile.Lifecycle,
-      HaskellMobile.App
+      HaskellMobile.App,
+      HaskellMobile.Widget,
+      HaskellMobile.Render
   build-depends:
       haskell-mobile,
       haskell-mobile:haskell-mobile-default-app,
-      haskell-mobile:haskell-mobile-lifecycle
+      haskell-mobile:haskell-mobile-lifecycle,
+      haskell-mobile:haskell-mobile-ui
 
 executable exe
   import: common-options

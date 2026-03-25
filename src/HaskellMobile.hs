@@ -5,6 +5,7 @@ module HaskellMobile
   , haskellGreet
   , haskellCreateContext
   , appContext
+  , appView
   , LifecycleEvent(..)
   , MobileContext(..)
   , defaultMobileContext
@@ -16,9 +17,10 @@ module HaskellMobile
 where
 
 import Foreign.C.String (CString, newCString, peekCString)
+import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr)
 import Foreign.StablePtr (castStablePtrToPtr)
-import HaskellMobile.App (appContext)
+import HaskellMobile.App (appContext, appView)
 import HaskellMobile.Lifecycle
   ( LifecycleEvent(..)
   , MobileContext(..)
@@ -28,6 +30,14 @@ import HaskellMobile.Lifecycle
   , newMobileContext
   , freeMobileContext
   )
+import HaskellMobile.Render (RenderState, newRenderState, renderWidget, dispatchEvent)
+import System.IO.Unsafe (unsafePerformIO)
+
+-- | Global render state, shared across all render/event cycles.
+-- Safe because all UI calls happen on the main thread.
+globalRenderState :: RenderState
+globalRenderState = unsafePerformIO newRenderState
+{-# NOINLINE globalRenderState #-}
 
 main :: IO ()
 main = putStrLn "hello, world flaky"
@@ -53,3 +63,23 @@ haskellCreateContext :: IO (Ptr ())
 haskellCreateContext = castStablePtrToPtr <$> newMobileContext appContext
 
 foreign export ccall haskellCreateContext :: IO (Ptr ())
+
+-- | Render the UI tree. Calls 'appView' to get the widget description,
+-- then issues ui_* calls through the registered bridge callbacks.
+-- The @ctx@ pointer is accepted for API consistency but not used for rendering.
+haskellRenderUI :: Ptr () -> IO ()
+haskellRenderUI _ctxPtr = do
+  widget <- appView
+  renderWidget globalRenderState widget
+
+foreign export ccall haskellRenderUI :: Ptr () -> IO ()
+
+-- | Handle a UI event from native code. Dispatches the callback
+-- identified by @callbackId@, then re-renders the UI.
+haskellOnUIEvent :: Ptr () -> CInt -> IO ()
+haskellOnUIEvent _ctxPtr callbackId = do
+  dispatchEvent globalRenderState (fromIntegral callbackId)
+  widget <- appView
+  renderWidget globalRenderState widget
+
+foreign export ccall haskellOnUIEvent :: Ptr () -> CInt -> IO ()

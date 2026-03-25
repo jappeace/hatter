@@ -1,8 +1,14 @@
 signature HaskellMobile.App where
 
 import HaskellMobile.Lifecycle (MobileContext)
+import HaskellMobile.Widget (Widget)
 
 -- | The application-level 'MobileContext' used by the FFI entry points.
 -- Consumers override this by providing a concrete @HaskellMobile.App@
 -- module in their @hs-source-dirs@.
 appContext :: MobileContext
+
+-- | Build the current UI tree. Called on each render cycle.
+-- Typically reads application state from 'IORef's and returns
+-- a pure 'Widget' description.
+appView :: IO Widget
