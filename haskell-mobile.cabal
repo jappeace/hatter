@@ -100,7 +100,8 @@ library
       src-sig
   build-depends:
       haskell-mobile:haskell-mobile-lifecycle,
-      haskell-mobile:haskell-mobile-ui
+      haskell-mobile:haskell-mobile-ui,
+      text
 
 library haskell-mobile-default-app
   import: common-options
