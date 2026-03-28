@@ -10,8 +10,13 @@ import Foreign.C.String (newCString, peekCString)
 import Foreign.Marshal.Alloc (free)
 import Foreign.Ptr (Ptr)
 import Foreign.StablePtr (castStablePtrToPtr)
-import qualified HaskellMobile
-import HaskellMobile (appContext, appView)
+import HaskellMobile
+  ( MobileApp(..)
+  , runMobileApp
+  , getMobileApp
+  , haskellGreet
+  )
+import HaskellMobile.App (mobileApp)
 import HaskellMobile.Lifecycle
   ( LifecycleEvent(..)
   , MobileContext(..)
@@ -26,10 +31,13 @@ import HaskellMobile.Widget (Widget(..))
 import HaskellMobile.Render (newRenderState, renderWidget, dispatchEvent, dispatchTextEvent)
 
 main :: IO ()
-main = defaultMain tests
+main = do
+  -- Register the default app so FFI functions that read the IORef work
+  runMobileApp mobileApp
+  defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, textInputTests]
+tests = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, textInputTests, registrationTests]
 
 qcProps :: TestTree
 qcProps = testGroup "(checked by QuickCheck)"
@@ -53,18 +61,16 @@ unitTests = testGroup "Unit tests"
   -- the following test does not hold
   , testCase "List comparison (same length)" $
       oneTwoThree `compare` [1,2,3] @?= EQ
-  , testCase "run main" $ do
-      HaskellMobile.main
   , testCase "haskellGreet returns correct greeting" $ do
       cname <- newCString "World"
-      cresult <- HaskellMobile.haskellGreet cname
+      cresult <- haskellGreet cname
       result <- peekCString cresult
       free cresult
       free cname
       result @?= "Hello from Haskell, World!"
   , testCase "haskellGreet with different input" $ do
       cname <- newCString "Android"
-      cresult <- HaskellMobile.haskellGreet cname
+      cresult <- haskellGreet cname
       result <- peekCString cresult
       free cresult
       free cname
@@ -117,8 +123,8 @@ lifecycleTests = testGroup "Lifecycle"
       received @?= allEvents
   , testCase "loggingMobileContext handles all events without throwing" $
       mapM_ (onLifecycle loggingMobileContext) allEvents
-  , testCase "appContext handles all events without throwing" $
-      mapM_ (onLifecycle appContext) allEvents
+  , testCase "mobileApp context handles all events without throwing" $
+      mapM_ (onLifecycle (maContext mobileApp)) allEvents
   ]
 
 uiTests :: TestTree
@@ -190,9 +196,9 @@ uiTests = testGroup "UI"
       -- Should not throw — exercises all node types
       renderWidget rs widget
 
-  , testCase "appView returns a widget" $ do
-      widget <- appView
-      -- appView is the counter demo; verify it's a column
+  , testCase "mobileApp view returns a widget" $ do
+      widget <- maView mobileApp
+      -- mobileApp is the counter demo; verify it's a column
       case widget of
         Column _        -> pure ()
         Text _          -> assertFailure "expected Column, got Text"
@@ -257,4 +263,26 @@ textInputTests = testGroup "TextInput"
       new <- readIORef refNew
       old @?= ""
       new @?= show ("val" :: String)
+  ]
+
+-- | Tests for the IORef registration pattern.
+registrationTests :: TestTree
+registrationTests = testGroup "Registration"
+  [ testCase "getMobileApp returns the registered app" $ do
+      app <- getMobileApp
+      -- The app was registered in main before defaultMain.
+      -- Verify it has the same context as mobileApp.
+      mapM_ (onLifecycle (maContext app)) [Create, Destroy]
+
+  , testCase "runMobileApp overwrites previous registration" $ do
+      let customCtx = MobileContext { onLifecycle = \_ -> pure () }
+          customApp = MobileApp { maContext = customCtx, maView = pure (Text "custom") }
+      runMobileApp customApp
+      app <- getMobileApp
+      widget <- maView app
+      case widget of
+        Text t  -> t @?= "custom"
+        _       -> assertFailure "expected Text \"custom\""
+      -- Restore the original
+      runMobileApp mobileApp
   ]

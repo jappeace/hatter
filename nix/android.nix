@@ -85,6 +85,7 @@ in pkgs.stdenv.mkDerivation {
 
     ${ghcCmd} -shared -O2 \
       -o libhaskellmobile.so \
+      -DHASKELL_MOBILE_ANDROID \
       -I${../include} \
       HaskellMobile.hs \
       ${../cbits/android_stubs.c} \
