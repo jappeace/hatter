@@ -6,7 +6,7 @@ module HaskellMobile.App (mobileApp) where
 
 import Data.IORef (IORef, newIORef, readIORef, modifyIORef')
 import Data.Text (pack)
-import HaskellMobile (MobileApp(..))
+import HaskellMobile.Types (MobileApp(..))
 import HaskellMobile.Lifecycle (loggingMobileContext)
 import HaskellMobile.Widget (Widget(..))
 import System.IO.Unsafe (unsafePerformIO)

@@ -91,6 +91,7 @@ library
   import: common-options
   exposed-modules:
       HaskellMobile
+      HaskellMobile.Types
   reexported-modules:
       HaskellMobile.Lifecycle
   hs-source-dirs:

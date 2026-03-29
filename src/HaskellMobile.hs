@@ -20,7 +20,6 @@ module HaskellMobile
   )
 where
 
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Text (pack)
 import Foreign.C.String (CString, newCString, peekCString)
 import Foreign.C.Types (CInt(..))
@@ -36,37 +35,12 @@ import HaskellMobile.Lifecycle
   , freeMobileContext
   )
 import HaskellMobile.Render (RenderState, newRenderState, renderWidget, dispatchEvent, dispatchTextEvent)
-import HaskellMobile.Widget (Widget)
+import HaskellMobile.Types (MobileApp(..), runMobileApp, getMobileApp)
 import System.IO.Unsafe (unsafePerformIO)
 
-#ifdef HASKELL_MOBILE_ANDROID
+#ifdef HASKELL_MOBILE_PLATFORM
 import HaskellMobile.App (mobileApp)
 #endif
-
--- | Application definition record. Downstream apps create one of these
--- and register it via 'runMobileApp'.
-data MobileApp = MobileApp
-  { maContext :: MobileContext
-  , maView    :: IO Widget
-  }
-
--- | Global storage for the registered app. Filled by 'runMobileApp'.
-globalMobileApp :: IORef (Maybe MobileApp)
-globalMobileApp = unsafePerformIO (newIORef Nothing)
-{-# NOINLINE globalMobileApp #-}
-
--- | Register the mobile app. Must be called before any FFI entry point.
--- Desktop apps call this from 'main'. Android builds call it from 'haskellInit'.
-runMobileApp :: MobileApp -> IO ()
-runMobileApp = writeIORef globalMobileApp . Just
-
--- | Read the registered app. Errors if 'runMobileApp' was not called.
-getMobileApp :: IO MobileApp
-getMobileApp = do
-  mApp <- readIORef globalMobileApp
-  case mApp of
-    Just app -> pure app
-    Nothing  -> error "haskell-mobile: runMobileApp was not called before FFI entry"
 
 -- | Global render state, shared across all render/event cycles.
 -- Safe because all UI calls happen on the main thread.
@@ -74,13 +48,13 @@ globalRenderState :: RenderState
 globalRenderState = unsafePerformIO newRenderState
 {-# NOINLINE globalRenderState #-}
 
--- | Called from JNI_OnLoad on Android.
--- On Android builds (CPP flag HASKELL_MOBILE_ANDROID), also registers
+-- | Called from platform bridges (JNI_OnLoad on Android, hs_init wrapper on iOS).
+-- On platform builds (CPP flag HASKELL_MOBILE_PLATFORM), also registers
 -- the downstream app via 'runMobileApp'.
 haskellInit :: IO ()
 haskellInit = do
   platformLog "Haskell RTS initialized"
-#ifdef HASKELL_MOBILE_ANDROID
+#ifdef HASKELL_MOBILE_PLATFORM
   runMobileApp mobileApp
 #endif
 

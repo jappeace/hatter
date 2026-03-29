@@ -67,6 +67,7 @@ in pkgs.stdenv.mkDerivation {
     # GHC writes _stub.h files next to sources, so they can't live in
     # the read-only nix store.
     mkdir -p HaskellMobile
+    cp ${../src}/HaskellMobile/Types.hs HaskellMobile/
     cp ${../src-lifecycle}/HaskellMobile/Lifecycle.hs HaskellMobile/
     cp ${../default-app}/HaskellMobile/App.hs HaskellMobile/
     cp ${../src-ui}/HaskellMobile/Widget.hs HaskellMobile/
@@ -85,7 +86,7 @@ in pkgs.stdenv.mkDerivation {
 
     ${ghcCmd} -shared -O2 \
       -o libhaskellmobile.so \
-      -DHASKELL_MOBILE_ANDROID \
+      -DHASKELL_MOBILE_PLATFORM \
       -I${../include} \
       HaskellMobile.hs \
       ${../cbits/android_stubs.c} \
