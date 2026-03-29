@@ -91,15 +91,11 @@ library
   import: common-options
   exposed-modules:
       HaskellMobile
+      HaskellMobile.Types
   reexported-modules:
       HaskellMobile.Lifecycle
-  signatures:
-      HaskellMobile.App
-  other-modules:
-      Paths_haskell_mobile
   hs-source-dirs:
       src
-      src-sig
   build-depends:
       haskell-mobile:haskell-mobile-lifecycle,
       haskell-mobile:haskell-mobile-ui,
@@ -112,13 +108,12 @@ library haskell-mobile-default-app
   hs-source-dirs:
       default-app
   build-depends:
+      haskell-mobile,
       haskell-mobile:haskell-mobile-lifecycle,
       haskell-mobile:haskell-mobile-ui,
       text
 
--- | Instantiates the main library with the default 'HaskellMobile.App'
--- implementation.  Consumers who want a custom app context should create
--- their own instantiation library instead of depending on this one.
+-- | Collects all project libraries for consumers (exe, tests).
 library haskell-mobile-app
   import: common-options
   reexported-modules:
@@ -147,8 +142,6 @@ test-suite unit
   type: exitcode-stdio-1.0
   main-is: Test.hs
   ghc-options: -Wno-unused-packages -threaded -rtsopts "-with-rtsopts=-N -M7G -T -Iw10"
-  other-modules:
-      Paths_haskell_mobile
   hs-source-dirs:
       test
   build-depends:
