@@ -141,7 +141,11 @@ in {
 
         find_lib() {
           local result
-          result=$(find "$GHC_PKG_DIR" -name "libHS$1-*.a" ! -name '*-ghc*' | head -1)
+          # Exclude debug (_debug), profiling (_p), threaded (_thr) variants
+          # and GHC shared library stubs (*-ghc*).
+          result=$(find "$GHC_PKG_DIR" -name "libHS$1-*.a" \
+            ! -name '*_debug*' ! -name '*_p.a' ! -name '*_thr*' \
+            ! -name '*-ghc*' | head -1)
           if [ -z "$result" ]; then
             echo "ERROR: Could not find library: $1" >&2
             exit 1
