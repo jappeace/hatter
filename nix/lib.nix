@@ -53,6 +53,27 @@ let
   emulatorSdk = emulatorComposition.androidsdk;
   emulatorSdkRoot = "${emulatorSdk}/libexec/android-sdk";
 
+  # --- SQLite amalgamation source (fetched, not committed) ---
+  sqliteSrc = pkgs.fetchurl {
+    url = "https://www.sqlite.org/2024/sqlite-amalgamation-3450300.zip";
+    sha256 = "0lf6h5kp7306dy4nb1ja632f0fka6vja531hb61kww27wirhw5za";
+  };
+
+  # Unpack the amalgamation zip into a derivation with sqlite3.c and sqlite3.h
+  sqliteAmalgamation = pkgs.stdenv.mkDerivation {
+    name = "sqlite-amalgamation-3.45.3";
+    src = sqliteSrc;
+    nativeBuildInputs = [ pkgs.unzip ];
+    unpackPhase = ''
+      unzip $src
+    '';
+    installPhase = ''
+      mkdir -p $out
+      cp sqlite-amalgamation-3450300/sqlite3.c $out/
+      cp sqlite-amalgamation-3450300/sqlite3.h $out/
+    '';
+  };
+
 in {
 
   # ---------------------------------------------------------------------------
@@ -122,16 +143,15 @@ in {
           ${src}
           '') (builtins.length extraJniBridge))}
 
-        # Compile SQLite amalgamation and storage helper with NDK clang
+        # Compile SQLite amalgamation (fetched via nix) and storage helper with NDK clang
         ${ndkCc} -c -fPIC \
           -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION \
           -I${sysroot}/usr/include \
           -o sqlite3.o \
-          ${haskellMobileSrc}/cbits/sqlite3.c
+          ${sqliteAmalgamation}/sqlite3.c
 
         ${ndkCc} -c -fPIC \
           -I${sysroot}/usr/include \
-          -I${haskellMobileSrc}/cbits \
           -o storage_helper.o \
           ${haskellMobileSrc}/cbits/storage_helper.c
 
@@ -209,7 +229,6 @@ in {
         ${ghcCmd} -shared -O2 \
           -o ${soName} \
           -I${haskellMobileSrc}/include \
-          -I${haskellMobileSrc}/cbits \
           ${builtins.concatStringsSep " " (map (d: "-I${d}") extraGhcIncludeDirs)} \
           Main.hs \
           HaskellMobile.hs \
@@ -663,15 +682,15 @@ SCRIPT
         cp ${haskellMobileSrc}/cbits/platform_log.c cbits/
         cp ${haskellMobileSrc}/cbits/ui_bridge.c cbits/
         cp ${haskellMobileSrc}/cbits/run_main.c cbits/
-        cp ${haskellMobileSrc}/cbits/sqlite3.c cbits/
-        cp ${haskellMobileSrc}/cbits/sqlite3.h cbits/
+        cp ${sqliteAmalgamation}/sqlite3.c cbits/
+        cp ${sqliteAmalgamation}/sqlite3.h cbits/
         cp ${haskellMobileSrc}/cbits/storage_helper.c cbits/
 
         ghc -staticlib \
           -O2 \
           -o libHaskellMobile.a \
           -I${haskellMobileSrc}/include \
-          -I${haskellMobileSrc}/cbits \
+          -Icbits \
           -optc-DSQLITE_THREADSAFE=0 \
           -optc-DSQLITE_OMIT_LOAD_EXTENSION \
           -optl-lffi \
