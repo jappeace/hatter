@@ -17,6 +17,17 @@ import HaskellMobile
   , haskellGreet
   )
 import HaskellMobile.App (mobileApp)
+import HaskellMobile.Database
+  ( withDatabase
+  , execute
+  , withStatement
+  , step
+  , columnText
+  , columnInt
+  , bindText
+  , bindInt
+  , sqliteRow
+  )
 import HaskellMobile.Lifecycle
   ( LifecycleEvent(..)
   , MobileContext(..)
@@ -37,7 +48,7 @@ main = do
   defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, textInputTests, registrationTests]
+tests = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, textInputTests, registrationTests, databaseTests]
 
 qcProps :: TestTree
 qcProps = testGroup "(checked by QuickCheck)"
@@ -263,6 +274,49 @@ textInputTests = testGroup "TextInput"
       new <- readIORef refNew
       old @?= ""
       new @?= show ("val" :: String)
+  ]
+
+databaseTests :: TestTree
+databaseTests = sequentialTestGroup "Database" AllSucceed
+  [ testCase "roundtrip: insert and select a row" $ do
+      withDatabase "test_roundtrip.db" $ \db -> do
+        execute db "DROP TABLE IF EXISTS test_rt"
+        execute db "CREATE TABLE test_rt (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        execute db "INSERT INTO test_rt (key, value) VALUES ('greeting', 'hello world')"
+        withStatement db "SELECT value FROM test_rt WHERE key = ?" $ \stmt -> do
+          bindText stmt 1 "greeting"
+          rc <- step stmt
+          rc @?= sqliteRow
+          val <- columnText stmt 0
+          val @?= "hello world"
+
+  , testCase "upsert: latest value wins" $ do
+      withDatabase "test_upsert.db" $ \db -> do
+        execute db "DROP TABLE IF EXISTS test_ups"
+        execute db "CREATE TABLE test_ups (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        execute db "INSERT OR REPLACE INTO test_ups (key, value) VALUES ('k', 'v1')"
+        execute db "INSERT OR REPLACE INTO test_ups (key, value) VALUES ('k', 'v2')"
+        withStatement db "SELECT value FROM test_ups WHERE key = 'k'" $ \stmt -> do
+          rc <- step stmt
+          rc @?= sqliteRow
+          val <- columnText stmt 0
+          val @?= "v2"
+
+  , testCase "integer column roundtrip" $ do
+      withDatabase "test_int.db" $ \db -> do
+        execute db "DROP TABLE IF EXISTS test_int"
+        execute db "CREATE TABLE test_int (id INTEGER PRIMARY KEY, count INTEGER NOT NULL)"
+        withStatement db "INSERT INTO test_int (id, count) VALUES (?, ?)" $ \stmt -> do
+          bindInt stmt 1 42
+          bindInt stmt 2 100
+          _ <- step stmt
+          pure ()
+        withStatement db "SELECT count FROM test_int WHERE id = ?" $ \stmt -> do
+          bindInt stmt 1 42
+          rc <- step stmt
+          rc @?= sqliteRow
+          val <- columnInt stmt 0
+          val @?= 100
   ]
 
 -- | Tests for the IORef registration pattern.

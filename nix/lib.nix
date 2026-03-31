@@ -122,7 +122,20 @@ in {
           ${src}
           '') (builtins.length extraJniBridge))}
 
-        # Extra NDK compilation (e.g. SQLite, storage helpers)
+        # Compile SQLite amalgamation and storage helper with NDK clang
+        ${ndkCc} -c -fPIC \
+          -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION \
+          -I${sysroot}/usr/include \
+          -o sqlite3.o \
+          ${haskellMobileSrc}/cbits/sqlite3.c
+
+        ${ndkCc} -c -fPIC \
+          -I${sysroot}/usr/include \
+          -I${haskellMobileSrc}/cbits \
+          -o storage_helper.o \
+          ${haskellMobileSrc}/cbits/storage_helper.c
+
+        # Extra NDK compilation (e.g. consumer-specific C sources)
         ${extraNdkCompile ndkCc sysroot}
 
         # Step 2: Copy source modules into writable build directory.
@@ -134,6 +147,7 @@ in {
         cp ${haskellMobileSrc}/src/HaskellMobile/Widget.hs HaskellMobile/
         cp ${haskellMobileSrc}/src/HaskellMobile/UIBridge.hs HaskellMobile/
         cp ${haskellMobileSrc}/src/HaskellMobile/Render.hs HaskellMobile/
+        cp ${haskellMobileSrc}/src/HaskellMobile/Database.hs HaskellMobile/
         cp ${haskellMobileSrc}/src/HaskellMobile.hs .
 
         # Default App.hs — only copy if not already present (consumer may override)
@@ -155,6 +169,7 @@ in {
         cp ${haskellMobileSrc}/cbits/numa_stubs.c cbits/
         cp ${haskellMobileSrc}/cbits/ui_bridge.c cbits/
         cp ${haskellMobileSrc}/cbits/run_main.c cbits/
+        cp ${haskellMobileSrc}/cbits/storage_helper.c cbits/
 
         # Step 4: Compile Haskell to shared library with cross-GHC.
         # Discover library paths dynamically — hash suffixes vary across nixpkgs.
@@ -194,6 +209,7 @@ in {
         ${ghcCmd} -shared -O2 \
           -o ${soName} \
           -I${haskellMobileSrc}/include \
+          -I${haskellMobileSrc}/cbits \
           ${builtins.concatStringsSep " " (map (d: "-I${d}") extraGhcIncludeDirs)} \
           Main.hs \
           HaskellMobile.hs \
@@ -202,6 +218,7 @@ in {
           cbits/numa_stubs.c \
           cbits/ui_bridge.c \
           cbits/run_main.c \
+          cbits/storage_helper.c \
           -optl-L${androidPkgs.gmp}/lib \
           -optl-L${androidPkgs.libffi}/lib \
           -optl-lffi \
@@ -209,6 +226,8 @@ in {
           -optl-Wl,-z,max-page-size=16384 \
           -optl$(pwd)/jni_bridge.o \
           -optl$(pwd)/ui_bridge_android.o \
+          -optl$(pwd)/sqlite3.o \
+          -optl$(pwd)/storage_helper.o \
           ${builtins.concatStringsSep " " (builtins.genList (i: "-optl$(pwd)/extra_jni_${toString i}.o") (builtins.length extraJniBridge))} \
           ${builtins.concatStringsSep " " (map (o: "-optl${o}") extraLinkObjects)} \
           -optl-Wl,-u,haskellRunMain \
@@ -626,6 +645,7 @@ SCRIPT
         cp ${haskellMobileSrc}/src/HaskellMobile/Widget.hs HaskellMobile/
         cp ${haskellMobileSrc}/src/HaskellMobile/UIBridge.hs HaskellMobile/
         cp ${haskellMobileSrc}/src/HaskellMobile/Render.hs HaskellMobile/
+        cp ${haskellMobileSrc}/src/HaskellMobile/Database.hs HaskellMobile/
         cp ${haskellMobileSrc}/src/HaskellMobile.hs .
 
         # Default App.hs — only copy if not already present
@@ -643,11 +663,17 @@ SCRIPT
         cp ${haskellMobileSrc}/cbits/platform_log.c cbits/
         cp ${haskellMobileSrc}/cbits/ui_bridge.c cbits/
         cp ${haskellMobileSrc}/cbits/run_main.c cbits/
+        cp ${haskellMobileSrc}/cbits/sqlite3.c cbits/
+        cp ${haskellMobileSrc}/cbits/sqlite3.h cbits/
+        cp ${haskellMobileSrc}/cbits/storage_helper.c cbits/
 
         ghc -staticlib \
           -O2 \
           -o libHaskellMobile.a \
           -I${haskellMobileSrc}/include \
+          -I${haskellMobileSrc}/cbits \
+          -optc-DSQLITE_THREADSAFE=0 \
+          -optc-DSQLITE_OMIT_LOAD_EXTENSION \
           -optl-lffi \
           -optl-Wl,-u,_haskellRunMain \
           -optl-Wl,-u,_haskellGreet \
@@ -658,6 +684,8 @@ SCRIPT
           cbits/platform_log.c \
           cbits/ui_bridge.c \
           cbits/run_main.c \
+          cbits/sqlite3.c \
+          cbits/storage_helper.c \
           Main.hs \
           HaskellMobile.hs
       '';

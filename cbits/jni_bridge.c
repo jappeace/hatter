@@ -30,6 +30,9 @@ extern void setup_android_ui_bridge(JNIEnv *env, jobject activity, void *haskell
 extern void android_handle_click(JNIEnv *env, jobject view);
 extern void android_handle_text_change(JNIEnv *env, jobject view, jstring text);
 
+/* Storage helper (from storage_helper.c) */
+extern void set_app_files_dir(const char *path);
+
 /* Lifecycle event codes (must match HaskellMobile.h) */
 #define LIFECYCLE_CREATE     0
 #define LIFECYCLE_START      1
@@ -136,4 +139,17 @@ JNIEXPORT void JNICALL
 JNI_METHOD(onLifecycleLowMemory)(JNIEnv *env, jobject thiz)
 {
     haskellOnLifecycle(g_haskell_ctx, LIFECYCLE_LOW_MEMORY);
+}
+
+/* --- Storage JNI methods --- */
+
+JNIEXPORT void JNICALL
+JNI_METHOD(setFilesDir)(JNIEnv *env, jobject thiz, jstring path)
+{
+    const char *cpath = (*env)->GetStringUTFChars(env, path, NULL);
+    if (cpath == NULL) {
+        return; /* OutOfMemoryError already thrown */
+    }
+    set_app_files_dir(cpath);
+    (*env)->ReleaseStringUTFChars(env, path, cpath);
 }

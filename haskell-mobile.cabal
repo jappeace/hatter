@@ -67,6 +67,7 @@ library
       HaskellMobile.Widget
       HaskellMobile.UIBridge
       HaskellMobile.Render
+      HaskellMobile.Database
   hs-source-dirs:
       src
   build-depends:
@@ -76,8 +77,12 @@ library
       cbits/android_stubs.c
       cbits/platform_log.c
       cbits/ui_bridge.c
+      cbits/sqlite3.c
+      cbits/storage_helper.c
+  cc-options: -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION
   include-dirs:
       include
+      cbits
 
 executable exe
   import: common-options

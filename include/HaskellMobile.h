@@ -46,4 +46,11 @@ void haskellRenderUI(void *ctx);
  * ctx must be a pointer returned by haskellCreateContext(). */
 void haskellOnUIEvent(void *ctx, int32_t callbackId);
 
+/* Storage helper: set/get the platform-specific app files directory.
+ * Must be called before opening any database.
+ * On Android: called from Java onCreate via JNI setFilesDir.
+ * On iOS: called from Swift initialize() via set_app_files_dir. */
+void set_app_files_dir(const char *path);
+const char *get_app_files_dir(void);
+
 #endif /* HASKELL_MOBILE_H */

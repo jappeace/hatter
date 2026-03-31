@@ -18,6 +18,11 @@ class HaskellBridge {
     static func initialize() {
         hs_init(nil, nil)
         haskellRunMain()
+        // Set the app files directory before creating context so Haskell
+        // code can open databases in the lifecycle Create handler.
+        if let docsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path {
+            set_app_files_dir(docsPath)
+        }
         context = haskellCreateContext()
     }
 

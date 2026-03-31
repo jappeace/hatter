@@ -24,10 +24,12 @@ public class MainActivity extends Activity implements View.OnClickListener {
     private native void onLifecycleStop();
     private native void onLifecycleDestroy();
     private native void onLifecycleLowMemory();
+    private native void setFilesDir(String path);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setFilesDir(getFilesDir().getAbsolutePath());
         onLifecycleCreate();
         // Render UI from Haskell instead of XML layout
         renderUI();
