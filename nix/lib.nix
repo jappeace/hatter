@@ -69,6 +69,7 @@ in {
     , extraModuleCopy ? ""
     , extraLinkObjects ? []
     , extraGhcIncludeDirs ? []
+    , crossDeps ? null          # output of cross-deps.nix (lib/, hi/, pkgdb/)
     }:
     let
       jniPackageMacro = builtins.replaceStrings ["."] ["_"] javaPackageName;
@@ -195,6 +196,7 @@ in {
           -o ${soName} \
           -I${haskellMobileSrc}/include \
           ${builtins.concatStringsSep " " (map (d: "-I${d}") extraGhcIncludeDirs)} \
+          ${if crossDeps != null then "-package-db ${crossDeps}/pkgdb -i${crossDeps}/hi" else ""} \
           Main.hs \
           HaskellMobile.hs \
           cbits/android_stubs.c \
@@ -229,6 +231,7 @@ in {
           -optl$ARRAY_LIB \
           -optl$DEEPSEQ_LIB \
           -optl$CONTAINERS_LIB \
+          ${if crossDeps != null then "$(for a in ${crossDeps}/lib/*.a; do echo -n \"-optl$a \"; done)" else ""} \
           -optl-Wl,--no-whole-archive
       '';
 
