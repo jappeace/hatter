@@ -19,8 +19,9 @@ let
   ghcPkgCmd = "${ghc}/bin/ghc-pkg";
   hsc2hsCmd = "${ghc}/bin/hsc2hs";
 
-  # Wrapper cabal project (static files, no interpolation needed)
-  wrapperProject = ./ios-deps;
+  # Wrapper cabal project — just declares `build-depends: direct-sqlite`
+  # so cabal resolves it as a local package.  Shared with cross-deps.nix.
+  wrapperProject = ./deps-wrapper;
   cabalConfig = ./cabal-config;
 
   # Fetch direct-sqlite source tarball
