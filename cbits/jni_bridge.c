@@ -24,7 +24,12 @@ extern void haskellOnLifecycle(void *ctx, int eventType);
 extern void haskellRenderUI(void *ctx);
 extern void haskellOnUIEvent(void *ctx, int callbackId);
 extern void haskellOnUITextChange(void *ctx, int callbackId, const char *text);
-extern void haskellUseScrollDemo(void);
+
+/* Weak default for apps that don't provide a scroll-demo.
+ * Apps that want useScrollDemo to do something meaningful should define
+ * haskellUseScrollDemo via 'foreign export ccall' in their Haskell source,
+ * which overrides this no-op at link time. */
+void __attribute__((weak)) haskellUseScrollDemo(void) {}
 
 /* Android UI bridge (from ui_bridge_android.c) */
 extern void setup_android_ui_bridge(JNIEnv *env, jobject activity, void *haskellCtx);
