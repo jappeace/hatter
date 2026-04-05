@@ -67,15 +67,19 @@ library
       HaskellMobile.Widget
       HaskellMobile.UIBridge
       HaskellMobile.Render
+      HaskellMobile.Locale
+      HaskellMobile.I18n
   hs-source-dirs:
       src
   build-depends:
       text,
-      containers
+      containers,
+      toml-parser
   c-sources:
       cbits/android_stubs.c
       cbits/platform_log.c
       cbits/ui_bridge.c
+      cbits/locale.c
   include-dirs:
       include
 
@@ -99,4 +103,6 @@ test-suite unit
       tasty,
       tasty-hunit,
       tasty-quickcheck,
-      haskell-mobile
+      haskell-mobile,
+      containers,
+      text
