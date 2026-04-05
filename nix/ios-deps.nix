@@ -37,7 +37,7 @@ let
 
   tomlParserSrc = pkgs.fetchurl {
     url = "https://hackage.haskell.org/package/toml-parser-2.0.2.0/toml-parser-2.0.2.0.tar.gz";
-    sha256 = "sha256-BhUajqUx0aaUxqVFDIbJG3WJL/ZEvHnL3X1vCIw2LpE=";
+    sha256 = "sha256-note5e6pvqJEFzI0eDmo4y6YeJBVpiH1WnLC33qN4ag=";
   };
 
 in pkgs.stdenv.mkDerivation {
