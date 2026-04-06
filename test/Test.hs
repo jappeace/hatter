@@ -43,7 +43,7 @@ import HaskellMobile.Lifecycle
   , freeMobileContext
   , haskellOnLifecycle
   )
-import HaskellMobile.Widget (InputType(..), TextInputConfig(..), Widget(..), WidgetStyle(..), defaultStyle)
+import HaskellMobile.Widget (ButtonConfig(..), FontConfig(..), InputType(..), TextConfig(..), TextInputConfig(..), Widget(..), WidgetStyle(..), defaultStyle)
 import HaskellMobile.Render (newRenderState, renderWidget, dispatchEvent, dispatchTextEvent)
 
 main :: IO ()
@@ -148,7 +148,8 @@ uiTests = testGroup "UI"
   [ testCase "callback dispatch fires registered action" $ do
       ref <- newIORef (0 :: Int)
       rs <- newRenderState
-      let widget = Button "click me" (modifyIORef' ref (+ 1))
+      let widget = Button ButtonConfig
+            { bcLabel = "click me", bcAction = modifyIORef' ref (+ 1), bcFontConfig = Nothing }
       renderWidget rs widget
       -- After rendering, callback 0 should be the button's handler
       dispatchEvent rs 0
@@ -160,8 +161,10 @@ uiTests = testGroup "UI"
       refB <- newIORef False
       rs <- newRenderState
       let widget = Row
-            [ Button "A" (modifyIORef' refA (const True))
-            , Button "B" (modifyIORef' refB (const True))
+            [ Button ButtonConfig
+                { bcLabel = "A", bcAction = modifyIORef' refA (const True), bcFontConfig = Nothing }
+            , Button ButtonConfig
+                { bcLabel = "B", bcAction = modifyIORef' refB (const True), bcFontConfig = Nothing }
             ]
       renderWidget rs widget
       -- Only fire callback 0 (button A)
@@ -180,9 +183,11 @@ uiTests = testGroup "UI"
       refNew <- newIORef False
       rs <- newRenderState
       -- First render with old callback
-      renderWidget rs (Button "old" (modifyIORef' refOld (const True)))
+      renderWidget rs (Button ButtonConfig
+        { bcLabel = "old", bcAction = modifyIORef' refOld (const True), bcFontConfig = Nothing })
       -- Second render replaces it
-      renderWidget rs (Button "new" (modifyIORef' refNew (const True)))
+      renderWidget rs (Button ButtonConfig
+        { bcLabel = "new", bcAction = modifyIORef' refNew (const True), bcFontConfig = Nothing })
       dispatchEvent rs 0
       old <- readIORef refOld
       new <- readIORef refNew
@@ -191,7 +196,7 @@ uiTests = testGroup "UI"
 
   , testCase "dispatching unknown callback ID logs error" $ do
       rs <- newRenderState
-      renderWidget rs (Text "no buttons")
+      renderWidget rs (Text TextConfig { tcLabel = "no buttons", tcFontConfig = Nothing })
       -- Should not throw (logs to stderr)
       dispatchEvent rs 42
       dispatchEvent rs 999
@@ -199,15 +204,17 @@ uiTests = testGroup "UI"
   , testCase "nested widget tree renders without error" $ do
       rs <- newRenderState
       let widget = Column
-            [ Text "header"
+            [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing }
             , Row
-              [ Button "a" (pure ())
+              [ Button ButtonConfig
+                  { bcLabel = "a", bcAction = pure (), bcFontConfig = Nothing }
               , Column
-                [ Text "nested"
-                , Button "b" (pure ())
+                [ Text TextConfig { tcLabel = "nested", tcFontConfig = Nothing }
+                , Button ButtonConfig
+                    { bcLabel = "b", bcAction = pure (), bcFontConfig = Nothing }
                 ]
               ]
-            , Text "footer"
+            , Text TextConfig { tcLabel = "footer", tcFontConfig = Nothing }
             ]
       -- Should not throw — exercises all node types
       renderWidget rs widget
@@ -218,7 +225,7 @@ uiTests = testGroup "UI"
       case widget of
         Column _        -> pure ()
         Text _          -> assertFailure "expected Column, got Text"
-        Button _ _      -> assertFailure "expected Column, got Button"
+        Button _        -> assertFailure "expected Column, got Button"
         TextInput _     -> assertFailure "expected Column, got TextInput"
         Row _           -> assertFailure "expected Column, got Row"
         ScrollView _    -> assertFailure "expected Column, got ScrollView"
@@ -233,13 +240,17 @@ scrollViewTests :: TestTree
 scrollViewTests = testGroup "ScrollView"
   [ testCase "ScrollView renders without error" $ do
       rs <- newRenderState
-      renderWidget rs (ScrollView [Text "item 1", Text "item 2"])
+      renderWidget rs (ScrollView
+        [ Text TextConfig { tcLabel = "item 1", tcFontConfig = Nothing }
+        , Text TextConfig { tcLabel = "item 2", tcFontConfig = Nothing }
+        ])
 
   , testCase "button inside ScrollView fires its callback" $ do
       ref <- newIORef (0 :: Int)
       rs <- newRenderState
       renderWidget rs $ ScrollView
-        [ Button "press me" (modifyIORef' ref (+ 1)) ]
+        [ Button ButtonConfig
+            { bcLabel = "press me", bcAction = modifyIORef' ref (+ 1), bcFontConfig = Nothing } ]
       dispatchEvent rs 0
       count <- readIORef ref
       count @?= 1
@@ -249,8 +260,9 @@ scrollViewTests = testGroup "ScrollView"
       rs <- newRenderState
       renderWidget rs $ ScrollView
         [ Column
-          [ Text "header"
-          , Button "action" (modifyIORef' ref (const True))
+          [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing }
+          , Button ButtonConfig
+              { bcLabel = "action", bcAction = modifyIORef' ref (const True), bcFontConfig = Nothing }
           ]
         ]
       dispatchEvent rs 0
@@ -261,8 +273,10 @@ scrollViewTests = testGroup "ScrollView"
       refOld <- newIORef False
       refNew <- newIORef False
       rs <- newRenderState
-      renderWidget rs $ ScrollView [Button "old" (modifyIORef' refOld (const True))]
-      renderWidget rs $ ScrollView [Button "new" (modifyIORef' refNew (const True))]
+      renderWidget rs $ ScrollView [Button ButtonConfig
+        { bcLabel = "old", bcAction = modifyIORef' refOld (const True), bcFontConfig = Nothing }]
+      renderWidget rs $ ScrollView [Button ButtonConfig
+        { bcLabel = "new", bcAction = modifyIORef' refNew (const True), bcFontConfig = Nothing }]
       dispatchEvent rs 0
       old <- readIORef refOld
       new <- readIORef refNew
@@ -277,7 +291,8 @@ textInputTests = testGroup "TextInput"
       rs <- newRenderState
       let widget = TextInput TextInputConfig
             { tiInputType = InputText, tiHint = "hint", tiValue = ""
-            , tiOnChange = \t -> modifyIORef' ref (const (show t)) }
+            , tiOnChange = \t -> modifyIORef' ref (const (show t))
+            , tiFontConfig = Nothing }
       renderWidget rs widget
       -- Callback 0 is the text change handler
       dispatchTextEvent rs 0 "hello"
@@ -289,7 +304,8 @@ textInputTests = testGroup "TextInput"
       rs <- newRenderState
       let widget = TextInput TextInputConfig
             { tiInputType = InputText, tiHint = "enter weight", tiValue = "80"
-            , tiOnChange = \t -> modifyIORef' ref (const (show t)) }
+            , tiOnChange = \t -> modifyIORef' ref (const (show t))
+            , tiFontConfig = Nothing }
       renderWidget rs widget
       dispatchTextEvent rs 0 "95.5"
       val <- readIORef ref
@@ -297,7 +313,7 @@ textInputTests = testGroup "TextInput"
 
   , testCase "dispatchTextEvent with unknown ID does not crash" $ do
       rs <- newRenderState
-      renderWidget rs (Text "no inputs")
+      renderWidget rs (Text TextConfig { tcLabel = "no inputs", tcFontConfig = Nothing })
       -- Should not throw
       dispatchTextEvent rs 42 "ignored"
       dispatchTextEvent rs 999 "also ignored"
@@ -307,10 +323,12 @@ textInputTests = testGroup "TextInput"
       textRef  <- newIORef ("" :: String)
       rs <- newRenderState
       let widget = Column
-            [ Button "ok" (modifyIORef' clickRef (const True))
+            [ Button ButtonConfig
+                { bcLabel = "ok", bcAction = modifyIORef' clickRef (const True), bcFontConfig = Nothing }
             , TextInput TextInputConfig
                 { tiInputType = InputText, tiHint = "hint", tiValue = ""
-                , tiOnChange = \t -> modifyIORef' textRef (const (show t)) }
+                , tiOnChange = \t -> modifyIORef' textRef (const (show t))
+                , tiFontConfig = Nothing }
             ]
       renderWidget rs widget
       -- Button gets callback 0, TextInput gets callback 1
@@ -327,10 +345,12 @@ textInputTests = testGroup "TextInput"
       rs <- newRenderState
       renderWidget rs $ TextInput TextInputConfig
         { tiInputType = InputText, tiHint = "old", tiValue = ""
-        , tiOnChange = \t -> modifyIORef' refOld (const (show t)) }
+        , tiOnChange = \t -> modifyIORef' refOld (const (show t))
+        , tiFontConfig = Nothing }
       renderWidget rs $ TextInput TextInputConfig
         { tiInputType = InputText, tiHint = "new", tiValue = ""
-        , tiOnChange = \t -> modifyIORef' refNew (const (show t)) }
+        , tiOnChange = \t -> modifyIORef' refNew (const (show t))
+        , tiFontConfig = Nothing }
       dispatchTextEvent rs 0 "val"
       old <- readIORef refOld
       new <- readIORef refNew
@@ -342,7 +362,8 @@ textInputTests = testGroup "TextInput"
       rs <- newRenderState
       let widget = TextInput TextInputConfig
             { tiInputType = InputNumber, tiHint = "weight", tiValue = ""
-            , tiOnChange = \t -> modifyIORef' ref (const (show t)) }
+            , tiOnChange = \t -> modifyIORef' ref (const (show t))
+            , tiFontConfig = Nothing }
       renderWidget rs widget
       dispatchTextEvent rs 0 "72.5"
       val <- readIORef ref
@@ -355,10 +376,12 @@ textInputTests = testGroup "TextInput"
       let widget = Column
             [ TextInput TextInputConfig
                 { tiInputType = InputText, tiHint = "name", tiValue = ""
-                , tiOnChange = \t -> modifyIORef' textRef (const (show t)) }
+                , tiOnChange = \t -> modifyIORef' textRef (const (show t))
+                , tiFontConfig = Nothing }
             , TextInput TextInputConfig
                 { tiInputType = InputNumber, tiHint = "weight", tiValue = ""
-                , tiOnChange = \t -> modifyIORef' numberRef (const (show t)) }
+                , tiOnChange = \t -> modifyIORef' numberRef (const (show t))
+                , tiFontConfig = Nothing }
             ]
       renderWidget rs widget
       -- TextInput gets callback 0, InputNumber gets callback 1
@@ -375,13 +398,16 @@ styledTests :: TestTree
 styledTests = testGroup "Styled"
   [ testCase "Styled Text renders without error" $ do
       rs <- newRenderState
-      renderWidget rs $ Styled (WidgetStyle (Just 20.0) (Just 8.0)) (Text "styled")
+      renderWidget rs $ Styled (WidgetStyle (Just 8.0))
+        (Text TextConfig { tcLabel = "styled", tcFontConfig = Just (FontConfig 20.0) })
 
   , testCase "Styled Button fires callback" $ do
       ref <- newIORef (0 :: Int)
       rs <- newRenderState
-      renderWidget rs $ Styled (WidgetStyle (Just 16.0) Nothing)
-        (Button "tap" (modifyIORef' ref (+ 1)))
+      renderWidget rs $ Styled (WidgetStyle Nothing)
+        (Button ButtonConfig
+          { bcLabel = "tap", bcAction = modifyIORef' ref (+ 1)
+          , bcFontConfig = Just (FontConfig 16.0) })
       dispatchEvent rs 0
       count <- readIORef ref
       count @?= 1
@@ -390,8 +416,9 @@ styledTests = testGroup "Styled"
       ref <- newIORef False
       rs <- newRenderState
       renderWidget rs $ Styled defaultStyle
-        (Column [ Text "info"
-                , Button "go" (modifyIORef' ref (const True))
+        (Column [ Text TextConfig { tcLabel = "info", tcFontConfig = Nothing }
+                , Button ButtonConfig
+                    { bcLabel = "go", bcAction = modifyIORef' ref (const True), bcFontConfig = Nothing }
                 ])
       dispatchEvent rs 0
       fired <- readIORef ref
@@ -400,22 +427,25 @@ styledTests = testGroup "Styled"
   , testCase "nested Styled applies both styles" $ do
       rs <- newRenderState
       renderWidget rs $
-        Styled (WidgetStyle Nothing (Just 12.0))
-          (Styled (WidgetStyle (Just 18.0) Nothing)
-            (Text "double styled"))
+        Styled (WidgetStyle (Just 12.0))
+          (Styled (WidgetStyle Nothing)
+            (Text TextConfig { tcLabel = "double styled", tcFontConfig = Just (FontConfig 18.0) }))
 
   , testCase "defaultStyle is a no-op" $ do
       rs <- newRenderState
-      renderWidget rs $ Styled defaultStyle (Text "plain")
+      renderWidget rs $ Styled defaultStyle
+        (Text TextConfig { tcLabel = "plain", tcFontConfig = Nothing })
 
   , testCase "re-render resets callbacks through Styled" $ do
       refOld <- newIORef False
       refNew <- newIORef False
       rs <- newRenderState
       renderWidget rs $ Styled defaultStyle
-        (Button "old" (modifyIORef' refOld (const True)))
+        (Button ButtonConfig
+          { bcLabel = "old", bcAction = modifyIORef' refOld (const True), bcFontConfig = Nothing })
       renderWidget rs $ Styled defaultStyle
-        (Button "new" (modifyIORef' refNew (const True)))
+        (Button ButtonConfig
+          { bcLabel = "new", bcAction = modifyIORef' refNew (const True), bcFontConfig = Nothing })
       dispatchEvent rs 0
       old <- readIORef refOld
       new <- readIORef refNew
@@ -434,13 +464,13 @@ registrationTests = testGroup "Registration"
 
   , testCase "runMobileApp overwrites previous registration" $ do
       let customCtx = MobileContext { onLifecycle = \_ -> pure () }
-          customApp = MobileApp { maContext = customCtx, maView = pure (Text "custom") }
+          customApp = MobileApp { maContext = customCtx, maView = pure (Text TextConfig { tcLabel = "custom", tcFontConfig = Nothing }) }
       runMobileApp customApp
       app <- getMobileApp
       widget <- maView app
       case widget of
-        Text t  -> t @?= "custom"
-        _       -> assertFailure "expected Text \"custom\""
+        Text config -> tcLabel config @?= "custom"
+        _           -> assertFailure "expected Text \"custom\""
       -- Restore the original
       runMobileApp mobileApp
   ]
