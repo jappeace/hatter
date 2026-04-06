@@ -39,6 +39,7 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
 
+  # armv7a (armeabi-v7a) — 32-bit ARM, used by Wear OS watches
   android-armv7a-emulator:
     runs-on: ubuntu-latest
     steps:

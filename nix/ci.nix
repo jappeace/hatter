@@ -12,6 +12,7 @@ in {
 
   # Android combined test script (boot + run via CI: nix-build ... -o out && ./out/bin/test-all)
   emulator-all = import ./emulator-all.nix { inherit sources; };
+  # armv7a (armeabi-v7a) emulator test — covers Wear OS watches (32-bit ARM)
   emulator-armv7a = import ./emulator-all.nix { inherit sources; androidArch = "armv7a"; };
 } // (if isDarwin then {
   # iOS library for artifact upload
