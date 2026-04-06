@@ -37,13 +37,15 @@ if [ $render_done -eq 0 ]; then
     wait_for_log "$STREAM_LOG" "setRoot" 60 || true
 fi
 
-# Auto-tap fires 3s after render; wait for log flush
-sleep 15
+# Auto-tap fires 3s after render; poll stream log until click appears or 30s timeout
+wait_for_log "$STREAM_LOG" "Click dispatched" 30 || true
+# Extra buffer so the persistent log store catches up before log show
+sleep 5
 
 kill "$LOG_STREAM_PID" 2>/dev/null || true
 sleep 1
 
-# Retrieve full log; fall back to stream log if empty
+# Retrieve full log from persistent store; fall back to stream log if empty
 FULL_LOG="$WORK_DIR/scroll_full.txt"
 get_full_log "$SCROLL_START" "$FULL_LOG"
 
