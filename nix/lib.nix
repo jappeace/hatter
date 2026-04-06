@@ -220,6 +220,7 @@ in {
           -optl-Wl,-u,haskellRenderUI \
           -optl-Wl,-u,haskellOnUIEvent \
           -optl-Wl,-u,haskellOnUITextChange \
+          -optl-Wl,--no-undefined \
           -optl-Wl,--whole-archive \
           -optl$RTS_LIB \
           -optl$GHC_PRIM_LIB \
