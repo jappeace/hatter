@@ -29,7 +29,13 @@ jobs:
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
           extra-substituters = https://nix-cache.jappie.me
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
-    - run: nix-build nix/ci.nix
+    - run: nix-build nix/ci.nix -A native
+    - run: nix-build nix/ci.nix -A android
+    - run: nix-build nix/ci.nix -A consumer-link-test
+    - name: Build combined emulator test
+      run: nix-build nix/ci.nix -A emulator-all -o result-emulator-all
+    - name: Run combined emulator test (lifecycle + UI + buttons + scroll)
+      run: ./result-emulator-all/bin/test-all
     - run: nix-build nix/ci.nix -A apk -o result-apk
     - name: Upload Android APK
       if: github.ref == 'refs/heads/master'
@@ -61,7 +67,10 @@ jobs:
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
           extra-substituters = https://nix-cache.jappie.me
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
-    - run: nix-build nix/ci.nix -A ios
+    - name: Build combined simulator test
+      run: nix-build nix/ci.nix -A simulator-all -o result-simulator-all
+    - name: Run combined simulator test (lifecycle + UI + buttons + scroll)
+      run: ./result-simulator-all/bin/test-all-ios
     - run: nix-build nix/ci.nix -A ios-lib -o result-ios-lib
     - name: Upload iOS library
       if: github.ref == 'refs/heads/master'

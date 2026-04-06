@@ -1,17 +1,7 @@
 { sources ? import ../npins }:
 let
-  pkgs = import sources.nixpkgs {
-    config.allowUnfree = true;
-    config.android_sdk.accept_license = true;
-  };
   isDarwin = builtins.currentSystem == "aarch64-darwin"
           || builtins.currentSystem == "x86_64-darwin";
-
-  runTest = name: testDrv: scriptName:
-    pkgs.runCommand "run-${name}" { __noChroot = true; } ''
-      ${testDrv}/bin/${scriptName}
-      touch $out
-    '';
 in {
   # Build artifacts
   native = import ../default.nix {};
@@ -19,13 +9,11 @@ in {
   apk = import ./apk.nix { inherit sources; };
   consumer-link-test = import ./test-link-consumer.nix { inherit sources; };
 
-  # Android tests (Linux) — single emulator session covering all suites
-  emulator-all-test = runTest "emulator-all-test"
-    (import ./emulator-all.nix { inherit sources; }) "test-all";
+  # Android combined test script (boot + run via CI: nix-build ... -o out && ./out/bin/test-all)
+  emulator-all = import ./emulator-all.nix { inherit sources; };
 } // (if isDarwin then {
-  # ios-lib: kept for artifact upload
+  # iOS library for artifact upload
   ios-lib = import ./ios.nix { inherit sources; };
-  # ios: single simulator session covering all suites
-  ios = runTest "simulator-all-test"
-    (import ./simulator-all.nix { inherit sources; }) "test-all-ios";
+  # iOS combined test script (boot + run via CI: nix-build ... -o out && ./out/bin/test-all-ios)
+  simulator-all = import ./simulator-all.nix { inherit sources; };
 } else {})
