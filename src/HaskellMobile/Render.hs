@@ -19,7 +19,7 @@ import Data.Int (Int32)
 import Data.IntMap.Strict (IntMap)
 import Data.IntMap.Strict qualified as IntMap
 import Data.Text (Text)
-import HaskellMobile.Widget (InputType(..), TextInputConfig(..), Widget(..))
+import HaskellMobile.Widget (ButtonConfig(..), FontConfig(..), InputType(..), TextConfig(..), TextInputConfig(..), Widget(..), WidgetStyle(..))
 import HaskellMobile.UIBridge qualified as Bridge
 import System.IO (hPutStrLn, stderr)
 
@@ -74,17 +74,25 @@ inputTypeToInt :: InputType -> Int32
 inputTypeToInt InputText   = 0
 inputTypeToInt InputNumber = 1
 
+-- | Apply a 'FontConfig' to a rendered node if present.
+applyFontConfig :: Int32 -> Maybe FontConfig -> IO ()
+applyFontConfig nodeId (Just (FontConfig size)) =
+  Bridge.setNumProp nodeId Bridge.PropFontSize size
+applyFontConfig _nodeId Nothing = pure ()
+
 -- | Render a single 'Widget' node, returning its native node ID.
 renderNode :: RenderState -> Widget -> IO Int32
-renderNode _rs (Text label) = do
+renderNode _rs (Text config) = do
   nodeId <- Bridge.createNode Bridge.NodeText
-  Bridge.setStrProp nodeId Bridge.PropText label
+  Bridge.setStrProp nodeId Bridge.PropText (tcLabel config)
+  applyFontConfig nodeId (tcFontConfig config)
   pure nodeId
-renderNode rs (Button label action) = do
+renderNode rs (Button config) = do
   nodeId <- Bridge.createNode Bridge.NodeButton
-  Bridge.setStrProp nodeId Bridge.PropText label
-  callbackId <- registerCallback rs action
+  Bridge.setStrProp nodeId Bridge.PropText (bcLabel config)
+  callbackId <- registerCallback rs (bcAction config)
   Bridge.setHandler nodeId Bridge.EventClick callbackId
+  applyFontConfig nodeId (bcFontConfig config)
   pure nodeId
 renderNode rs (TextInput config) = do
   nodeId <- Bridge.createNode Bridge.NodeTextInput
@@ -93,6 +101,7 @@ renderNode rs (TextInput config) = do
   Bridge.setNumProp nodeId Bridge.PropInputType (fromIntegral (inputTypeToInt (tiInputType config)))
   callbackId <- registerTextCallback rs (tiOnChange config)
   Bridge.setHandler nodeId Bridge.EventTextChange callbackId
+  applyFontConfig nodeId (tiFontConfig config)
   pure nodeId
 renderNode rs (Column children) = do
   nodeId <- Bridge.createNode Bridge.NodeColumn
@@ -106,6 +115,10 @@ renderNode rs (ScrollView children) = do
   nodeId <- Bridge.createNode Bridge.NodeScrollView
   renderChildren rs nodeId children
   pure nodeId
+renderNode rs (Styled style child) = do
+  nodeId <- renderNode rs child
+  applyStyle nodeId style
+  pure nodeId
 
 -- | Render a list of children and add them to a parent container.
 renderChildren :: RenderState -> Int32 -> [Widget] -> IO ()
@@ -114,6 +127,14 @@ renderChildren rs parentId children =
     childId <- renderNode rs child
     Bridge.addChild parentId childId
   ) children
+
+-- | Apply 'WidgetStyle' overrides to a rendered node by calling
+-- 'Bridge.setNumProp' for each 'Just' field.
+applyStyle :: Int32 -> WidgetStyle -> IO ()
+applyStyle nodeId style =
+  case wsPadding style of
+    Just padding -> Bridge.setNumProp nodeId Bridge.PropPadding padding
+    Nothing      -> pure ()
 
 -- | Full render: clear the screen, reset callbacks, build the widget
 -- tree, and set the root node.

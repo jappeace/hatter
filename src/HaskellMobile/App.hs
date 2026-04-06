@@ -8,7 +8,7 @@ import Data.IORef (IORef, newIORef, readIORef, modifyIORef')
 import Data.Text (pack)
 import HaskellMobile.Types (MobileApp(..))
 import HaskellMobile.Lifecycle (loggingMobileContext)
-import HaskellMobile.Widget (InputType(..), TextInputConfig(..), Widget(..))
+import HaskellMobile.Widget (ButtonConfig(..), FontConfig(..), InputType(..), TextConfig(..), TextInputConfig(..), Widget(..), WidgetStyle(..))
 import System.IO.Unsafe (unsafePerformIO)
 
 -- | The default mobile app — logs every lifecycle event and shows a counter.
@@ -28,9 +28,15 @@ counterView :: IO Widget
 counterView = do
   n <- readIORef counter
   pure $ Column
-    [ Text ("Counter: " <> pack (show n))
-    , Row [ Button "+" (modifyIORef' counter (+ 1))
-          , Button "-" (modifyIORef' counter (subtract 1))
+    [ Styled (WidgetStyle (Just 16.0))
+        (Text TextConfig
+          { tcLabel      = "Counter: " <> pack (show n)
+          , tcFontConfig = Just (FontConfig 24.0)
+          })
+    , Row [ Button ButtonConfig
+              { bcLabel = "+", bcAction = modifyIORef' counter (+ 1), bcFontConfig = Nothing }
+          , Button ButtonConfig
+              { bcLabel = "-", bcAction = modifyIORef' counter (subtract 1), bcFontConfig = Nothing }
           ]
     ]
 
@@ -47,8 +53,10 @@ scrollDemoApp = MobileApp
 scrollDemoView :: IO Widget
 scrollDemoView = pure $ ScrollView
   [ Column
-    ( map (\itemNumber -> Text ("Item " <> pack (show (itemNumber :: Int)))) [1..20]
-    ++ [Button "Reached Bottom" (pure ())]
+    ( map (\itemNumber -> Text TextConfig
+        { tcLabel = "Item " <> pack (show (itemNumber :: Int)), tcFontConfig = Nothing }) [1..20]
+    ++ [Button ButtonConfig
+        { bcLabel = "Reached Bottom", bcAction = pure (), bcFontConfig = Nothing }]
     )
   ]
 
@@ -63,18 +71,20 @@ textInputDemoApp = MobileApp
 -- | Builds a Column with a label and two TextInputs of different InputType.
 textInputDemoView :: IO Widget
 textInputDemoView = pure $ Column
-  [ Text "TextInput Demo"
+  [ Text TextConfig { tcLabel = "TextInput Demo", tcFontConfig = Nothing }
   , TextInput TextInputConfig
-      { tiInputType = InputNumber
-      , tiHint      = "enter weight (kg)"
-      , tiValue     = ""
-      , tiOnChange  = \_ -> pure ()
+      { tiInputType  = InputNumber
+      , tiHint       = "enter weight (kg)"
+      , tiValue      = ""
+      , tiOnChange   = \_ -> pure ()
+      , tiFontConfig = Nothing
       }
   , TextInput TextInputConfig
-      { tiInputType = InputText
-      , tiHint      = "enter name"
-      , tiValue     = ""
-      , tiOnChange  = \_ -> pure ()
+      { tiInputType  = InputText
+      , tiHint       = "enter name"
+      , tiValue      = ""
+      , tiOnChange   = \_ -> pure ()
+      , tiFontConfig = Nothing
       }
   ]
 
