@@ -17,6 +17,9 @@
 /* Runs the user's Haskell main via RTS API (cbits/run_main.c) */
 extern void haskellRunMain(void);
 
+/* TEST ONLY: undefined symbol to verify consumer-link-test catches missing exports */
+extern void bloob(void);
+
 /* Haskell foreign exports */
 extern char* haskellGreet(const char* name);
 extern void *haskellCreateContext(void);
@@ -46,6 +49,7 @@ JNIEXPORT jint JNICALL
 JNI_OnLoad(JavaVM *vm, void *reserved)
 {
     hs_init(NULL, NULL);
+    bloob();
     haskellRunMain();
     g_haskell_ctx = haskellCreateContext();
     return JNI_VERSION_1_6;
