@@ -26,6 +26,7 @@ module HaskellMobile
   , languageFromCode
   -- Re-exports from I18n
   , Key(..)
+  , TranslateFailure(..)
   , translate
   )
 where
@@ -44,7 +45,7 @@ import HaskellMobile.Lifecycle
   , newMobileContext
   , freeMobileContext
   )
-import HaskellMobile.I18n (Key(..), translate)
+import HaskellMobile.I18n (Key(..), TranslateFailure(..), translate)
 import HaskellMobile.Locale (Language(..), Locale(..), LocaleFailure(..), getSystemLocale, parseLocale, localeToText, languageToCode, languageFromCode)
 import HaskellMobile.Render (RenderState, newRenderState, renderWidget, dispatchEvent, dispatchTextEvent)
 import HaskellMobile.Types (MobileApp(..), runMobileApp, getMobileApp)

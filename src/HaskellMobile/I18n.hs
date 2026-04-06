@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module HaskellMobile.I18n
   ( Key(..)
+  , TranslateFailure(..)
   , translate
   ) where
 
@@ -13,19 +14,32 @@ import HaskellMobile.Locale (Locale(..))
 newtype Key = Key { unKey :: Text }
   deriving (Show, Eq, Ord)
 
+-- | Reasons a translation lookup can fail.
+data TranslateFailure
+  = LocaleNotFound Locale
+    -- ^ The translations map has no entry for this locale.
+  | KeyNotFound Locale Key
+    -- ^ The locale exists but does not contain this key.
+  deriving (Show, Eq)
+
 -- | Look up a translation key with fallback chain:
 --
 --   1. Exact locale match (e.g., @\"nl-NL\"@)
 --   2. Language-only match (e.g., @\"nl\"@)
---   3. 'Nothing'
-translate :: Map Locale (Map Key Text) -> Locale -> Key -> Maybe Text
+--   3. Error describing which step failed
+translate :: Map Locale (Map Key Text) -> Locale -> Key -> Either TranslateFailure Text
 translate translations locale key =
   case lookupKey translations locale key of
-    Just foundText -> Just foundText
-    Nothing        -> lookupKey translations (locale { locRegion = Nothing }) key
+    Right foundText -> Right foundText
+    Left _exactFailure ->
+      let fallbackLocale = locale { locRegion = Nothing }
+      in  lookupKey translations fallbackLocale key
 
--- Internal helpers
-
-lookupKey :: Map Locale (Map Key Text) -> Locale -> Key -> Maybe Text
+lookupKey :: Map Locale (Map Key Text) -> Locale -> Key -> Either TranslateFailure Text
 lookupKey translations locale key =
-  Map.lookup locale translations >>= Map.lookup key
+  case Map.lookup locale translations of
+    Nothing       -> Left (LocaleNotFound locale)
+    Just keyMap ->
+      case Map.lookup key keyMap of
+        Nothing    -> Left (KeyNotFound locale key)
+        Just value -> Right value

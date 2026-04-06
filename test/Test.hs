@@ -29,6 +29,7 @@ import HaskellMobile.Locale
   )
 import HaskellMobile.I18n
   ( Key(..)
+  , TranslateFailure(..)
   , translate
   )
 import HaskellMobile.App (mobileApp)
@@ -387,26 +388,28 @@ i18nTests = testGroup "I18n"
             [ (Locale Nl (Just "NL"), Map.fromList [(Key "greeting", "Hallo")])
             , (Locale En Nothing,     Map.fromList [(Key "greeting", "Hello")])
             ]
-      translate translations (Locale Nl (Just "NL")) (Key "greeting") @?= Just "Hallo"
+      translate translations (Locale Nl (Just "NL")) (Key "greeting") @?= Right "Hallo"
   , testCase "translate falls back to language-only" $ do
       let translations = Map.fromList
             [ (Locale Nl Nothing, Map.fromList [(Key "greeting", "Hallo")])
             ]
-      translate translations (Locale Nl (Just "BE")) (Key "greeting") @?= Just "Hallo"
-  , testCase "translate returns Nothing for missing key" $ do
+      translate translations (Locale Nl (Just "BE")) (Key "greeting") @?= Right "Hallo"
+  , testCase "translate reports KeyNotFound for missing key" $ do
       let translations = Map.fromList
             [ (Locale En Nothing, Map.fromList [(Key "greeting", "Hello")])
             ]
-      translate translations (Locale En Nothing) (Key "farewell") @?= Nothing
-  , testCase "translate returns Nothing for missing locale" $ do
+      translate translations (Locale En Nothing) (Key "farewell")
+        @?= Left (KeyNotFound (Locale En Nothing) (Key "farewell"))
+  , testCase "translate reports LocaleNotFound for missing locale" $ do
       let translations = Map.fromList
             [ (Locale En Nothing, Map.fromList [(Key "greeting", "Hello")])
             ]
-      translate translations (Locale Ja Nothing) (Key "greeting") @?= Nothing
+      translate translations (Locale Ja Nothing) (Key "greeting")
+        @?= Left (LocaleNotFound (Locale Ja Nothing))
   , testCase "translate prefers exact match over fallback" $ do
       let translations = Map.fromList
             [ (Locale Nl Nothing,       Map.fromList [(Key "greeting", "Hallo")])
             , (Locale Nl (Just "BE"),   Map.fromList [(Key "greeting", "Hoi")])
             ]
-      translate translations (Locale Nl (Just "BE")) (Key "greeting") @?= Just "Hoi"
+      translate translations (Locale Nl (Just "BE")) (Key "greeting") @?= Right "Hoi"
   ]
