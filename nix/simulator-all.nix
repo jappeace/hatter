@@ -471,6 +471,10 @@ xcrun simctl install "$SIM_UDID" "$SCROLL_APP"
 echo "Scroll app installed."
 
 SCROLL_LOG="$WORK_DIR/scroll_log.txt"
+SCROLL_FULL_LOG="$WORK_DIR/scroll_full_log.txt"
+
+# Record start time so we can retrieve from persistent log store later
+PHASE2_START=$(date "+%Y-%m-%d %H:%M:%S")
 
 > "$SCROLL_LOG"
 xcrun simctl spawn "$SIM_UDID" log stream \
@@ -516,43 +520,49 @@ if [ $RENDER_DONE -eq 0 ]; then
     done
 fi
 
-# Wait for auto-tap click dispatch
-POLL_TIMEOUT=30
-POLL_ELAPSED=0
-CLICK_DONE=0
-while [ $POLL_ELAPSED -lt $POLL_TIMEOUT ]; do
-    if grep -q 'Click dispatched: callbackId=0' "$SCROLL_LOG" 2>/dev/null; then
-        CLICK_DONE=1
-        echo "Click dispatched after ~''${POLL_ELAPSED}s"
-        break
-    fi
-    sleep 2
-    POLL_ELAPSED=$((POLL_ELAPSED + 2))
-done
+# Wait generously for the --autotest auto-tap (fires 3s after render) + log flush
+echo "Waiting 15s for auto-tap to fire and log to flush..."
+sleep 15
 
-if grep -qE 'createNode\(type=5\)' "$SCROLL_LOG" 2>/dev/null; then
+kill "$LOG_PID" 2>/dev/null || true
+LOG_PID=""
+sleep 1
+
+# Retrieve full Phase 2 log from persistent log store (more reliable than stream buffering)
+xcrun simctl spawn "$SIM_UDID" log show \
+    --start "$PHASE2_START" \
+    --predicate "subsystem == \"me.jappie.haskellmobile\"" \
+    --style compact \
+    --info \
+    > "$SCROLL_FULL_LOG" 2>&1 || true
+
+# Fall back to stream log if log show returned nothing useful
+SCROLL_ASSERT_LOG="$SCROLL_FULL_LOG"
+if ! grep -q "setRoot" "$SCROLL_FULL_LOG" 2>/dev/null; then
+    echo "  'log show' empty/incomplete, using stream log"
+    SCROLL_ASSERT_LOG="$SCROLL_LOG"
+fi
+
+if grep -qE 'createNode\(type=5\)' "$SCROLL_ASSERT_LOG" 2>/dev/null; then
     echo "PASS: createNode(type=5) in os_log"
 else
     echo "FAIL: createNode(type=5) not found in os_log"
     PHASE2_EXIT=1
 fi
 
-if grep -q 'setRoot' "$SCROLL_LOG" 2>/dev/null; then
+if grep -q 'setRoot' "$SCROLL_ASSERT_LOG" 2>/dev/null; then
     echo "PASS: setRoot in os_log"
 else
     echo "FAIL: setRoot not in os_log"
     PHASE2_EXIT=1
 fi
 
-if grep -q 'Click dispatched: callbackId=0' "$SCROLL_LOG" 2>/dev/null; then
+if grep -q 'Click dispatched: callbackId=0' "$SCROLL_ASSERT_LOG" 2>/dev/null; then
     echo "PASS: Click dispatched: callbackId=0"
 else
     echo "FAIL: Click dispatched: callbackId=0 not found"
     PHASE2_EXIT=1
 fi
-
-kill "$LOG_PID" 2>/dev/null || true
-LOG_PID=""
 
 xcrun simctl uninstall "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
 
@@ -565,7 +575,7 @@ else
     echo ""
     echo "PHASE 2 FAILED"
     echo "=== Filtered scroll log ==="
-    grep -i "createNode\|setRoot\|Click dispatched" "$SCROLL_LOG" 2>/dev/null | tail -20 || echo "(no relevant lines)"
+    grep -i "createNode\|setRoot\|Click dispatched" "$SCROLL_ASSERT_LOG" 2>/dev/null | tail -20 || echo "(no relevant lines)"
 fi
 
 # ===========================================================================
