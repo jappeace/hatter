@@ -24,6 +24,10 @@ let
 
   abiDir = { aarch64 = "arm64-v8a"; armv7a = "armeabi-v7a"; }.${androidArch};
 
+  # API 34 x86_64 emulator only has arm64-v8a translation (no armeabi-v7a).
+  # API 30 still has 32-bit ARM translation, needed for Wear OS armv7a APKs.
+  emulatorApiLevel = { aarch64 = "34"; armv7a = "30"; }.${androidArch};
+
   lib = import ./lib.nix { inherit sources androidArch; };
 
   counterAndroid = import ./android.nix { inherit sources androidArch; };
@@ -57,7 +61,7 @@ let
   };
 
   androidComposition = pkgs.androidenv.composeAndroidPackages {
-    platformVersions = [ "34" ];
+    platformVersions = [ emulatorApiLevel ];
     includeEmulator = true;
     includeSystemImages = true;
     systemImageTypes = [ "google_apis_playstore" ];
@@ -68,7 +72,7 @@ let
   sdk = androidComposition.androidsdk;
   sdkRoot = "${sdk}/libexec/android-sdk";
 
-  platformVersion = "34";
+  platformVersion = emulatorApiLevel;
   systemImageType = "google_apis_playstore";
   abiVersion = "x86_64";
   imagePackage = "system-images;android-${platformVersion};${systemImageType};${abiVersion}";
