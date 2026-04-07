@@ -17,7 +17,13 @@ install_apk "$COUNTER_APK" || { echo "FAIL: install_apk"; exit 1; }
 "$ADB" -s "$EMULATOR_SERIAL" logcat -c
 "$ADB" -s "$EMULATOR_SERIAL" shell am start -n "$PACKAGE/$ACTIVITY"
 
-wait_for_logcat "Locale parsed:" 60 || true
+wait_for_logcat "Locale parsed:" 60
+WAIT_RC=$?
+if [ $WAIT_RC -eq 2 ]; then
+    dump_logcat "locale"
+    echo "FATAL: Native library failed to load — aborting"
+    exit 1
+fi
 
 LOGCAT_FILE="$WORK_DIR/locale_logcat.txt"
 "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_FILE" 2>&1

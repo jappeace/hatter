@@ -26,7 +26,13 @@ sleep 5
 
 xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID"
 
-wait_for_log "$LOG_FILE" "setNumProp" 60 || true
+wait_for_log "$LOG_FILE" "setNumProp" 60
+WAIT_RC=$?
+if [ $WAIT_RC -eq 2 ]; then
+    dump_ios_log "$LOG_FILE" "styled"
+    echo "FATAL: Native library failed to load — aborting"
+    exit 1
+fi
 sleep 5
 
 assert_log "$LOG_FILE" "setNumProp.*fontSize" "setNumProp dispatched for fontSize"

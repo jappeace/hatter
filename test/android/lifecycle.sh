@@ -13,7 +13,13 @@ install_apk "$COUNTER_APK" || { echo "FAIL: install_apk"; exit 1; }
 "$ADB" -s "$EMULATOR_SERIAL" logcat -c
 "$ADB" -s "$EMULATOR_SERIAL" shell am start -n "$PACKAGE/$ACTIVITY"
 
-wait_for_logcat "Android UI bridge initialized" 60 || true
+wait_for_logcat "Android UI bridge initialized" 60
+WAIT_RC=$?
+if [ $WAIT_RC -eq 2 ]; then
+    dump_logcat "lifecycle"
+    echo "FATAL: Native library failed to load — aborting"
+    exit 1
+fi
 
 # Dump final logcat for assertions
 LOGCAT_FILE="$WORK_DIR/lifecycle_logcat.txt"

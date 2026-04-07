@@ -13,7 +13,13 @@ install_apk "$TEXTINPUT_APK" || { echo "FAIL: install_apk"; exit 1; }
 "$ADB" -s "$EMULATOR_SERIAL" logcat -c
 "$ADB" -s "$EMULATOR_SERIAL" shell am start -n "$PACKAGE/$ACTIVITY"
 
-wait_for_logcat "setRoot" 120 || true
+wait_for_logcat "setRoot" 120
+WAIT_RC=$?
+if [ $WAIT_RC -eq 2 ]; then
+    dump_logcat "textinput"
+    echo "FATAL: Native library failed to load — aborting"
+    exit 1
+fi
 sleep 5
 
 LOGCAT_FILE="$WORK_DIR/textinput_logcat.txt"

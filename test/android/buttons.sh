@@ -20,7 +20,14 @@ LOGCAT_STREAM_PID=$!
 "$ADB" -s "$EMULATOR_SERIAL" shell am start -n "$PACKAGE/$ACTIVITY"
 
 # Wait for initial render
-wait_for_logcat "setStrProp.*Counter: 0" 120 || true
+wait_for_logcat "setStrProp.*Counter: 0" 120
+WAIT_RC=$?
+if [ $WAIT_RC -eq 2 ]; then
+    dump_logcat "buttons"
+    echo "FATAL: Native library failed to load — aborting"
+    kill "$LOGCAT_STREAM_PID" 2>/dev/null || true
+    exit 1
+fi
 sleep 5
 
 assert_logcat "$LOGCAT_FILE" "setStrProp.*Counter: 0" "Counter: 0 at start"

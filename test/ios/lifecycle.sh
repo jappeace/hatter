@@ -25,8 +25,24 @@ xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID"
 
 # Poll for lifecycle events
 lifecycle_done=0
-if wait_for_log "$LOG_FILE" "Lifecycle: Create" 60 && wait_for_log "$LOG_FILE" "Lifecycle: Resume" 5; then
-    lifecycle_done=1
+wait_for_log "$LOG_FILE" "Lifecycle: Create" 60
+WAIT_RC=$?
+if [ $WAIT_RC -eq 2 ]; then
+    dump_ios_log "$LOG_FILE" "lifecycle"
+    echo "FATAL: Native library failed to load — aborting"
+    exit 1
+fi
+if [ $WAIT_RC -eq 0 ]; then
+    wait_for_log "$LOG_FILE" "Lifecycle: Resume" 5
+    WAIT_RC2=$?
+    if [ $WAIT_RC2 -eq 2 ]; then
+        dump_ios_log "$LOG_FILE" "lifecycle"
+        echo "FATAL: Native library failed to load — aborting"
+        exit 1
+    fi
+    if [ $WAIT_RC2 -eq 0 ]; then
+        lifecycle_done=1
+    fi
 fi
 
 if [ $lifecycle_done -eq 0 ]; then

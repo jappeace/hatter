@@ -274,15 +274,22 @@ PHASE3_EXIT=0
 
 # run_with_retry LABEL COMMAND [ARGS...]
 # Runs the command up to 10 times. Succeeds on first pass, fails only if all 10 fail.
+# If the command outputs "FATAL:", retrying is pointless (e.g. native library failed
+# to load), so we stop immediately and report the error.
 run_with_retry() {
     local label="$1"; shift
     local max_attempts=10
     local attempt=1
+    local output_file="$WORK_DIR/retry_${label}.log"
     while [ $attempt -le $max_attempts ]; do
         echo "[$label] attempt $attempt/$max_attempts"
-        if "$@"; then
+        if "$@" 2>&1 | tee "$output_file"; then
             echo "[$label] PASSED on attempt $attempt"
             return 0
+        fi
+        if grep -q "^FATAL:" "$output_file" 2>/dev/null; then
+            echo "[$label] FATAL error detected — not retrying"
+            return 1
         fi
         echo "[$label] attempt $attempt FAILED"
         attempt=$((attempt + 1))

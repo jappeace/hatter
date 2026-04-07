@@ -26,7 +26,13 @@ sleep 2
 xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" --autotest-buttons
 
 # Wait for final value Counter: -1
-wait_for_log "$LOG_FILE" "setStrProp.*Counter: -1" 60 || true
+wait_for_log "$LOG_FILE" "setStrProp.*Counter: -1" 60
+WAIT_RC=$?
+if [ $WAIT_RC -eq 2 ]; then
+    dump_ios_log "$LOG_FILE" "buttons"
+    echo "FATAL: Native library failed to load — aborting"
+    exit 1
+fi
 
 kill "$LOG_STREAM_PID" 2>/dev/null || true
 sleep 1
