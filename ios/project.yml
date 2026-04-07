@@ -15,6 +15,11 @@ targets:
       properties:
         CFBundleShortVersionString: "1.0"
         CFBundleVersion: "1"
+        NSLocationWhenInUseUsageDescription: "This app needs your location."
+        NSBluetoothAlwaysUsageDescription: "This app needs Bluetooth access."
+        NSCameraUsageDescription: "This app needs camera access."
+        NSMicrophoneUsageDescription: "This app needs microphone access."
+        NSContactsUsageDescription: "This app needs access to your contacts."
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
           UISceneConfigurations: {}

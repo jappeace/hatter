@@ -28,6 +28,13 @@ module HaskellMobile
   , Key(..)
   , TranslateFailure(..)
   , translate
+  -- Re-exports from Permission
+  , Permission(..)
+  , PermissionStatus(..)
+  , PermissionState(..)
+  , requestPermission
+  , checkPermission
+  , globalPermissionState
   )
 where
 
@@ -47,6 +54,15 @@ import HaskellMobile.Lifecycle
   )
 import HaskellMobile.I18n (Key(..), TranslateFailure(..), translate)
 import HaskellMobile.Locale (Language(..), Locale(..), LocaleFailure(..), getSystemLocale, parseLocale, localeToText, languageToCode, languageFromCode)
+import HaskellMobile.Permission
+  ( Permission(..)
+  , PermissionStatus(..)
+  , PermissionState(..)
+  , newPermissionState
+  , requestPermission
+  , checkPermission
+  , dispatchPermissionResult
+  )
 import HaskellMobile.Render (RenderState, newRenderState, renderWidget, dispatchEvent, dispatchTextEvent)
 import HaskellMobile.Types (MobileApp(..), runMobileApp, getMobileApp)
 import System.IO.Unsafe (unsafePerformIO)
@@ -56,6 +72,12 @@ import System.IO.Unsafe (unsafePerformIO)
 globalRenderState :: RenderState
 globalRenderState = unsafePerformIO newRenderState
 {-# NOINLINE globalRenderState #-}
+
+-- | Global permission state, shared across all permission requests.
+-- Safe because all UI calls happen on the main thread.
+globalPermissionState :: PermissionState
+globalPermissionState = unsafePerformIO newPermissionState
+{-# NOINLINE globalPermissionState #-}
 
 -- | Takes a name as CString, returns "Hello from Haskell, <name>!" as CString.
 -- Caller is responsible for freeing the returned CString.
@@ -107,3 +129,11 @@ haskellOnUITextChange _ctxPtr callbackId cstr = do
   dispatchTextEvent globalRenderState (fromIntegral callbackId) (pack str)
 
 foreign export ccall haskellOnUITextChange :: Ptr () -> CInt -> CString -> IO ()
+
+-- | Handle a permission result from native code.  Dispatches to the
+-- callback registered by 'requestPermission'.
+haskellOnPermissionResult :: Ptr () -> CInt -> CInt -> IO ()
+haskellOnPermissionResult _ctxPtr requestId statusCode =
+  dispatchPermissionResult globalPermissionState requestId statusCode
+
+foreign export ccall haskellOnPermissionResult :: Ptr () -> CInt -> CInt -> IO ()
