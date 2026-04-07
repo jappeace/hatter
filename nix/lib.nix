@@ -86,6 +86,8 @@ in {
     , extraLinkObjects ? []
     , extraGhcIncludeDirs ? []
     , crossDeps ? null          # output of cross-deps.nix (lib/, hi/, pkgdb/)
+    , maxNodes ? 256            # static pool size (ignored when dynamicNodePool=true)
+    , dynamicNodePool ? false   # use malloc/realloc instead of fixed array
     }:
     let
       jniPackageMacro = builtins.replaceStrings ["."] ["_"] javaPackageName;
@@ -118,6 +120,9 @@ in {
           ${haskellMobileSrc}/cbits/jni_bridge.c
 
         ${ndkCc} -c -fPIC \
+          ${if dynamicNodePool then "-DDYNAMIC_NODE_POOL"
+            else if maxNodes != 256 then "-DMAX_NODES=${toString maxNodes}"
+            else ""} \
           -I${sysroot}/usr/include \
           -I$RTS_INCLUDE \
           -I${haskellMobileSrc}/include \
@@ -492,7 +497,31 @@ in {
     { iosLib
     , iosSrc
     , name ? "simulator-app"
+    , maxNodes ? 256            # static pool size (ignored when dynamicNodePool=true)
+    , dynamicNodePool ? false   # use malloc/realloc instead of fixed array
     }:
+    let
+      nodePoolCFlags =
+        if dynamicNodePool then ["-DDYNAMIC_NODE_POOL"]
+        else if maxNodes != 256 then ["-DMAX_NODES=${toString maxNodes}"]
+        else [];
+      # Inject OTHER_CFLAGS into project.yml when non-default pool settings used.
+      # Uses single-quoted -c and argv to avoid shell quoting issues.
+      flagYaml = ''[${builtins.concatStringsSep ", " (map (f: ''"${f}"'') nodePoolCFlags)}]'';
+      patchProjectYml =
+        if nodePoolCFlags == [] then ""
+        else ''
+          ${pkgs.python3}/bin/python3 -c '
+import sys
+yml = open(sys.argv[1]).read()
+yml = yml.replace(
+    "OTHER_LDFLAGS:",
+    "OTHER_CFLAGS: " + sys.argv[2] + "\n        OTHER_LDFLAGS:"
+)
+open(sys.argv[1], "w").write(yml)
+' "$out/share/ios/project.yml" '${flagYaml}'
+        '';
+    in
     pkgs.stdenv.mkDerivation {
       inherit name;
 
@@ -503,11 +532,13 @@ in {
 
         cp -r ${iosSrc}/HaskellMobile $out/share/ios/
         cp ${iosSrc}/project.yml $out/share/ios/project.yml
+        chmod u+w $out/share/ios/project.yml
 
         cp ${iosLib}/lib/libHaskellMobile.a $out/share/ios/lib/
         cp ${iosLib}/include/HaskellMobile.h $out/share/ios/include/
         cp ${iosLib}/include/UIBridge.h $out/share/ios/include/
         cp ${iosLib}/include/PermissionBridge.h $out/share/ios/include/
+        ${patchProjectYml}
       '';
 
       installPhase = "true";
