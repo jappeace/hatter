@@ -13,7 +13,7 @@ xcrun simctl install "$SIM_UDID" "$PERMISSION_APP"
 echo "Permission app installed."
 
 # Pre-grant camera permission so the system dialog does not appear
-xcrun simctl privacy grant "$SIM_UDID" camera "$BUNDLE_ID"
+xcrun simctl privacy "$SIM_UDID" grant camera "$BUNDLE_ID"
 
 PERMISSION_START=$(date "+%Y-%m-%d %H:%M:%S")
 
