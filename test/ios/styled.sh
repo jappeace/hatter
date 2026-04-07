@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# iOS styled test: install counter app, assert setNumProp calls for fontSize + padding.
+# iOS styled test: install counter app, assert setNumProp calls for fontSize, padding, and gravity.
 #
-# The counter app wraps its label with Styled (WidgetStyle (Just 24.0) (Just 16.0)),
-# so rendering must trigger setNumProp for both properties.
+# The counter app wraps its label with Styled (WidgetStyle (Just 16.0) (Just AlignCenter)),
+# so rendering must trigger setNumProp for fontSize, padding, and gravity.
 #
 # Required env vars (set by simulator-all.nix harness):
 #   SIM_UDID, BUNDLE_ID, COUNTER_APP, WORK_DIR
@@ -26,11 +26,18 @@ sleep 5
 
 xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID"
 
-wait_for_log "$LOG_FILE" "setNumProp" 60 || true
+wait_for_log "$LOG_FILE" "setNumProp" 60
+WAIT_RC=$?
+if [ $WAIT_RC -eq 2 ]; then
+    dump_ios_log "$LOG_FILE" "styled"
+    echo "FATAL: Native library failed to load — aborting"
+    exit 1
+fi
 sleep 5
 
 assert_log "$LOG_FILE" "setNumProp.*fontSize" "setNumProp dispatched for fontSize"
 assert_log "$LOG_FILE" "setNumProp.*padding"  "setNumProp dispatched for padding"
+assert_log "$LOG_FILE" "setNumProp.*gravity"  "setNumProp dispatched for gravity"
 
 xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
 kill "$LOG_STREAM_PID" 2>/dev/null || true

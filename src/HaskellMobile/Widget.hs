@@ -11,6 +11,7 @@ module HaskellMobile.Widget
   , TextInputConfig(..)
   , Widget(..)
   , WidgetStyle(..)
+  , TextAlignment(..)
   , defaultStyle
   )
 where
@@ -63,18 +64,28 @@ data TextInputConfig = TextInputConfig
     -- ^ Optional font override.
   }
 
+-- | Horizontal text alignment for text-bearing widgets.
+data TextAlignment
+  = AlignStart   -- ^ Left-aligned (LTR) or right-aligned (RTL).
+  | AlignCenter  -- ^ Centered horizontally.
+  | AlignEnd     -- ^ Right-aligned (LTR) or left-aligned (RTL).
+  deriving (Show, Eq)
+
 -- | Visual style overrides for a widget node.
 -- Font size is not here — it belongs in the config records of
 -- text-bearing widgets ('TextConfig', 'ButtonConfig', 'TextInputConfig').
 data WidgetStyle = WidgetStyle
-  { wsPadding  :: Maybe Double
+  { wsPadding    :: Maybe Double
     -- ^ Uniform padding in platform-native units (px on Android, pt on iOS).
+  , wsTextAlign  :: Maybe TextAlignment
+    -- ^ Horizontal text alignment override.
   } deriving (Show, Eq)
 
 -- | No style overrides — all fields are 'Nothing'.
 defaultStyle :: WidgetStyle
 defaultStyle = WidgetStyle
-  { wsPadding  = Nothing
+  { wsPadding    = Nothing
+  , wsTextAlign  = Nothing
   }
 
 -- | A declarative description of a UI element.

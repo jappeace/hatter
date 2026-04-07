@@ -26,7 +26,16 @@ sleep 5
 xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" --autotest
 
 render_done=0
-wait_for_log "$STREAM_LOG" "setRoot" 60 && render_done=1 || true
+wait_for_log "$STREAM_LOG" "setRoot" 60
+WAIT_RC=$?
+if [ $WAIT_RC -eq 2 ]; then
+    dump_ios_log "$STREAM_LOG" "scroll"
+    echo "FATAL: Native library failed to load — aborting"
+    exit 1
+fi
+if [ $WAIT_RC -eq 0 ]; then
+    render_done=1
+fi
 
 if [ $render_done -eq 0 ]; then
     echo "WARNING: setRoot not found — retrying with relaunch"

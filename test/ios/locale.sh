@@ -27,7 +27,13 @@ sleep 5
 
 xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID"
 
-wait_for_log "$LOG_FILE" "Locale parsed:" 60 || true
+wait_for_log "$LOG_FILE" "Locale parsed:" 60
+WAIT_RC=$?
+if [ $WAIT_RC -eq 2 ]; then
+    dump_ios_log "$LOG_FILE" "locale"
+    echo "FATAL: Native library failed to load — aborting"
+    exit 1
+fi
 
 assert_log "$LOG_FILE" "Locale raw:" "Locale raw tag logged"
 assert_log "$LOG_FILE" "Locale parsed:" "Locale parsed tag logged"

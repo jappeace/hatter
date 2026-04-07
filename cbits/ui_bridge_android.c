@@ -70,6 +70,9 @@ static jmethodID g_method_registerTextWatcher;
 static jmethodID g_method_setInputType;
 static jmethodID g_method_setTextSize;
 static jmethodID g_method_setPadding;
+static jmethodID g_method_setGravity_TextView;
+static jmethodID g_method_setGravity_LinearLayout;
+static jmethodID g_method_setLayoutParams;
 
 /* LinearLayout orientation constants */
 static jint ORIENTATION_VERTICAL   = 1;
@@ -202,6 +205,18 @@ static int resolve_jni_ids(JNIEnv *env, jobject activity)
     g_method_setPadding = (*env)->GetMethodID(env, viewClass,
         "setPadding", "(IIII)V");
 
+    /* TextView.setGravity(int) — sets text alignment */
+    g_method_setGravity_TextView = (*env)->GetMethodID(env, g_class_TextView,
+        "setGravity", "(I)V");
+
+    /* LinearLayout.setGravity(int) — centers children */
+    g_method_setGravity_LinearLayout = (*env)->GetMethodID(env, g_class_LinearLayout,
+        "setGravity", "(I)V");
+
+    /* View.setLayoutParams(ViewGroup.LayoutParams) — needed to set MATCH_PARENT width */
+    g_method_setLayoutParams = (*env)->GetMethodID(env, viewClass,
+        "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V");
+
     return 0;
 }
 
@@ -327,6 +342,31 @@ static void android_set_num_prop(int32_t nodeId, int32_t propId, double value)
         }
         (*env)->CallVoidMethod(env, view, g_method_setInputType, androidType);
         LOGI("setNumProp(node=%d, inputType=%d, android=%d)", nodeId, (int)value, androidType);
+        break;
+    }
+    case UI_PROP_GRAVITY: {
+        /* Haskell 0 = AlignStart  -> Gravity.START              (0x00800003)
+         * Haskell 1 = AlignCenter -> Gravity.CENTER_HORIZONTAL  (1)
+         * Haskell 2 = AlignEnd    -> Gravity.END                (0x00800005)
+         */
+        jint gravity;
+        switch ((int)value) {
+        case 1:  gravity = 1;          break; /* CENTER_HORIZONTAL */
+        case 2:  gravity = 0x00800005; break; /* END */
+        default: gravity = 0x00800003; break; /* START */
+        }
+        if ((*env)->IsInstanceOf(env, view, g_class_TextView)) {
+            (*env)->CallVoidMethod(env, view, g_method_setGravity_TextView, gravity);
+            /* Set width to MATCH_PARENT so gravity has room to take effect */
+            jobject layoutParams = (*env)->NewObject(env,
+                g_class_ViewGroup_LayoutParams, g_ctor_ViewGroup_LayoutParams,
+                (jint)-1, (jint)-2); /* MATCH_PARENT, WRAP_CONTENT */
+            (*env)->CallVoidMethod(env, view, g_method_setLayoutParams, layoutParams);
+            (*env)->DeleteLocalRef(env, layoutParams);
+        } else if ((*env)->IsInstanceOf(env, view, g_class_LinearLayout)) {
+            (*env)->CallVoidMethod(env, view, g_method_setGravity_LinearLayout, gravity);
+        }
+        LOGI("setNumProp(node=%d, gravity=%d)", nodeId, gravity);
         break;
     }
     default:

@@ -30,9 +30,45 @@ install_apk() {
     return 0
 }
 
+# Fatal patterns that indicate the native library failed to load.
+# When any of these appear in logcat, further retries are pointless.
+FATAL_PATTERNS="UnsatisfiedLinkError|dlopen failed|cannot locate symbol|SIGABRT|SIGSEGV|Fatal signal"
+
+# check_fatal_logcat
+# Checks logcat for fatal native-library errors.
+# If found, prints the relevant lines and returns 0 (meaning "fatal found").
+# Returns 1 if no fatal error detected.
+check_fatal_logcat() {
+    local logcat_poll="$WORK_DIR/logcat_fatal.txt"
+    "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:E' > "$logcat_poll" 2>&1
+    if grep -qE "$FATAL_PATTERNS" "$logcat_poll" 2>/dev/null; then
+        echo ""
+        echo "=== FATAL: Native library loading error detected ==="
+        grep -E "$FATAL_PATTERNS" "$logcat_poll" | tail -20
+        echo "=== End fatal logcat ==="
+        echo ""
+        return 0
+    fi
+    return 1
+}
+
+# dump_logcat LABEL
+# Dumps recent logcat errors to stdout for CI visibility.
+dump_logcat() {
+    local label="$1"
+    local logcat_dump="$WORK_DIR/logcat_dump_${label}.txt"
+    "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:W' > "$logcat_dump" 2>&1
+    echo ""
+    echo "=== Logcat dump ($label) — last 40 warning/error lines ==="
+    tail -40 "$logcat_dump"
+    echo "=== End logcat dump ==="
+    echo ""
+}
+
 # wait_for_logcat PATTERN TIMEOUT_SECONDS
 # Polls logcat dump every 2s until PATTERN is found.
-# Returns 0 on success, 1 on timeout.
+# Also checks for fatal native-library errors each poll cycle.
+# Returns 0 on success, 1 on timeout, 2 on fatal crash detected.
 wait_for_logcat() {
     local pattern="$1"
     local timeout_seconds="$2"
@@ -44,10 +80,21 @@ wait_for_logcat() {
             echo "Found '$pattern' after ~${elapsed}s"
             return 0
         fi
+        # Check for fatal errors every 10s to avoid spamming adb
+        if [ $((elapsed % 10)) -eq 0 ] && [ $elapsed -gt 0 ]; then
+            if check_fatal_logcat; then
+                echo "ERROR: Fatal crash detected while waiting for '$pattern'"
+                return 2
+            fi
+        fi
         sleep 2
         elapsed=$((elapsed + 2))
     done
     echo "WARNING: '$pattern' not found after ${timeout_seconds}s"
+    # One last check: was it a crash?
+    if check_fatal_logcat; then
+        return 2
+    fi
     return 1
 }
 
