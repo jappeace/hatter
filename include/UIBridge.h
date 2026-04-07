@@ -20,6 +20,7 @@
 #define UI_PROP_FONT_SIZE   0
 #define UI_PROP_PADDING     1
 #define UI_PROP_INPUT_TYPE  2
+#define UI_PROP_GRAVITY     3
 
 /* Event types */
 #define UI_EVENT_CLICK       0

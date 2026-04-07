@@ -229,6 +229,37 @@ static void ios_set_num_prop(int32_t nodeId, int32_t propId, double value)
         LOGI("setNumProp(node=%d, padding=%.1f)", nodeId, value);
         break;
     }
+    case UI_PROP_GRAVITY: {
+        /* Haskell 0 = AlignStart, 1 = AlignCenter, 2 = AlignEnd */
+        int gravity = (int)value;
+        if ([view isKindOfClass:[UILabel class]]) {
+            NSTextAlignment align;
+            switch (gravity) {
+            case 1:  align = NSTextAlignmentCenter; break;
+            case 2:  align = NSTextAlignmentRight;  break;
+            default: align = NSTextAlignmentLeft;   break;
+            }
+            ((UILabel *)view).textAlignment = align;
+        } else if ([view isKindOfClass:[UIButton class]]) {
+            UIControlContentHorizontalAlignment align;
+            switch (gravity) {
+            case 1:  align = UIControlContentHorizontalAlignmentCenter;  break;
+            case 2:  align = UIControlContentHorizontalAlignmentTrailing; break;
+            default: align = UIControlContentHorizontalAlignmentLeading;  break;
+            }
+            ((UIButton *)view).contentHorizontalAlignment = align;
+        } else if ([view isKindOfClass:[UIStackView class]]) {
+            UIStackViewAlignment align;
+            switch (gravity) {
+            case 1:  align = UIStackViewAlignmentCenter;  break;
+            case 2:  align = UIStackViewAlignmentTrailing; break;
+            default: align = UIStackViewAlignmentLeading;  break;
+            }
+            ((UIStackView *)view).alignment = align;
+        }
+        LOGI("setNumProp(node=%d, gravity=%d)", nodeId, gravity);
+        break;
+    }
     default:
         LOGI("setNumProp: unknown propId %d", propId);
         break;

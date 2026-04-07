@@ -43,7 +43,7 @@ import HaskellMobile.Lifecycle
   , freeMobileContext
   , haskellOnLifecycle
   )
-import HaskellMobile.Widget (ButtonConfig(..), FontConfig(..), InputType(..), TextConfig(..), TextInputConfig(..), Widget(..), WidgetStyle(..), defaultStyle)
+import HaskellMobile.Widget (ButtonConfig(..), FontConfig(..), InputType(..), TextAlignment(..), TextConfig(..), TextInputConfig(..), Widget(..), WidgetStyle(..), defaultStyle)
 import HaskellMobile.Render (newRenderState, renderWidget, dispatchEvent, dispatchTextEvent)
 
 main :: IO ()
@@ -53,7 +53,7 @@ main = do
   defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, scrollViewTests, textInputTests, styledTests, registrationTests, localeTests, i18nTests]
+tests = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, scrollViewTests, textInputTests, styledTests, textAlignTests, registrationTests, localeTests, i18nTests]
 
 qcProps :: TestTree
 qcProps = testGroup "(checked by QuickCheck)"
@@ -398,13 +398,13 @@ styledTests :: TestTree
 styledTests = testGroup "Styled"
   [ testCase "Styled Text renders without error" $ do
       rs <- newRenderState
-      renderWidget rs $ Styled (WidgetStyle (Just 8.0))
+      renderWidget rs $ Styled (WidgetStyle (Just 8.0) Nothing)
         (Text TextConfig { tcLabel = "styled", tcFontConfig = Just (FontConfig 20.0) })
 
   , testCase "Styled Button fires callback" $ do
       ref <- newIORef (0 :: Int)
       rs <- newRenderState
-      renderWidget rs $ Styled (WidgetStyle Nothing)
+      renderWidget rs $ Styled (WidgetStyle Nothing Nothing)
         (Button ButtonConfig
           { bcLabel = "tap", bcAction = modifyIORef' ref (+ 1)
           , bcFontConfig = Just (FontConfig 16.0) })
@@ -427,8 +427,8 @@ styledTests = testGroup "Styled"
   , testCase "nested Styled applies both styles" $ do
       rs <- newRenderState
       renderWidget rs $
-        Styled (WidgetStyle (Just 12.0))
-          (Styled (WidgetStyle Nothing)
+        Styled (WidgetStyle (Just 12.0) Nothing)
+          (Styled (WidgetStyle Nothing Nothing)
             (Text TextConfig { tcLabel = "double styled", tcFontConfig = Just (FontConfig 18.0) }))
 
   , testCase "defaultStyle is a no-op" $ do
@@ -451,6 +451,33 @@ styledTests = testGroup "Styled"
       new <- readIORef refNew
       old @?= False
       new @?= True
+  ]
+
+-- | Tests for TextAlignment support in Styled widgets.
+textAlignTests :: TestTree
+textAlignTests = testGroup "TextAlignment"
+  [ testCase "Styled with AlignCenter renders without error" $ do
+      rs <- newRenderState
+      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignCenter))
+        (Text TextConfig { tcLabel = "centered", tcFontConfig = Nothing })
+
+  , testCase "Styled with AlignCenter on Button fires callback" $ do
+      ref <- newIORef (0 :: Int)
+      rs <- newRenderState
+      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignCenter))
+        (Button ButtonConfig
+          { bcLabel = "tap", bcAction = modifyIORef' ref (+ 1), bcFontConfig = Nothing })
+      dispatchEvent rs 0
+      count <- readIORef ref
+      count @?= 1
+
+  , testCase "defaultStyle has no text alignment" $
+      wsTextAlign defaultStyle @?= Nothing
+
+  , testCase "Styled with AlignEnd renders without error" $ do
+      rs <- newRenderState
+      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignEnd))
+        (Text TextConfig { tcLabel = "end aligned", tcFontConfig = Nothing })
   ]
 
 -- | Tests for the IORef registration pattern.

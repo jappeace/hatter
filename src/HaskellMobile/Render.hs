@@ -19,7 +19,7 @@ import Data.Int (Int32)
 import Data.IntMap.Strict (IntMap)
 import Data.IntMap.Strict qualified as IntMap
 import Data.Text (Text)
-import HaskellMobile.Widget (ButtonConfig(..), FontConfig(..), InputType(..), TextConfig(..), TextInputConfig(..), Widget(..), WidgetStyle(..))
+import HaskellMobile.Widget (ButtonConfig(..), FontConfig(..), InputType(..), TextAlignment(..), TextConfig(..), TextInputConfig(..), Widget(..), WidgetStyle(..))
 import HaskellMobile.UIBridge qualified as Bridge
 import System.IO (hPutStrLn, stderr)
 
@@ -128,13 +128,22 @@ renderChildren rs parentId children =
     Bridge.addChild parentId childId
   ) children
 
+-- | Map a 'TextAlignment' to the numeric code sent to the platform bridge.
+textAlignToDouble :: TextAlignment -> Double
+textAlignToDouble AlignStart  = 0
+textAlignToDouble AlignCenter = 1
+textAlignToDouble AlignEnd    = 2
+
 -- | Apply 'WidgetStyle' overrides to a rendered node by calling
 -- 'Bridge.setNumProp' for each 'Just' field.
 applyStyle :: Int32 -> WidgetStyle -> IO ()
-applyStyle nodeId style =
+applyStyle nodeId style = do
   case wsPadding style of
     Just padding -> Bridge.setNumProp nodeId Bridge.PropPadding padding
     Nothing      -> pure ()
+  case wsTextAlign style of
+    Just alignment -> Bridge.setNumProp nodeId Bridge.PropGravity (textAlignToDouble alignment)
+    Nothing        -> pure ()
 
 -- | Full render: clear the screen, reset callbacks, build the widget
 -- tree, and set the root node.
