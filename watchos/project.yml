@@ -15,8 +15,7 @@ targets:
       properties:
         CFBundleShortVersionString: "1.0"
         CFBundleVersion: "1"
-        WKApplication:
-          WKCompanionAppBundleIdentifier: ""
+        WKApplication: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: me.jappie.haskellmobile
