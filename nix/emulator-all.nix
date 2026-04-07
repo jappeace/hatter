@@ -274,7 +274,7 @@ run_with_retry() {
     local label="$1"; shift
     local max_attempts=10
     local attempt=1
-    local output_file="$WORK_DIR/retry_${label}.log"
+    local output_file="$WORK_DIR/retry_''${label}.log"
     while [ $attempt -le $max_attempts ]; do
         echo "[$label] attempt $attempt/$max_attempts"
         if "$@" 2>&1 | tee "$output_file"; then
