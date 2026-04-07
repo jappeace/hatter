@@ -507,7 +507,7 @@ in {
         else [];
       # Inject OTHER_CFLAGS into project.yml when non-default pool settings used.
       # Uses single-quoted -c and argv to avoid shell quoting issues.
-      flagYaml = ''["$$(inherited)", ${builtins.concatStringsSep ", " (map (f: ''"${f}"'') nodePoolCFlags)}]'';
+      flagYaml = ''[${builtins.concatStringsSep ", " (map (f: ''"${f}"'') nodePoolCFlags)}]'';
       patchProjectYml =
         if nodePoolCFlags == [] then ""
         else ''
