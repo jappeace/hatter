@@ -17,7 +17,7 @@ STREAM_LOG="$WORK_DIR/scroll_stream.txt"
 > "$STREAM_LOG"
 xcrun simctl spawn "$SIM_UDID" log stream \
     --level info \
-    --predicate "subsystem == \"$BUNDLE_ID\"" \
+    --predicate "subsystem == \"$LOG_SUBSYSTEM\"" \
     --style compact \
     > "$STREAM_LOG" 2>&1 &
 LOG_STREAM_PID=$!

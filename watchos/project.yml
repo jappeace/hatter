@@ -17,9 +17,10 @@ targets:
         CFBundleVersion: "1"
         WKApplication: true
         WKRunsIndependentlyOfCompanionApp: true
+        WKCompanionAppBundleIdentifier: me.jappie.haskellmobile
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: me.jappie.haskellmobile
+        PRODUCT_BUNDLE_IDENTIFIER: me.jappie.haskellmobile.watchkitapp
         SWIFT_OBJC_BRIDGING_HEADER: HaskellMobile/HaskellMobile-Bridging-Header.h
         LIBRARY_SEARCH_PATHS: ["$(inherited)", "$(PROJECT_DIR)/lib"]
         HEADER_SEARCH_PATHS: ["$(inherited)", "$(PROJECT_DIR)/include"]

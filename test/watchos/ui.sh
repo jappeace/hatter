@@ -15,7 +15,7 @@ LOG_FILE="$WORK_DIR/ui_log.txt"
 > "$LOG_FILE"
 xcrun simctl spawn "$SIM_UDID" log stream \
     --level info \
-    --predicate "subsystem == \"$BUNDLE_ID\"" \
+    --predicate "subsystem == \"$LOG_SUBSYSTEM\"" \
     --style compact \
     > "$LOG_FILE" 2>&1 &
 LOG_STREAM_PID=$!

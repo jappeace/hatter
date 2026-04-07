@@ -61,7 +61,7 @@ in pkgs.stdenv.mkDerivation {
 set -euo pipefail
 
 # --- Configuration ---
-BUNDLE_ID="me.jappie.haskellmobile"
+BUNDLE_ID="me.jappie.haskellmobile.watchkitapp"
 SCHEME="HaskellMobile"
 DEVICE_TYPE="Apple Watch Series 9 (45mm)"
 COUNTER_SHARE_DIR="${counterSimApp}/share/watchos"
@@ -266,7 +266,9 @@ sleep 5
 # ===========================================================================
 # PHASE 1 + PHASE 2 — Run test scripts
 # ===========================================================================
-export SIM_UDID BUNDLE_ID COUNTER_APP SCROLL_APP TEXTINPUT_APP WORK_DIR
+# Log subsystem differs from bundle ID for watchOS (bundle ID has .watchkitapp suffix)
+LOG_SUBSYSTEM="me.jappie.haskellmobile"
+export SIM_UDID BUNDLE_ID LOG_SUBSYSTEM COUNTER_APP SCROLL_APP TEXTINPUT_APP WORK_DIR
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0

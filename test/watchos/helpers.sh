@@ -3,9 +3,10 @@
 # Source this file; do not run directly.
 #
 # Required env vars (set by watchos-simulator-all.nix harness):
-#   SIM_UDID    — simulator UUID
-#   BUNDLE_ID   — me.jappie.haskellmobile
-#   WORK_DIR    — temp dir for log files
+#   SIM_UDID       — simulator UUID
+#   BUNDLE_ID      — me.jappie.haskellmobile.watchkitapp (for simctl commands)
+#   LOG_SUBSYSTEM  — me.jappie.haskellmobile (for os_log predicates)
+#   WORK_DIR       — temp dir for log files
 
 # wait_for_log LOGFILE PATTERN TIMEOUT_SECONDS
 # Polls LOGFILE for PATTERN every 2s.
@@ -43,13 +44,13 @@ assert_log() {
 }
 
 # get_full_log START_TIME OUTFILE
-# Retrieves persistent log entries since START_TIME for BUNDLE_ID into OUTFILE.
+# Retrieves persistent log entries since START_TIME for LOG_SUBSYSTEM into OUTFILE.
 get_full_log() {
     local start_time="$1"
     local outfile="$2"
     xcrun simctl spawn "$SIM_UDID" log show \
         --start "$start_time" \
-        --predicate "subsystem == \"$BUNDLE_ID\"" \
+        --predicate "subsystem == \"$LOG_SUBSYSTEM\"" \
         --style compact \
         --info \
         > "$outfile" 2>&1 || true
