@@ -135,7 +135,7 @@ textAlignToDouble AlignCenter = 1
 textAlignToDouble AlignEnd    = 2
 
 -- | Apply 'WidgetStyle' overrides to a rendered node by calling
--- 'Bridge.setNumProp' for each 'Just' field.
+-- 'Bridge.setNumProp' / 'Bridge.setStrProp' for each 'Just' field.
 applyStyle :: Int32 -> WidgetStyle -> IO ()
 applyStyle nodeId style = do
   case wsPadding style of
@@ -144,6 +144,12 @@ applyStyle nodeId style = do
   case wsTextAlign style of
     Just alignment -> Bridge.setNumProp nodeId Bridge.PropGravity (textAlignToDouble alignment)
     Nothing        -> pure ()
+  case wsTextColor style of
+    Just color -> Bridge.setStrProp nodeId Bridge.PropColor color
+    Nothing    -> pure ()
+  case wsBackgroundColor style of
+    Just color -> Bridge.setStrProp nodeId Bridge.PropBgColor color
+    Nothing    -> pure ()
 
 -- | Full render: clear the screen, reset callbacks, build the widget
 -- tree, and set the root node.

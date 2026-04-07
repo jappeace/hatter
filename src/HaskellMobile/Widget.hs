@@ -75,17 +75,23 @@ data TextAlignment
 -- Font size is not here — it belongs in the config records of
 -- text-bearing widgets ('TextConfig', 'ButtonConfig', 'TextInputConfig').
 data WidgetStyle = WidgetStyle
-  { wsPadding    :: Maybe Double
+  { wsPadding         :: Maybe Double
     -- ^ Uniform padding in platform-native units (px on Android, pt on iOS).
-  , wsTextAlign  :: Maybe TextAlignment
+  , wsTextAlign       :: Maybe TextAlignment
     -- ^ Horizontal text alignment override.
+  , wsTextColor       :: Maybe Text
+    -- ^ Text color as hex string: @"#RGB"@, @"#RRGGBB"@, or @"#AARRGGBB"@.
+  , wsBackgroundColor :: Maybe Text
+    -- ^ Background color as hex string: @"#RGB"@, @"#RRGGBB"@, or @"#AARRGGBB"@.
   } deriving (Show, Eq)
 
 -- | No style overrides — all fields are 'Nothing'.
 defaultStyle :: WidgetStyle
 defaultStyle = WidgetStyle
-  { wsPadding    = Nothing
-  , wsTextAlign  = Nothing
+  { wsPadding         = Nothing
+  , wsTextAlign       = Nothing
+  , wsTextColor       = Nothing
+  , wsBackgroundColor = Nothing
   }
 
 -- | A declarative description of a UI element.

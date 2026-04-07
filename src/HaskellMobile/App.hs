@@ -28,7 +28,7 @@ counterView :: IO Widget
 counterView = do
   n <- readIORef counter
   pure $ Column
-    [ Styled (WidgetStyle (Just 16.0) (Just AlignCenter))
+    [ Styled (WidgetStyle (Just 16.0) (Just AlignCenter) (Just "#FF0000") (Just "#00FF00"))
         (Text TextConfig
           { tcLabel      = "Counter: " <> pack (show n)
           , tcFontConfig = Just (FontConfig 24.0)
