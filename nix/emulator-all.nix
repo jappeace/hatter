@@ -15,41 +15,53 @@
 # Usage:
 #   nix-build nix/emulator-all.nix -o result-emulator-all
 #   ./result-emulator-all/bin/test-all
-{ sources ? import ../npins }:
+{ sources ? import ../npins, androidArch ? "aarch64" }:
 let
   pkgs = import sources.nixpkgs {
     config.allowUnfree = true;
     config.android_sdk.accept_license = true;
   };
 
-  lib = import ./lib.nix { inherit sources; };
+  abiDir = { aarch64 = "arm64-v8a"; armv7a = "armeabi-v7a"; }.${androidArch};
 
-  counterApk = import ./apk.nix { inherit sources; };
+  # API 34 x86_64 emulator only has arm64-v8a translation (no armeabi-v7a).
+  # API 30 still has 32-bit ARM translation, needed for Wear OS armv7a APKs.
+  emulatorApiLevel = { aarch64 = "34"; armv7a = "30"; }.${androidArch};
+
+  lib = import ./lib.nix { inherit sources androidArch; };
+
+  counterAndroid = import ./android.nix { inherit sources androidArch; };
+  counterApk = lib.mkApk {
+    sharedLibs = [{ lib = counterAndroid; inherit abiDir; }];
+    androidSrc = ../android;
+    apkName = "haskell-mobile.apk";
+    name = "haskell-mobile-apk";
+  };
 
   scrollAndroid = import ./android.nix {
-    inherit sources;
+    inherit sources androidArch;
     mainModule = ../test/ScrollDemoMain.hs;
   };
   scrollApk = lib.mkApk {
-    sharedLib = scrollAndroid;
+    sharedLibs = [{ lib = scrollAndroid; inherit abiDir; }];
     androidSrc = ../android;
     apkName = "haskell-mobile-scroll.apk";
     name = "haskell-mobile-scroll-apk";
   };
 
   textinputAndroid = import ./android.nix {
-    inherit sources;
+    inherit sources androidArch;
     mainModule = ../test/TextInputDemoMain.hs;
   };
   textinputApk = lib.mkApk {
-    sharedLib = textinputAndroid;
+    sharedLibs = [{ lib = textinputAndroid; inherit abiDir; }];
     androidSrc = ../android;
     apkName = "haskell-mobile-textinput.apk";
     name = "haskell-mobile-textinput-apk";
   };
 
   androidComposition = pkgs.androidenv.composeAndroidPackages {
-    platformVersions = [ "34" ];
+    platformVersions = [ emulatorApiLevel ];
     includeEmulator = true;
     includeSystemImages = true;
     systemImageTypes = [ "google_apis_playstore" ];
@@ -60,7 +72,7 @@ let
   sdk = androidComposition.androidsdk;
   sdkRoot = "${sdk}/libexec/android-sdk";
 
-  platformVersion = "34";
+  platformVersion = emulatorApiLevel;
   systemImageType = "google_apis_playstore";
   abiVersion = "x86_64";
   imagePackage = "system-images;android-${platformVersion};${systemImageType};${abiVersion}";
