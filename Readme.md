@@ -106,8 +106,9 @@ base64 -i App.mobileprovision | pbcopy
 ### Boot Sequence
 
 Platform builds produce a **library** (`.so` on Android, `.a` on iOS), not an executable.
-The user writes a plain `main :: IO ()` that calls `runMobileApp` — no
-`foreign export ccall` needed. The C bridge runs it using the GHC RTS API.
+The user writes a `main :: IO (Ptr AppContext)` that calls `startMobileApp` — no
+`foreign export ccall` needed. The C bridge runs it using the GHC RTS API and
+captures the returned context pointer.
 
 #### Android
 
@@ -116,8 +117,7 @@ The user writes a plain `main :: IO ()` that calls `runMobileApp` — no
 
 ```c
 hs_init(NULL, NULL);               // 1. start GHC runtime
-haskellRunMain();                  // 2. run user's Haskell main
-g_ctx = haskellCreateContext();    // 3. create opaque context pointer
+g_ctx = haskellRunMain();          // 2. run user's main, get context pointer
 ```
 
 #### iOS
@@ -126,8 +126,7 @@ Same sequence. The Swift bridge (`ios/HaskellMobile/HaskellBridge.swift`) calls:
 
 ```swift
 hs_init(nil, nil)
-haskellRunMain()
-context = haskellCreateContext()
+context = haskellRunMain()
 ```
 
 The `.a` static library is linked directly into the Xcode project —
@@ -139,55 +138,61 @@ Swift calls the C functions without JNI.
    Does **not** call `main`.
 
 2. **`haskellRunMain`** (`cbits/run_main.c`) — A C function that evaluates the user's
-   Haskell `main` via the GHC RTS API:
+   Haskell `main` via the GHC RTS API and captures the return value:
    ```c
    Capability *cap = rts_lock();
-   rts_evalLazyIO(&cap, &ZCMain_main_closure, NULL);
+   HaskellObj result;
+   rts_evalIO(&cap, &ZCMain_main_closure, &result);
+   void *ctx = rts_getPtr(result);
    rts_unlock(cap);
+   return ctx;
    ```
    GHC compiles `Main.main` into a closure called `ZCMain_main_closure` (Z-encoded
-   symbol for `:Main.main`). This is the same mechanism GHC's own generated `main()`
-   stub uses internally (`hs_main` in `rts/RtsMain.c`). The user's `main` calls
-   `runMobileApp`, which writes their `MobileApp` into a global `IORef`.
-
-3. **`haskellCreateContext`** (`src/HaskellMobile.hs`) — Reads the registered `MobileApp`
-   from the `IORef`, takes its `maContext` (a `MobileContext` holding lifecycle callbacks),
-   wraps it in a `StablePtr`, and returns it as an opaque `Ptr ()` to C.
+   symbol for `:Main.main`). The user's `main` calls `startMobileApp`, which creates
+   an `AppContext` (bundling the `MobileApp`'s callbacks, render state, permission
+   state, and view function) and returns it as a `StablePtr`.
 
 After boot, the platform calls FFI exports (`haskellRenderUI`, `haskellOnUIEvent`,
-`haskellOnLifecycle`) which all read the registered app from the `IORef`.
+`haskellOnLifecycle`) passing the context pointer. All state lives in the `AppContext` —
+no global mutable variables.
 
 #### Desktop (executable)
 
 `app/Main.hs` is a desktop demo. GHC's generated C `main()` stub calls `hs_main`,
 which does `hs_init` + `rts_evalLazyIO(main)` + `hs_exit` automatically. The user's
-`main` calls `runMobileApp`, then simulates lifecycle events.
+`main` calls `startMobileApp`, then simulates lifecycle events using the returned context.
 
 `app/MobileMain.hs` is the mobile entry point for the demo — it's compiled into the
 `.so`/`.a` by the nix build scripts. Downstream users write their own `Main.hs`.
 
-### App Registration (IORef Pattern)
+### AppContext
 
-The framework uses a global `IORef` to hold the user's app (`src/HaskellMobile/Types.hs`):
+The `AppContext` (`src/HaskellMobile/AppContext.hs`) bundles all per-session state:
 
 ```haskell
 data MobileApp = MobileApp
   { maContext :: MobileContext    -- lifecycle callbacks
-  , maView    :: IO Widget        -- returns the current UI tree
+  , maView    :: UserState -> IO Widget  -- returns the current UI tree
   }
 
-runMobileApp :: MobileApp -> IO ()   -- writes into the IORef
-getMobileApp :: IO MobileApp         -- reads from the IORef
+data AppContext = AppContext
+  { acMobileContext   :: MobileContext
+  , acRenderState     :: RenderState
+  , acPermissionState :: PermissionState
+  , acViewFunction    :: IORef (UserState -> IO Widget)
+  }
+
+startMobileApp :: MobileApp -> IO (Ptr AppContext)
 ```
 
 All FFI entry points (`haskellRenderUI`, `haskellOnUIEvent`, `haskellOnLifecycle`)
-call `getMobileApp` to retrieve the registered app, then use its `maContext` and `maView`.
+receive the `AppContext` pointer and read all state from it.
 
 ### Rendering Cycle
 
 When native code calls `renderUI`:
 
-1. `haskellRenderUI` reads `getMobileApp`, calls `maView app` to get the `Widget` tree
+1. `haskellRenderUI` reads the view function from `AppContext`, calls it to get the `Widget` tree
 2. `renderWidget` (`src/HaskellMobile/Render.hs`) clears the screen, walks the tree
    calling `Bridge.createNode` / `Bridge.addChild` / `Bridge.setHandler`, and registers
    callbacks (click handlers, text change handlers) in `IntMap`s keyed by callback ID
@@ -204,7 +209,7 @@ A downstream user provides two things:
 1. **A `MobileApp` value** — their `maView` returns the widget tree, their `maContext`
    handles lifecycle events.
 
-2. **A `Main.hs`** with a plain `main :: IO ()` that calls `runMobileApp`. No
+2. **A `Main.hs`** with a `main :: IO (Ptr AppContext)` that calls `startMobileApp`. No
    `foreign export ccall` needed — `cbits/run_main.c` calls it via the GHC RTS API.
    The nix build scripts accept the user's Main.hs as the `mainModule` parameter.
 
@@ -213,11 +218,12 @@ Example user `Main.hs`:
 ```haskell
 module Main where
 
-import HaskellMobile (runMobileApp)
+import Foreign.Ptr (Ptr)
+import HaskellMobile (startMobileApp, AppContext)
 import MyApp (myApp)  -- user's MobileApp
 
-main :: IO ()
-main = runMobileApp myApp
+main :: IO (Ptr AppContext)
+main = startMobileApp myApp
 ```
 
 Build for Android with:
@@ -227,23 +233,23 @@ import ./nix/android.nix { mainModule = ./my-app/Main.hs; }
 ```
 
 ```
-Android: JNI_OnLoad -> hs_init -> haskellRunMain -> main -> runMobileApp(app) -> haskellCreateContext
-                                                      |
-                                            writes MobileApp into IORef
-                                                      |
-         renderUI  -> haskellRenderUI  -> getMobileApp -> maView -> Widget tree -> Bridge
-         onClick   -> haskellOnUIEvent -> IntMap lookup -> fire IO action -> re-render
+Android: JNI_OnLoad -> hs_init -> haskellRunMain -> main -> startMobileApp(app) -> Ptr AppContext
+                                                                    |
+                                                      bundles MobileApp into AppContext
+                                                                    |
+         renderUI  -> haskellRenderUI(ctx)  -> acViewFunction -> Widget tree -> Bridge
+         onClick   -> haskellOnUIEvent(ctx) -> IntMap lookup -> fire IO action -> re-render
 ```
 
 ### Key Files
 
 | File | Role |
 |------|------|
-| `app/Main.hs` | Desktop demo executable — calls `runMobileApp` and simulates lifecycle |
-| `app/MobileMain.hs` | Demo mobile entry point — a plain `main :: IO ()`. Downstream users write their own |
-| `cbits/run_main.c` | Calls `rts_evalLazyIO(&ZCMain_main_closure)` — runs the user's Haskell main from C without `foreign export` |
-| `src/HaskellMobile.hs` | FFI exports: `haskellGreet`, `haskellCreateContext`, `haskellRenderUI`, `haskellOnUIEvent`, `haskellOnUITextChange` |
-| `src/HaskellMobile/Types.hs` | `MobileApp` record, `IORef` registration (`runMobileApp` / `getMobileApp`) |
+| `app/Main.hs` | Desktop demo executable — calls `startMobileApp` and simulates lifecycle |
+| `app/MobileMain.hs` | Demo mobile entry point — a `main :: IO (Ptr AppContext)`. Downstream users write their own |
+| `cbits/run_main.c` | Calls `rts_evalIO(&ZCMain_main_closure)` — runs the user's Haskell main and captures the returned context pointer |
+| `src/HaskellMobile.hs` | FFI exports: `haskellGreet`, `haskellRenderUI`, `haskellOnUIEvent`, `haskellOnUITextChange`, `startMobileApp` |
+| `src/HaskellMobile/Types.hs` | `MobileApp` record and `UserState` type |
 | `src/HaskellMobile/App.hs` | Default app (counter demo) — replace with your own |
 | `src/HaskellMobile/Lifecycle.hs` | `LifecycleEvent` enum, `MobileContext`, `haskellOnLifecycle` FFI export |
 | `src/HaskellMobile/Widget.hs` | `Widget` ADT: `Text`, `Button`, `TextInput`, `Row`, `Column` |
