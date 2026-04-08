@@ -3,20 +3,20 @@
 # assert that the write and read callbacks fire with correct results.
 #
 # Required env vars (set by simulator-all.nix harness):
-#   SIMULATOR_ID, BUNDLE_ID, LOG_FILE, SIM_APP, WORK_DIR
+#   SIM_UDID, BUNDLE_ID, SECURE_STORAGE_APP, WORK_DIR
 set -euo pipefail
 source "$(dirname "$0")/helpers.sh"
 
 EXIT_CODE=0
 
 # Install and launch
-xcrun simctl install "$SIMULATOR_ID" "$SIM_APP"
-xcrun simctl launch "$SIMULATOR_ID" "$BUNDLE_ID" --autotest-securestorage &
+xcrun simctl install "$SIM_UDID" "$SECURE_STORAGE_APP"
+xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" --autotest-securestorage &
 sleep 2
 
 # Start log stream
 LOG_FILE="$WORK_DIR/securestorage_ios_log.txt"
-xcrun simctl spawn "$SIMULATOR_ID" log stream \
+xcrun simctl spawn "$SIM_UDID" log stream \
   --predicate 'subsystem == "me.jappie.haskellmobile"' \
   --level info > "$LOG_FILE" 2>&1 &
 LOG_PID=$!
@@ -26,7 +26,7 @@ sleep 5
 
 # Tap Store Token then Read Token via autotest (buttons dispatched by callback IDs)
 # Button 0 = Store Token, Button 1 = Read Token
-xcrun simctl launch "$SIMULATOR_ID" "$BUNDLE_ID" --autotest-buttons 2>/dev/null || true
+xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" --autotest-buttons 2>/dev/null || true
 sleep 3
 
 # Get full log
@@ -42,5 +42,7 @@ assert_log "$LOG_FILE" "SecureStorage read result: StorageSuccess" "read callbac
   assert_log "$FULL_LOG" "SecureStorage read result: StorageSuccess" "read callback (full log)"
 assert_log "$LOG_FILE" "test-token-12345" "read returns written token value" || \
   assert_log "$FULL_LOG" "test-token-12345" "token value (full log)"
+
+xcrun simctl uninstall "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
 
 exit $EXIT_CODE
