@@ -226,6 +226,38 @@ main :: IO (Ptr AppContext)
 main = startMobileApp myApp
 ```
 
+### Managing App State
+
+The library owns all state through the `AppContext` — there are no global mutable
+variables. If your app needs its own mutable state (e.g. a counter, form fields,
+a model), create an `IORef` (or `TVar`, `MVar`, etc.) when you build your
+`MobileApp` and close over it in `maView` and your button callbacks:
+
+```haskell
+import Data.IORef (newIORef, readIORef, modifyIORef')
+
+myApp :: IO MobileApp
+myApp = do
+  counter <- newIORef (0 :: Int)
+  pure MobileApp
+    { maContext = loggingMobileContext
+    , maView = \_userState -> do
+        n <- readIORef counter
+        pure $ Column
+          [ Text TextConfig { tcLabel = "Count: " <> pack (show n), tcFontConfig = Nothing }
+          , Button ButtonConfig
+              { bcLabel = "+"
+              , bcAction = modifyIORef' counter (+ 1)
+              , bcFontConfig = Nothing
+              }
+          ]
+    }
+```
+
+The `IORef` lives as long as your `MobileApp` does (i.e. the lifetime of the
+`AppContext`). Each context is independent, so tests can create isolated
+instances without shared mutable state.
+
 Build for Android with:
 
 ```nix
@@ -249,6 +281,7 @@ Android: JNI_OnLoad -> hs_init -> haskellRunMain -> main -> startMobileApp(app) 
 | `app/MobileMain.hs` | Demo mobile entry point — a `main :: IO (Ptr AppContext)`. Downstream users write their own |
 | `cbits/run_main.c` | Calls `rts_evalIO(&ZCMain_main_closure)` — runs the user's Haskell main and captures the returned context pointer |
 | `src/HaskellMobile.hs` | FFI exports: `haskellGreet`, `haskellRenderUI`, `haskellOnUIEvent`, `haskellOnUITextChange`, `startMobileApp` |
+| `src/HaskellMobile/AppContext.hs` | `AppContext` record, `newAppContext`, `derefAppContext` |
 | `src/HaskellMobile/Types.hs` | `MobileApp` record and `UserState` type |
 | `src/HaskellMobile/App.hs` | Default app (counter demo) — replace with your own |
 | `src/HaskellMobile/Lifecycle.hs` | `LifecycleEvent` enum, `MobileContext`, `haskellOnLifecycle` FFI export |
