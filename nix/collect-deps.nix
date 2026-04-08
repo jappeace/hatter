@@ -6,8 +6,7 @@
 #   $out/lib/*.a       — static archives (only those referenced by hs-libraries)
 #   $out/pkgdb/        — GHC package database (.conf + cache)
 #
-# This replaces mk-deps.nix's manual cabal build + conf generation with
-# standard nixpkgs outputs.
+# This uses standard nixpkgs outputs rather than manual cabal builds.
 { pkgs
 , ghcPkgCmd         # full path to ghc-pkg (or cross ghc-pkg)
 , deps              # list of haskellPackages derivations

@@ -2,18 +2,14 @@
 #
 # Given a cabal file (IFD) or pre-generated cabal2nix derivation function,
 # resolves the full transitive closure of non-boot Haskell packages using
-# nixpkgs haskellPackages.
-#
-# By default, returns actual derivations (for use with collect-deps.nix).
-# When returnSources = true, returns { pname, version, src } tuples instead
-# (backward compat for mk-deps.nix consumers).
+# nixpkgs haskellPackages.  Returns actual derivations for use with
+# collect-deps.nix.
 #
 # When neither consumerCabalFile nor consumerCabal2Nix is given, returns [].
 { pkgs
 , haskellPkgs ? pkgs.haskellPackages
 , consumerCabalFile ? null
 , consumerCabal2Nix ? null
-, returnSources ? false
 }:
 let
   # Get cabal2nix function: either provided directly or generated via IFD
@@ -71,10 +67,4 @@ let
 
   allDeps = collectDeps {} nonBootDirect;
 
-in
-  if returnSources then
-    builtins.attrValues (builtins.mapAttrs (_: drv: {
-      inherit (drv) pname version src;
-    }) allDeps)
-  else
-    builtins.attrValues allDeps
+in builtins.attrValues allDeps
