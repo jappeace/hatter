@@ -4,11 +4,12 @@
 , mainModule ? ../app/MobileMain.hs
 , consumerCabalFile ? null
 , consumerCabal2Nix ? null
+, hpkgs ? (_: _: {})       # consumer haskellPackages overrides
 }:
 let
   lib = import ./lib.nix { inherit sources; };
   iosDeps = import ./ios-deps.nix {
-    inherit sources consumerCabalFile consumerCabal2Nix;
+    inherit sources consumerCabalFile consumerCabal2Nix hpkgs;
   };
 in
 lib.mkWatchOSLib {
