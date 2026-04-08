@@ -1,3 +1,9 @@
+# DEPRECATED: Use collect-deps.nix with nixpkgs haskellPackages instead.
+#
+# This file is kept for backward compatibility with consumers that use it
+# directly.  New code should use the nixpkgs haskellPackages infrastructure
+# via cross-deps.nix / ios-deps.nix (which now call collect-deps.nix).
+#
 # Shared builder for cross-compiling Hackage packages.
 #
 # Both cross-deps.nix (Android) and ios-deps.nix (macOS/iOS) call this with

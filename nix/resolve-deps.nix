@@ -1,17 +1,21 @@
-# Resolve consumer Haskell dependencies into a list of { pname, version, src }.
+# Resolve consumer Haskell dependencies.
 #
 # Given a cabal file (IFD) or pre-generated cabal2nix derivation function,
 # resolves the full transitive closure of non-boot Haskell packages using
-# nixpkgs haskellPackages.  The result is passed to mk-deps.nix for building.
+# nixpkgs haskellPackages.
+#
+# By default, returns actual derivations (for use with collect-deps.nix).
+# When returnSources = true, returns { pname, version, src } tuples instead
+# (backward compat for mk-deps.nix consumers).
 #
 # When neither consumerCabalFile nor consumerCabal2Nix is given, returns [].
 { pkgs
+, haskellPkgs ? pkgs.haskellPackages
 , consumerCabalFile ? null
 , consumerCabal2Nix ? null
+, returnSources ? false
 }:
 let
-  haskellPkgs = pkgs.haskellPackages;
-
   # Get cabal2nix function: either provided directly or generated via IFD
   cabal2nixFn =
     if consumerCabal2Nix != null then consumerCabal2Nix
@@ -42,7 +46,7 @@ let
     "template-haskell" "transformers" "mtl" "stm" "exceptions"
     "filepath" "directory" "process" "unix" "time" "binary"
     "parsec" "pretty" "ghc-boot-th" "ghc-boot" "ghc-heap"
-    "hpc" "Cabal" "Cabal-syntax"
+    "hpc" "Cabal" "Cabal-syntax" "os-string"
     "haskell-mobile"
   ];
 
@@ -67,6 +71,10 @@ let
 
   allDeps = collectDeps {} nonBootDirect;
 
-in builtins.attrValues (builtins.mapAttrs (_: drv: {
-  inherit (drv) pname version src;
-}) allDeps)
+in
+  if returnSources then
+    builtins.attrValues (builtins.mapAttrs (_: drv: {
+      inherit (drv) pname version src;
+    }) allDeps)
+  else
+    builtins.attrValues allDeps
