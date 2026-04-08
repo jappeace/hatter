@@ -15,8 +15,6 @@ EXIT_CODE=0
 xcrun simctl install "$SIM_UDID" "$SECURE_STORAGE_APP"
 echo "SecureStorage app installed."
 
-SS_START=$(date "+%Y-%m-%d %H:%M:%S")
-
 STREAM_LOG="$WORK_DIR/securestorage_stream.txt"
 > "$STREAM_LOG"
 xcrun simctl spawn "$SIM_UDID" log stream \
@@ -38,21 +36,20 @@ if [ $WAIT_RC -eq 2 ]; then
     exit 1
 fi
 
+# Give the stream a moment to flush
+sleep 2
 kill "$LOG_STREAM_PID" 2>/dev/null || true
 sleep 1
 
-FULL_LOG="$WORK_DIR/securestorage_full.txt"
-get_full_log "$SS_START" "$FULL_LOG"
+# Dump the stream log for CI debugging
+echo "=== Stream log contents (last 30 lines) ==="
+tail -30 "$STREAM_LOG"
+echo "=== End stream log ==="
 
-# Try full log first, fall back to stream log
-if ! grep -q "SecureStorage write result" "$FULL_LOG" 2>/dev/null; then
-    echo "  'log show' missing callback output, using stream log"
-    FULL_LOG="$STREAM_LOG"
-fi
-
-assert_log "$FULL_LOG" "SecureStorage write result: StorageSuccess" "write callback fires with StorageSuccess"
-assert_log "$FULL_LOG" "SecureStorage read result: StorageSuccess" "read callback fires with StorageSuccess"
-assert_log "$FULL_LOG" "test-token-12345" "read returns written token value"
+# Assert against the stream log (log show often misses platformLog entries)
+assert_log "$STREAM_LOG" "SecureStorage write result: StorageSuccess" "write callback fires with StorageSuccess"
+assert_log "$STREAM_LOG" "SecureStorage read result: StorageSuccess" "read callback fires with StorageSuccess"
+assert_log "$STREAM_LOG" "test-token-12345" "read returns written token value"
 
 xcrun simctl uninstall "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
 
