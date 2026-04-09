@@ -50,16 +50,18 @@ in pkgs.runCommand "haskell-mobile-collected-deps" {
     done
   done
 
-  # Collect boot package .a files from the GHC.  Consumer deps may
-  # reference boot packages (os-string, mtl, stm, etc.) that mkAndroidLib
-  # doesn't whole-archive.  Including them here ensures the linker can
-  # resolve all symbols.
+  # Collect boot package .a files from the GHC into a SEPARATE directory.
+  # Consumer deps may reference boot packages (os-string, mtl, stm, etc.)
+  # that mkAndroidLib doesn't explicitly list.  These must NOT be
+  # whole-archived (they'd add hundreds of MB of unreferenced code),
+  # so they go in $out/lib-boot/ and mkAndroidLib links them normally.
+  mkdir -p $out/lib-boot
   echo "=== Collecting boot package libraries ==="
   find ${ghc}/lib -name 'libHS*.a' ! -name '*_p.a' ! -name '*_thr*' ! -name '*-ghc*' | while read aFile; do
     aName=$(basename "$aFile")
-    if [ ! -f "$out/lib/$aName" ]; then
+    if [ ! -f "$out/lib/$aName" ] && [ ! -f "$out/lib-boot/$aName" ]; then
       echo "  boot: $aName"
-      cp "$aFile" $out/lib/
+      cp "$aFile" $out/lib-boot/
     fi
   done
 
