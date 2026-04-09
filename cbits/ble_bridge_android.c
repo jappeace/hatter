@@ -41,6 +41,11 @@ static int32_t android_ble_check_adapter(void)
     }
 
     jint result = (*env)->CallIntMethod(env, g_activity, g_method_checkBleAdapter);
+    if ((*env)->ExceptionCheck(env)) {
+        LOGE("ble_check_adapter: Java exception thrown");
+        (*env)->ExceptionClear(env);
+        return BLE_ADAPTER_UNSUPPORTED;
+    }
     LOGI("ble_check_adapter() -> %d", result);
     return (int32_t)result;
 }
@@ -56,6 +61,10 @@ static void android_ble_start_scan(void *ctx)
     g_haskell_ctx = ctx;
     LOGI("ble_start_scan()");
     (*env)->CallVoidMethod(env, g_activity, g_method_startBleScan);
+    if ((*env)->ExceptionCheck(env)) {
+        LOGE("ble_start_scan: Java exception thrown");
+        (*env)->ExceptionClear(env);
+    }
 }
 
 static void android_ble_stop_scan(void)
@@ -68,6 +77,10 @@ static void android_ble_stop_scan(void)
 
     LOGI("ble_stop_scan()");
     (*env)->CallVoidMethod(env, g_activity, g_method_stopBleScan);
+    if ((*env)->ExceptionCheck(env)) {
+        LOGE("ble_stop_scan: Java exception thrown");
+        (*env)->ExceptionClear(env);
+    }
 }
 
 /* ---- Public API ---- */
@@ -96,10 +109,19 @@ void setup_android_ble_bridge(JNIEnv *env, jobject activity, void *haskellCtx)
     g_method_stopBleScan = (*env)->GetMethodID(env, actClass,
         "stopBleScan", "()V");
 
+    /* Clean up local reference */
+    (*env)->DeleteLocalRef(env, actClass);
+
     if (!g_method_checkBleAdapter || !g_method_startBleScan || !g_method_stopBleScan) {
         LOGE("Failed to resolve BLE JNI method IDs — BLE bridge disabled");
         (*env)->ExceptionClear(env);
         return;
+    }
+
+    /* Clear any unexpected pending exception before continuing */
+    if ((*env)->ExceptionCheck(env)) {
+        LOGE("Unexpected JNI exception after BLE method resolution");
+        (*env)->ExceptionClear(env);
     }
 
     ble_register_impl(android_ble_check_adapter, android_ble_start_scan, android_ble_stop_scan);
