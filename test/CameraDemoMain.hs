@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
+import Data.ByteString qualified as BS
 import Data.Text (pack)
 import Foreign.Ptr (Ptr)
 import HaskellMobile
@@ -15,6 +16,7 @@ import HaskellMobile
   , stopVideoCapture
   , loggingMobileContext
   , AppContext
+  , Picture(..)
   )
 import HaskellMobile.Camera (CameraSource(..), CameraResult(..), CameraStatus(..))
 import HaskellMobile.Widget (ButtonConfig(..), TextConfig(..), Widget(..))
@@ -45,8 +47,15 @@ cameraDemoView userState = pure $ Column
       , bcAction = do
           capturePhoto (userCameraState userState) $ \result ->
             case crStatus result of
-              CameraSuccess ->
+              CameraSuccess -> do
                 platformLog ("Photo captured: " <> maybe "no path" id (crFilePath result))
+                case crPicture result of
+                  Just pic ->
+                    platformLog ("Picture: " <> pack (show (pictureWidth pic))
+                      <> "x" <> pack (show (pictureHeight pic))
+                      <> " (" <> pack (show (BS.length (pictureData pic))) <> " bytes)")
+                  Nothing ->
+                    platformLog "No picture data"
               CameraCancelled ->
                 platformLog "Photo capture cancelled"
               CameraPermissionDenied ->
@@ -61,18 +70,23 @@ cameraDemoView userState = pure $ Column
   , Button ButtonConfig
       { bcLabel = "Start Video"
       , bcAction = do
-          startVideoCapture (userCameraState userState) $ \result ->
-            case crStatus result of
-              CameraSuccess ->
-                platformLog ("Video captured: " <> maybe "no path" id (crFilePath result))
-              CameraCancelled ->
-                platformLog "Video capture cancelled"
-              CameraPermissionDenied ->
-                platformLog "Camera permission denied"
-              CameraUnavailable ->
-                platformLog "Camera unavailable"
-              CameraError ->
-                platformLog "Video capture error"
+          startVideoCapture (userCameraState userState)
+            (\frame -> platformLog ("Video frame: " <> pack (show (pictureWidth frame))
+              <> "x" <> pack (show (pictureHeight frame))
+              <> " (" <> pack (show (BS.length (pictureData frame))) <> " bytes)"))
+            (\chunk -> platformLog ("Audio chunk: " <> pack (show (BS.length chunk)) <> " bytes"))
+            (\result ->
+              case crStatus result of
+                CameraSuccess ->
+                  platformLog ("Video captured: " <> maybe "no path" id (crFilePath result))
+                CameraCancelled ->
+                  platformLog "Video capture cancelled"
+                CameraPermissionDenied ->
+                  platformLog "Camera permission denied"
+                CameraUnavailable ->
+                  platformLog "Camera unavailable"
+                CameraError ->
+                  platformLog "Video capture error")
           platformLog "Video recording started"
       , bcFontConfig = Nothing
       }

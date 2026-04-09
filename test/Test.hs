@@ -85,6 +85,7 @@ import HaskellMobile.Location
 import HaskellMobile.Camera
   ( CameraSource(..)
   , CameraStatus(..)
+  , Picture(..)
   , CameraResult(..)
   , CameraState(..)
   , newCameraState
@@ -94,6 +95,8 @@ import HaskellMobile.Camera
   , startVideoCapture
   , stopCameraSession
   , dispatchCameraResult
+  , dispatchVideoFrame
+  , dispatchAudioChunk
   )
 import HaskellMobile.Render (newRenderState, renderWidget, dispatchEvent, dispatchTextEvent)
 import HaskellMobile.SecureStorage
@@ -1444,7 +1447,7 @@ locationTests = testGroup "Location"
 -- | Tests for the AppContext FFI path.
 cameraTests :: TestTree
 cameraTests = testGroup "Camera"
-  [ testCase "desktop stub dispatches success on capturePhoto" $ do
+  [ testCase "desktop stub dispatches success with picture on capturePhoto" $ do
       let app = MobileApp
             { maContext = defaultMobileContext
             , maView = \_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing })
@@ -1459,13 +1462,19 @@ cameraTests = testGroup "Camera"
         Nothing -> assertFailure "callback should have been fired by desktop stub"
         Just result -> do
           crStatus result @?= CameraSuccess
-          -- Desktop stub returns a dummy path
           case crFilePath result of
             Nothing -> assertFailure "file path should be present on success"
             Just _  -> pure ()
+          case crPicture result of
+            Nothing -> assertFailure "picture should be present for photo capture"
+            Just pic -> do
+              pictureWidth pic @?= 1
+              pictureHeight pic @?= 1
+              assertBool "picture data should not be empty"
+                (not (BS.null (pictureData pic)))
       freeAppContext ctxPtr
 
-  , testCase "desktop stub dispatches success on startVideoCapture" $ do
+  , testCase "desktop stub dispatches success on startVideoCapture with frame/audio callbacks" $ do
       let app = MobileApp
             { maContext = defaultMobileContext
             , maView = \_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing })
@@ -1473,35 +1482,126 @@ cameraTests = testGroup "Camera"
       ctxPtr <- newAppContext app
       appCtx <- derefAppContext ctxPtr
       let cameraState = acCameraState appCtx
-      ref <- newIORef (Nothing :: Maybe CameraResult)
-      startVideoCapture cameraState (\result -> writeIORef ref (Just result))
-      maybeResult <- readIORef ref
+      completionRef <- newIORef (Nothing :: Maybe CameraResult)
+      frameCount <- newIORef (0 :: Int)
+      audioCount <- newIORef (0 :: Int)
+      startVideoCapture cameraState
+        (\_ -> modifyIORef' frameCount (+ 1))
+        (\_ -> modifyIORef' audioCount (+ 1))
+        (\result -> writeIORef completionRef (Just result))
+      -- Desktop stub fires 2 frames, 1 audio chunk, then completion
+      frames <- readIORef frameCount
+      frames @?= 2
+      audio <- readIORef audioCount
+      audio @?= 1
+      maybeResult <- readIORef completionRef
       case maybeResult of
-        Nothing -> assertFailure "callback should have been fired by desktop stub"
+        Nothing -> assertFailure "completion callback should have been fired by desktop stub"
         Just result -> do
           crStatus result @?= CameraSuccess
           case crFilePath result of
             Nothing -> assertFailure "file path should be present on success"
             Just _  -> pure ()
+          crPicture result @?= Nothing
       freeAppContext ctxPtr
 
-  , testCase "dispatchCameraResult fires callback with correct CameraResult" $ do
+  , testCase "dispatchCameraResult fires callback with picture data" $ do
       cameraState <- newCameraState
       ref <- newIORef (Nothing :: Maybe CameraResult)
       modifyIORef' (csCallbacks cameraState)
         (IntMap.insert 0 (\result -> writeIORef ref (Just result)))
+      let jpegBytes = BS.pack [0xFF, 0xD8, 0xFF, 0xD9]
       dispatchCameraResult cameraState 0 0 (Just "/tmp/photo.jpg")
+        (Just jpegBytes) 640 480
       maybeResult <- readIORef ref
       case maybeResult of
         Nothing -> assertFailure "callback should have been fired"
         Just result -> do
           crStatus result @?= CameraSuccess
           crFilePath result @?= Just "/tmp/photo.jpg"
+          case crPicture result of
+            Nothing -> assertFailure "picture should be present"
+            Just pic -> do
+              pictureWidth pic @?= 640
+              pictureHeight pic @?= 480
+              pictureData pic @?= jpegBytes
+
+  , testCase "dispatchCameraResult without image data has no picture" $ do
+      cameraState <- newCameraState
+      ref <- newIORef (Nothing :: Maybe CameraResult)
+      modifyIORef' (csCallbacks cameraState)
+        (IntMap.insert 0 (\result -> writeIORef ref (Just result)))
+      dispatchCameraResult cameraState 0 0 (Just "/tmp/video.mp4")
+        Nothing 0 0
+      maybeResult <- readIORef ref
+      case maybeResult of
+        Nothing -> assertFailure "callback should have been fired"
+        Just result -> do
+          crStatus result @?= CameraSuccess
+          crPicture result @?= Nothing
+
+  , testCase "dispatchCameraResult with error status has no picture" $ do
+      cameraState <- newCameraState
+      ref <- newIORef (Nothing :: Maybe CameraResult)
+      modifyIORef' (csCallbacks cameraState)
+        (IntMap.insert 0 (\result -> writeIORef ref (Just result)))
+      let jpegBytes = BS.pack [0xFF, 0xD8, 0xFF, 0xD9]
+      dispatchCameraResult cameraState 0 4 Nothing (Just jpegBytes) 1 1
+      maybeResult <- readIORef ref
+      case maybeResult of
+        Nothing -> assertFailure "callback should have been fired"
+        Just result -> do
+          crStatus result @?= CameraError
+          crPicture result @?= Nothing
 
   , testCase "dispatchCameraResult with no callback is no-op" $ do
       cameraState <- newCameraState
       -- Should not throw or crash
-      dispatchCameraResult cameraState 99 0 Nothing
+      dispatchCameraResult cameraState 99 0 Nothing Nothing 0 0
+
+  , testCase "dispatchVideoFrame fires frame callback" $ do
+      cameraState <- newCameraState
+      ref <- newIORef (Nothing :: Maybe Picture)
+      modifyIORef' (csFrameCallbacks cameraState)
+        (IntMap.insert 0 (\pic -> writeIORef ref (Just pic)))
+      let jpegBytes = BS.pack [0xFF, 0xD8, 0xFF, 0xD9]
+      dispatchVideoFrame cameraState 0 jpegBytes 320 240
+      maybePic <- readIORef ref
+      case maybePic of
+        Nothing -> assertFailure "frame callback should have been fired"
+        Just pic -> do
+          pictureWidth pic @?= 320
+          pictureHeight pic @?= 240
+          pictureData pic @?= jpegBytes
+
+  , testCase "dispatchAudioChunk fires audio callback" $ do
+      cameraState <- newCameraState
+      ref <- newIORef (Nothing :: Maybe BS.ByteString)
+      modifyIORef' (csAudioCallbacks cameraState)
+        (IntMap.insert 0 (\chunk -> writeIORef ref (Just chunk)))
+      let pcmBytes = BS.pack [0x00, 0x01, 0x02, 0x03]
+      dispatchAudioChunk cameraState 0 pcmBytes
+      maybeChunk <- readIORef ref
+      case maybeChunk of
+        Nothing -> assertFailure "audio callback should have been fired"
+        Just chunk -> chunk @?= pcmBytes
+
+  , testCase "dispatchCameraResult cleans up frame/audio callbacks" $ do
+      cameraState <- newCameraState
+      modifyIORef' (csCallbacks cameraState)
+        (IntMap.insert 0 (\_ -> pure ()))
+      modifyIORef' (csFrameCallbacks cameraState)
+        (IntMap.insert 0 (\_ -> pure ()))
+      modifyIORef' (csAudioCallbacks cameraState)
+        (IntMap.insert 0 (\_ -> pure ()))
+      dispatchCameraResult cameraState 0 0 Nothing Nothing 0 0
+      -- After dispatch, all callbacks for requestId 0 should be gone
+      callbacks <- readIORef (csCallbacks cameraState)
+      IntMap.member 0 callbacks @?= False
+      frameCallbacks <- readIORef (csFrameCallbacks cameraState)
+      IntMap.member 0 frameCallbacks @?= False
+      audioCallbacks <- readIORef (csAudioCallbacks cameraState)
+      IntMap.member 0 audioCallbacks @?= False
 
   , testCase "capturePhoto assigns incremental request IDs" $ do
       let app = MobileApp

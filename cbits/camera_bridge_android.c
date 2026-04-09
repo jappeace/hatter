@@ -19,9 +19,16 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-/* Haskell FFI export (dispatches camera result back to Haskell callback) */
+/* Haskell FFI exports (dispatches camera results back to Haskell callbacks) */
 extern void haskellOnCameraResult(void *ctx, int32_t requestId,
-                                    int32_t statusCode, const char *filePath);
+                                    int32_t statusCode, const char *filePath,
+                                    const uint8_t *imageData, int32_t imageDataLen,
+                                    int32_t width, int32_t height);
+extern void haskellOnVideoFrame(void *ctx, int32_t requestId,
+                                 const uint8_t *frameData, int32_t frameDataLen,
+                                 int32_t width, int32_t height);
+extern void haskellOnAudioChunk(void *ctx, int32_t requestId,
+                                 const uint8_t *audioData, int32_t audioDataLen);
 
 /* ---- Global state (valid only on the UI thread) ---- */
 static JNIEnv  *g_env          = NULL;
@@ -176,12 +183,13 @@ void setup_android_camera_bridge(JNIEnv *env, jobject activity, void *haskellCtx
     LOGI("Android camera bridge initialized");
 }
 
-/* ---- JNI callback from Java camera result ---- */
+/* ---- JNI callbacks from Java camera result ---- */
 
 JNIEXPORT void JNICALL
 JNI_METHOD(onCameraResult)(JNIEnv *env, jobject thiz,
                             jint requestId, jint statusCode,
-                            jstring filePath)
+                            jstring filePath,
+                            jbyteArray imageData, jint width, jint height)
 {
     g_env = env;
     const char *cpath = NULL;
@@ -189,12 +197,54 @@ JNI_METHOD(onCameraResult)(JNIEnv *env, jobject thiz,
         cpath = (*env)->GetStringUTFChars(env, filePath, NULL);
     }
 
-    LOGI("onCameraResult(requestId=%d, status=%d, path=%s)",
-         requestId, statusCode, cpath ? cpath : "null");
-    haskellOnCameraResult(g_haskell_ctx, (int32_t)requestId,
-                           (int32_t)statusCode, cpath);
+    const uint8_t *imgBytes = NULL;
+    int32_t imgLen = 0;
+    if (imageData) {
+        imgLen = (int32_t)(*env)->GetArrayLength(env, imageData);
+        imgBytes = (const uint8_t *)(*env)->GetByteArrayElements(env, imageData, NULL);
+    }
 
+    LOGI("onCameraResult(requestId=%d, status=%d, path=%s, imgLen=%d, %dx%d)",
+         requestId, statusCode, cpath ? cpath : "null", imgLen, width, height);
+    haskellOnCameraResult(g_haskell_ctx, (int32_t)requestId,
+                           (int32_t)statusCode, cpath,
+                           imgBytes, imgLen, (int32_t)width, (int32_t)height);
+
+    if (imgBytes) {
+        (*env)->ReleaseByteArrayElements(env, imageData, (jbyte *)imgBytes, JNI_ABORT);
+    }
     if (cpath) {
         (*env)->ReleaseStringUTFChars(env, filePath, cpath);
     }
+}
+
+JNIEXPORT void JNICALL
+JNI_METHOD(onVideoFrame)(JNIEnv *env, jobject thiz,
+                          jint requestId,
+                          jbyteArray frameData, jint width, jint height)
+{
+    g_env = env;
+    int32_t frameLen = (int32_t)(*env)->GetArrayLength(env, frameData);
+    const uint8_t *frameBytes =
+        (const uint8_t *)(*env)->GetByteArrayElements(env, frameData, NULL);
+
+    haskellOnVideoFrame(g_haskell_ctx, (int32_t)requestId,
+                         frameBytes, frameLen, (int32_t)width, (int32_t)height);
+
+    (*env)->ReleaseByteArrayElements(env, frameData, (jbyte *)frameBytes, JNI_ABORT);
+}
+
+JNIEXPORT void JNICALL
+JNI_METHOD(onAudioChunk)(JNIEnv *env, jobject thiz,
+                          jint requestId, jbyteArray audioData)
+{
+    g_env = env;
+    int32_t audioLen = (int32_t)(*env)->GetArrayLength(env, audioData);
+    const uint8_t *audioBytes =
+        (const uint8_t *)(*env)->GetByteArrayElements(env, audioData, NULL);
+
+    haskellOnAudioChunk(g_haskell_ctx, (int32_t)requestId,
+                         audioBytes, audioLen);
+
+    (*env)->ReleaseByteArrayElements(env, audioData, (jbyte *)audioBytes, JNI_ABORT);
 }

@@ -15,9 +15,22 @@
 #include "CameraBridge.h"
 #include <stdio.h>
 
-/* Haskell FFI export (called from desktop stub to dispatch result back) */
+/* Haskell FFI exports (called from desktop stub to dispatch results back) */
 extern void haskellOnCameraResult(void *ctx, int32_t requestId,
-                                   int32_t statusCode, const char *filePath);
+                                   int32_t statusCode, const char *filePath,
+                                   const uint8_t *imageData, int32_t imageDataLen,
+                                   int32_t width, int32_t height);
+extern void haskellOnVideoFrame(void *ctx, int32_t requestId,
+                                 const uint8_t *frameData, int32_t frameDataLen,
+                                 int32_t width, int32_t height);
+extern void haskellOnAudioChunk(void *ctx, int32_t requestId,
+                                 const uint8_t *audioData, int32_t audioDataLen);
+
+/* Minimal JPEG: SOI + EOI markers */
+static const uint8_t stub_jpeg[] = { 0xFF, 0xD8, 0xFF, 0xD9 };
+
+/* Fake PCM audio chunk (4 bytes of silence) */
+static const uint8_t stub_audio[] = { 0x00, 0x00, 0x00, 0x00 };
 
 static void (*g_start_session_impl)(void *, int32_t) = NULL;
 static void (*g_stop_session_impl)(void) = NULL;
@@ -54,13 +67,21 @@ static void stub_stop_session(void)
 static void stub_capture_photo(void *ctx, int32_t requestId)
 {
     fprintf(stderr, "[CameraBridge stub] camera_capture_photo(requestId=%d) -> success\n", requestId);
-    haskellOnCameraResult(ctx, requestId, CAMERA_SUCCESS, "/tmp/stub_photo.jpg");
+    haskellOnCameraResult(ctx, requestId, CAMERA_SUCCESS, "/tmp/stub_photo.jpg",
+                           stub_jpeg, (int32_t)sizeof(stub_jpeg), 1, 1);
 }
 
 static void stub_start_video(void *ctx, int32_t requestId)
 {
     fprintf(stderr, "[CameraBridge stub] camera_start_video(requestId=%d) -> success\n", requestId);
-    haskellOnCameraResult(ctx, requestId, CAMERA_SUCCESS, "/tmp/stub_video.mp4");
+    /* Fire a couple of fake video frames and an audio chunk so that
+     * desktop tests can verify the push callbacks work. */
+    haskellOnVideoFrame(ctx, requestId, stub_jpeg, (int32_t)sizeof(stub_jpeg), 1, 1);
+    haskellOnVideoFrame(ctx, requestId, stub_jpeg, (int32_t)sizeof(stub_jpeg), 1, 1);
+    haskellOnAudioChunk(ctx, requestId, stub_audio, (int32_t)sizeof(stub_audio));
+    /* Completion: no picture data for video results */
+    haskellOnCameraResult(ctx, requestId, CAMERA_SUCCESS, "/tmp/stub_video.mp4",
+                           NULL, 0, 0, 0);
 }
 
 static void stub_stop_video(void)

@@ -58,4 +58,23 @@ void camera_register_impl(
     void (*start_video_impl)(void *, int32_t),
     void (*stop_video_impl)(void));
 
+/* Haskell FFI exports (defined by GHC-generated code) */
+
+/* Called when a photo capture or video recording completes.
+ * imageData/imageDataLen/width/height are non-null/non-zero only for
+ * successful photo captures; video completions pass NULL/0/0/0. */
+extern void haskellOnCameraResult(void *ctx, int32_t requestId,
+    int32_t statusCode, const char *filePath,
+    const uint8_t *imageData, int32_t imageDataLen,
+    int32_t width, int32_t height);
+
+/* Called per video frame during recording. */
+extern void haskellOnVideoFrame(void *ctx, int32_t requestId,
+    const uint8_t *frameData, int32_t frameDataLen,
+    int32_t width, int32_t height);
+
+/* Called per audio chunk during recording. */
+extern void haskellOnAudioChunk(void *ctx, int32_t requestId,
+    const uint8_t *audioData, int32_t audioDataLen);
+
 #endif /* CAMERA_BRIDGE_H */
