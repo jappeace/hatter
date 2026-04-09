@@ -9,6 +9,7 @@ module HaskellMobile.Types
 where
 
 import HaskellMobile.Ble (BleState)
+import HaskellMobile.Dialog (DialogState)
 import HaskellMobile.Lifecycle (MobileContext)
 import HaskellMobile.Permission (PermissionState)
 import HaskellMobile.SecureStorage (SecureStorageState)
@@ -22,6 +23,7 @@ data UserState = UserState
   { userPermissionState    :: PermissionState
   , userSecureStorageState :: SecureStorageState
   , userBleState           :: BleState
+  , userDialogState        :: DialogState
   }
 
 -- | Application definition record. Downstream apps create one of these

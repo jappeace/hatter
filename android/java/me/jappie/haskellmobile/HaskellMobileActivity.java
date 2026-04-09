@@ -1,6 +1,8 @@
 package me.jappie.haskellmobile;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.le.BluetoothLeScanner;
@@ -46,6 +48,7 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
     private native void onPermissionResult(int requestCode, int statusCode);
     private native void onSecureStorageResult(int requestId, int statusCode, String value);
     private native void onBleScanResult(String deviceName, String deviceAddress, int rssi);
+    private native void onDialogResult(int requestId, int actionCode);
 
     private static final String SECURE_PREFS_NAME = "haskell_mobile_secure_storage";
 
@@ -218,6 +221,63 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
         } catch (Exception e) {
             android.util.Log.e("BleBridge", "stopBleScan failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Show a modal dialog with up to 3 buttons. Called from native code via JNI.
+     * requestId: opaque ID passed back in the result callback.
+     * title: dialog title.
+     * message: dialog message.
+     * btn1: label for button 1 (always present).
+     * btn2: label for button 2, or null to omit.
+     * btn3: label for button 3, or null to omit.
+     */
+    public void showDialog(final int requestId, String title, String message,
+                           String btn1, String btn2, String btn3) {
+        final boolean[] buttonPressed = {false};
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(title);
+        builder.setMessage(message);
+
+        builder.setPositiveButton(btn1, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                buttonPressed[0] = true;
+                onDialogResult(requestId, 0); // DIALOG_BUTTON_1
+            }
+        });
+
+        if (btn2 != null) {
+            builder.setNegativeButton(btn2, new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    buttonPressed[0] = true;
+                    onDialogResult(requestId, 1); // DIALOG_BUTTON_2
+                }
+            });
+        }
+
+        if (btn3 != null) {
+            builder.setNeutralButton(btn3, new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    buttonPressed[0] = true;
+                    onDialogResult(requestId, 2); // DIALOG_BUTTON_3
+                }
+            });
+        }
+
+        builder.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface dialog) {
+                if (!buttonPressed[0]) {
+                    onDialogResult(requestId, 3); // DIALOG_DISMISSED
+                }
+            }
+        });
+
+        builder.show();
     }
 
     @Override

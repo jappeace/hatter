@@ -116,6 +116,17 @@ let
     name = "haskell-mobile-ble-apk";
   };
 
+  dialogAndroid = import ./android.nix {
+    inherit sources androidArch;
+    mainModule = ../test/DialogDemoMain.hs;
+  };
+  dialogApk = lib.mkApk {
+    sharedLibs = [{ lib = dialogAndroid; inherit abiDir; }];
+    androidSrc = ../android;
+    apkName = "haskell-mobile-dialog.apk";
+    name = "haskell-mobile-dialog-apk";
+  };
+
   androidComposition = pkgs.androidenv.composeAndroidPackages {
     platformVersions = [ emulatorApiLevel ];
     includeEmulator = true;
@@ -162,6 +173,7 @@ SECURE_STORAGE_APK="${secureStorageApk}/haskell-mobile-securestorage.apk"
 IMAGE_APK="${imageApk}/haskell-mobile-image.apk"
 NODEPOOL_APK="${nodepoolApk}/haskell-mobile-nodepool.apk"
 BLE_APK="${bleApk}/haskell-mobile-ble.apk"
+DIALOG_APK="${dialogApk}/haskell-mobile-dialog.apk"
 PACKAGE="me.jappie.haskellmobile"
 ACTIVITY=".MainActivity"
 DEVICE_NAME="test_all"
@@ -209,6 +221,7 @@ PHASE4_OK=0
 PHASE5_OK=0
 PHASE6_OK=0
 PHASE7_OK=0
+PHASE8_OK=0
 
 cleanup() {
     echo ""
@@ -325,7 +338,7 @@ sleep 30
 # ===========================================================================
 # PHASE 1 + PHASE 2 — Run test scripts
 # ===========================================================================
-export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK PACKAGE ACTIVITY WORK_DIR
+export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK PACKAGE ACTIVITY WORK_DIR
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0
@@ -334,6 +347,7 @@ PHASE4_EXIT=0
 PHASE5_EXIT=0
 PHASE6_EXIT=0
 PHASE7_EXIT=0
+PHASE8_EXIT=0
 
 # run_with_retry LABEL COMMAND [ARGS...]
 # Runs the command up to 10 times. Succeeds on first pass, fails only if all 10 fail.
@@ -390,6 +404,8 @@ echo "--- node-pool ---"
 run_with_retry "node-pool" bash "$TEST_SCRIPTS/android/node-pool.sh" || PHASE5_EXIT=1
 echo "--- ble ---"
 run_with_retry "ble" bash "$TEST_SCRIPTS/android/ble.sh" || PHASE7_EXIT=1
+echo "--- dialog ---"
+run_with_retry "dialog" bash "$TEST_SCRIPTS/android/dialog.sh" || PHASE8_EXIT=1
 
 # --- Phase results ---
 if [ $PHASE1_EXIT -eq 0 ]; then
@@ -460,6 +476,16 @@ else
     echo "PHASE 7 FAILED"
 fi
 
+if [ $PHASE8_EXIT -eq 0 ]; then
+    PHASE8_OK=1
+    echo ""
+    echo "PHASE 8 PASSED"
+else
+    PHASE8_OK=0
+    echo ""
+    echo "PHASE 8 FAILED"
+fi
+
 # ===========================================================================
 # Final report
 # ===========================================================================
@@ -516,6 +542,13 @@ if [ $PHASE7_OK -eq 1 ]; then
     echo "PASS  Phase 7 — SecureStorage + BLE demo app"
 else
     echo "FAIL  Phase 7 — SecureStorage + BLE demo app"
+    FINAL_EXIT=1
+fi
+
+if [ $PHASE8_OK -eq 1 ]; then
+    echo "PASS  Phase 8 — Dialog demo app"
+else
+    echo "FAIL  Phase 8 — Dialog demo app"
     FINAL_EXIT=1
 fi
 

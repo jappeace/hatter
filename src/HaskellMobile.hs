@@ -12,6 +12,7 @@ module HaskellMobile
   , haskellOnPermissionResult
   , haskellOnSecureStorageResult
   , haskellOnBleScanResult
+  , haskellOnDialogResult
   -- Error handling
   , errorWidget
   -- Re-exports from Lifecycle
@@ -59,6 +60,11 @@ module HaskellMobile
   , checkBleAdapter
   , startBleScan
   , stopBleScan
+  -- Re-exports from Dialog
+  , DialogAction(..)
+  , DialogConfig(..)
+  , DialogState(..)
+  , showDialog
   )
 where
 
@@ -77,6 +83,13 @@ import HaskellMobile.Ble
   , startBleScan
   , stopBleScan
   , dispatchBleScanResult
+  )
+import HaskellMobile.Dialog
+  ( DialogAction(..)
+  , DialogConfig(..)
+  , DialogState(..)
+  , showDialog
+  , dispatchDialogResult
   )
 import HaskellMobile.Lifecycle
   ( LifecycleEvent(..)
@@ -158,6 +171,7 @@ renderView ctxPtr = do
         { userPermissionState    = acPermissionState appCtx
         , userSecureStorageState = acSecureStorageState appCtx
         , userBleState           = acBleState appCtx
+        , userDialogState        = acDialogState appCtx
         }
   widget <- viewFunction userState
   renderWidget (acRenderState appCtx) widget
@@ -244,6 +258,16 @@ haskellOnBleScanResult ctxPtr cName cAddr cRssi =
     dispatchBleScanResult (acBleState appCtx) cName cAddr cRssi
 
 foreign export ccall haskellOnBleScanResult :: Ptr AppContext -> CString -> CString -> CInt -> IO ()
+
+-- | Handle a dialog result from native code. Dispatches to the
+-- callback registered by 'showDialog'.
+haskellOnDialogResult :: Ptr AppContext -> CInt -> CInt -> IO ()
+haskellOnDialogResult ctxPtr requestId actionCode =
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    dispatchDialogResult (acDialogState appCtx) requestId actionCode
+
+foreign export ccall haskellOnDialogResult :: Ptr AppContext -> CInt -> CInt -> IO ()
 
 -- | FFI entry point called from platform code.
 -- Takes a context pointer and an event code.
