@@ -1,5 +1,6 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE OverloadedStrings #-}
 -- | OAuth2/PKCE authentication session API for mobile platforms.
 --
 -- Provides a callback-based API for starting authentication sessions
