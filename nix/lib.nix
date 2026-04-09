@@ -88,6 +88,7 @@ in {
     , crossDeps ? null          # output of cross-deps.nix (lib/, hi/, pkgdb/)
     , maxNodes ? 256            # static pool size (ignored when dynamicNodePool=true)
     , dynamicNodePool ? false   # use malloc/realloc instead of fixed array
+    , soMaxSizeMB ? 200         # fail build if .so exceeds this (MB), catches whole-archive bloat
     }:
     let
       jniPackageMacro = builtins.replaceStrings ["."] ["_"] javaPackageName;
@@ -322,6 +323,19 @@ in {
       '';
 
       installPhase = ''
+        # Guard against whole-archive bloat: fail if .so exceeds size limit.
+        # The counter app .so is ~80MB; a 4.5x spike to ~373MB caused OOM
+        # kills on the emulator (see docs/ci-ram-regression-110.md).
+        SO_SIZE_BYTES=$(stat -c %s ${soName})
+        SO_SIZE_MB=$((SO_SIZE_BYTES / 1048576))
+        echo ".so size: ''${SO_SIZE_MB} MB (limit: ${toString soMaxSizeMB} MB)"
+        if [ "$SO_SIZE_MB" -gt "${toString soMaxSizeMB}" ]; then
+          echo "FATAL: ${soName} is ''${SO_SIZE_MB} MB, exceeds ${toString soMaxSizeMB} MB limit."
+          echo "This usually means boot package .a files ended up in the --whole-archive link group."
+          echo "Check that crossDeps .a files are in the correct directory (lib/ vs lib-boot/)."
+          exit 1
+        fi
+
         mkdir -p $out/lib/${archConfig.abiDir}
         cp ${soName} $out/lib/${archConfig.abiDir}/
 
