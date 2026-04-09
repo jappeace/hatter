@@ -191,6 +191,39 @@ ACTIVITY=".MainActivity"
 DEVICE_NAME="test_all"
 TEST_SCRIPTS="${testScripts}"
 
+# --- .so size guard (see docs/ci-ram-regression-110.md) ---
+# Fail fast if any test .so exceeds 120 MB.  The counter app is ~80 MB;
+# anything above 120 MB indicates whole-archive bloat that will OOM the emulator.
+SO_MAX_MB=120
+SIZE_FAIL=0
+for so_path in \
+    "${counterAndroid}/lib/${abiDir}/libhaskellmobile.so" \
+    "${scrollAndroid}/lib/${abiDir}/libhaskellmobile.so" \
+    "${textinputAndroid}/lib/${abiDir}/libhaskellmobile.so" \
+    "${permissionAndroid}/lib/${abiDir}/libhaskellmobile.so" \
+    "${secureStorageAndroid}/lib/${abiDir}/libhaskellmobile.so" \
+    "${imageAndroid}/lib/${abiDir}/libhaskellmobile.so" \
+    "${nodepoolAndroid}/lib/${abiDir}/libhaskellmobile.so" \
+    "${bleAndroid}/lib/${abiDir}/libhaskellmobile.so" \
+    "${dialogAndroid}/lib/${abiDir}/libhaskellmobile.so"; do
+    SO_BYTES=$(stat -c %s "$so_path")
+    SO_MB=$((SO_BYTES / 1048576))
+    SO_LABEL=$(echo "$so_path" | grep -oP '[^/]+(?=/lib/)')
+    if [ "$SO_MB" -gt "$SO_MAX_MB" ]; then
+        echo "FAIL  $SO_LABEL .so is ''${SO_MB} MB (limit: ''${SO_MAX_MB} MB)"
+        SIZE_FAIL=1
+    else
+        echo "OK    $SO_LABEL .so is ''${SO_MB} MB"
+    fi
+done
+if [ "$SIZE_FAIL" -eq 1 ]; then
+    echo ""
+    echo "FATAL: .so size limit exceeded. This usually means boot package .a files"
+    echo "ended up in the --whole-archive link group. See docs/ci-ram-regression-110.md"
+    exit 1
+fi
+echo ""
+
 # --- Debug: show SDK structure ---
 echo "=== SDK structure ==="
 echo "SDK_ROOT: $ANDROID_SDK_ROOT"
