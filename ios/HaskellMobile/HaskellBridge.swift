@@ -24,6 +24,7 @@ class HaskellBridge {
         setup_ios_secure_storage_bridge(context)
         setup_ios_ble_bridge(context)
         setup_ios_dialog_bridge(context)
+        setup_ios_location_bridge(context)
     }
 
     /// Call Haskell's haskellGreet and return the result as a Swift String.

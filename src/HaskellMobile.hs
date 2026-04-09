@@ -13,6 +13,7 @@ module HaskellMobile
   , haskellOnSecureStorageResult
   , haskellOnBleScanResult
   , haskellOnDialogResult
+  , haskellOnLocationUpdate
   -- Error handling
   , errorWidget
   -- Re-exports from Lifecycle
@@ -65,6 +66,11 @@ module HaskellMobile
   , DialogConfig(..)
   , DialogState(..)
   , showDialog
+  -- Re-exports from Location
+  , LocationData(..)
+  , LocationState(..)
+  , startLocationUpdates
+  , stopLocationUpdates
   )
 where
 
@@ -72,7 +78,7 @@ import Control.Exception (SomeException, catch)
 import Data.IORef (readIORef, writeIORef)
 import Data.Text (Text, pack)
 import Foreign.C.String (CString, newCString, peekCString)
-import Foreign.C.Types (CInt(..))
+import Foreign.C.Types (CDouble(..), CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
 import HaskellMobile.AppContext (AppContext(..), newAppContext, freeAppContext, derefAppContext)
 import HaskellMobile.Ble
@@ -90,6 +96,13 @@ import HaskellMobile.Dialog
   , DialogState(..)
   , showDialog
   , dispatchDialogResult
+  )
+import HaskellMobile.Location
+  ( LocationData(..)
+  , LocationState(..)
+  , startLocationUpdates
+  , stopLocationUpdates
+  , dispatchLocationUpdate
   )
 import HaskellMobile.Lifecycle
   ( LifecycleEvent(..)
@@ -172,6 +185,7 @@ renderView ctxPtr = do
         , userSecureStorageState = acSecureStorageState appCtx
         , userBleState           = acBleState appCtx
         , userDialogState        = acDialogState appCtx
+        , userLocationState      = acLocationState appCtx
         }
   widget <- viewFunction userState
   renderWidget (acRenderState appCtx) widget
@@ -268,6 +282,16 @@ haskellOnDialogResult ctxPtr requestId actionCode =
     dispatchDialogResult (acDialogState appCtx) requestId actionCode
 
 foreign export ccall haskellOnDialogResult :: Ptr AppContext -> CInt -> CInt -> IO ()
+
+-- | Handle a location update from native code. Dispatches to the
+-- callback registered by 'startLocationUpdates'.
+haskellOnLocationUpdate :: Ptr AppContext -> CDouble -> CDouble -> CDouble -> CDouble -> IO ()
+haskellOnLocationUpdate ctxPtr cLat cLon cAlt cAcc =
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    dispatchLocationUpdate (acLocationState appCtx) cLat cLon cAlt cAcc
+
+foreign export ccall haskellOnLocationUpdate :: Ptr AppContext -> CDouble -> CDouble -> CDouble -> CDouble -> IO ()
 
 -- | FFI entry point called from platform code.
 -- Takes a context pointer and an event code.

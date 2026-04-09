@@ -97,4 +97,12 @@ void haskellOnBleScanResult(void *ctx, const char *name, const char *address, in
  * ctx must be a pointer returned by haskellRunMain(). */
 void haskellOnDialogResult(void *ctx, int32_t requestId, int32_t actionCode);
 
+/* Dispatch a location update from native code back to Haskell.
+ * lat: latitude in degrees.
+ * lon: longitude in degrees.
+ * alt: altitude in metres above sea level.
+ * acc: horizontal accuracy in metres.
+ * ctx must be a pointer returned by haskellRunMain(). */
+void haskellOnLocationUpdate(void *ctx, double lat, double lon, double alt, double acc);
+
 #endif /* HASKELL_MOBILE_H */
