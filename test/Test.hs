@@ -767,8 +767,10 @@ i18nTests = testGroup "I18n"
 -- from a context created once in 'main' via 'startMobileApp'.  This
 -- ensures the C desktop stub's @g_permission_ctx@ points to a valid context
 -- for the FFI round-trip tests, without racing with other tests.
+-- | Uses 'sequentialTestGroup' because these tests share a
+-- 'PermissionState' with a mutable request ID counter.
 permissionTests :: PermissionState -> TestTree
-permissionTests ffiPermState = testGroup "Permission"
+permissionTests ffiPermState = sequentialTestGroup "Permission" AllFinish
   [ testCase "requestPermission fires callback with PermissionGranted on desktop" $ do
       -- Uses the shared FFI context because the C desktop stub dispatches
       -- via haskellOnPermissionResult(g_permission_ctx, ...).
@@ -853,8 +855,10 @@ permissionTests ffiPermState = testGroup "Permission"
 -- 'SecureStorageState' from a context created once in 'main' via
 -- 'haskellCreateContext', ensuring the C desktop stub dispatches through
 -- a valid context pointer.
+-- Uses 'sequentialTestGroup' because these tests share mutable state
+-- (the C global key-value store and the Haskell callback registry).
 secureStorageTests :: SecureStorageState -> TestTree
-secureStorageTests ffiSecureStorageState = testGroup "SecureStorage"
+secureStorageTests ffiSecureStorageState = sequentialTestGroup "SecureStorage" AllFinish
   [ testCase "write then read returns written value" $ do
       statusRef <- newIORef (Nothing :: Maybe SecureStorageStatus)
       valueRef  <- newIORef (Nothing :: Maybe Text.Text)
