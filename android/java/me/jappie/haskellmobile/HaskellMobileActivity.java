@@ -11,6 +11,9 @@ import android.bluetooth.le.ScanResult;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.Manifest;
 import android.os.Bundle;
 import android.text.Editable;
@@ -49,11 +52,15 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
     private native void onSecureStorageResult(int requestId, int statusCode, String value);
     private native void onBleScanResult(String deviceName, String deviceAddress, int rssi);
     private native void onDialogResult(int requestId, int actionCode);
+    private native void onLocationResult(double lat, double lon, double alt, double acc);
 
     private static final String SECURE_PREFS_NAME = "haskell_mobile_secure_storage";
 
     private BluetoothLeScanner bleScanner;
     private ScanCallback bleScanCallback;
+
+    private LocationManager locationManager;
+    private LocationListener locationListener;
 
     /**
      * Map a permission code (from PermissionBridge.h) to an Android permission string.
@@ -278,6 +285,66 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
         });
 
         builder.show();
+    }
+
+    /**
+     * Start receiving GPS location updates. Called from native code via JNI.
+     * Uses LocationManager (AOSP built-in) with GPS_PROVIDER.
+     * Updates are delivered via onLocationResult JNI callback.
+     */
+    public void startLocationUpdates() {
+        try {
+            locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            if (locationManager == null) {
+                android.util.Log.e("LocationBridge", "LocationManager unavailable");
+                return;
+            }
+
+            locationListener = new LocationListener() {
+                @Override
+                public void onLocationChanged(Location location) {
+                    onLocationResult(
+                        location.getLatitude(),
+                        location.getLongitude(),
+                        location.getAltitude(),
+                        location.getAccuracy()
+                    );
+                }
+
+                @Override
+                public void onProviderEnabled(String provider) {}
+
+                @Override
+                public void onProviderDisabled(String provider) {}
+
+                @Override
+                public void onStatusChanged(String provider, int status, Bundle extras) {}
+            };
+
+            locationManager.requestLocationUpdates(
+                LocationManager.GPS_PROVIDER, 1000, 0, locationListener);
+        } catch (SecurityException e) {
+            android.util.Log.e("LocationBridge",
+                "startLocationUpdates: permission denied: " + e.getMessage());
+        } catch (Exception e) {
+            android.util.Log.e("LocationBridge",
+                "startLocationUpdates failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Stop receiving GPS location updates. Called from native code via JNI.
+     */
+    public void stopLocationUpdates() {
+        try {
+            if (locationManager != null && locationListener != null) {
+                locationManager.removeUpdates(locationListener);
+                locationListener = null;
+            }
+        } catch (Exception e) {
+            android.util.Log.e("LocationBridge",
+                "stopLocationUpdates failed: " + e.getMessage());
+        }
     }
 
     @Override

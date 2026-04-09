@@ -11,6 +11,7 @@ where
 import HaskellMobile.Ble (BleState)
 import HaskellMobile.Dialog (DialogState)
 import HaskellMobile.Lifecycle (MobileContext)
+import HaskellMobile.Location (LocationState)
 import HaskellMobile.Permission (PermissionState)
 import HaskellMobile.SecureStorage (SecureStorageState)
 import HaskellMobile.Widget (Widget)
@@ -24,6 +25,7 @@ data UserState = UserState
   , userSecureStorageState :: SecureStorageState
   , userBleState           :: BleState
   , userDialogState        :: DialogState
+  , userLocationState      :: LocationState
   }
 
 -- | Application definition record. Downstream apps create one of these

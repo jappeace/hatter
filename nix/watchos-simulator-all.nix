@@ -101,6 +101,17 @@ let
     name = "haskell-mobile-watchos-dialog-simulator-app";
   };
 
+  locationWatchos = import ./watchos.nix {
+    inherit sources;
+    mainModule = ../test/LocationDemoMain.hs;
+    simulator = true;
+  };
+  locationSimApp = lib.mkWatchOSSimulatorApp {
+    watchosLib = locationWatchos;
+    watchosSrc = ../watchos;
+    name = "haskell-mobile-watchos-location-simulator-app";
+  };
+
   xcodegen = pkgs.xcodegen;
 
   testScripts = builtins.path { path = ../test; name = "test-scripts"; };
@@ -129,6 +140,7 @@ IMAGE_SHARE_DIR="${imageSimApp}/share/watchos"
 NODEPOOL_SHARE_DIR="${nodepoolSimApp}/share/watchos"
 BLE_SHARE_DIR="${bleSimApp}/share/watchos"
 DIALOG_SHARE_DIR="${dialogSimApp}/share/watchos"
+LOCATION_SHARE_DIR="${locationSimApp}/share/watchos"
 TEST_SCRIPTS="${testScripts}"
 
 # --- Temp working directory ---
@@ -179,6 +191,7 @@ cp "$COUNTER_SHARE_DIR/include/PermissionBridge.h" "$WORK_DIR/counter/include/"
 cp "$COUNTER_SHARE_DIR/include/SecureStorageBridge.h" "$WORK_DIR/counter/include/"
 cp "$COUNTER_SHARE_DIR/include/BleBridge.h" "$WORK_DIR/counter/include/"
 cp "$COUNTER_SHARE_DIR/include/DialogBridge.h" "$WORK_DIR/counter/include/"
+cp "$COUNTER_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/counter/include/"
 cp -r "$COUNTER_SHARE_DIR/HaskellMobile" "$WORK_DIR/counter/"
 cp "$COUNTER_SHARE_DIR/project.yml" "$WORK_DIR/counter/"
 chmod -R u+w "$WORK_DIR/counter"
@@ -217,6 +230,7 @@ cp "$SCROLL_SHARE_DIR/include/PermissionBridge.h" "$WORK_DIR/scroll/include/"
 cp "$SCROLL_SHARE_DIR/include/SecureStorageBridge.h" "$WORK_DIR/scroll/include/"
 cp "$SCROLL_SHARE_DIR/include/BleBridge.h" "$WORK_DIR/scroll/include/"
 cp "$SCROLL_SHARE_DIR/include/DialogBridge.h" "$WORK_DIR/scroll/include/"
+cp "$SCROLL_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/scroll/include/"
 cp -r "$SCROLL_SHARE_DIR/HaskellMobile" "$WORK_DIR/scroll/"
 cp "$SCROLL_SHARE_DIR/project.yml" "$WORK_DIR/scroll/"
 chmod -R u+w "$WORK_DIR/scroll"
@@ -255,6 +269,7 @@ cp "$TEXTINPUT_SHARE_DIR/include/PermissionBridge.h" "$WORK_DIR/textinput/includ
 cp "$TEXTINPUT_SHARE_DIR/include/SecureStorageBridge.h" "$WORK_DIR/textinput/include/"
 cp "$TEXTINPUT_SHARE_DIR/include/BleBridge.h" "$WORK_DIR/textinput/include/"
 cp "$TEXTINPUT_SHARE_DIR/include/DialogBridge.h" "$WORK_DIR/textinput/include/"
+cp "$TEXTINPUT_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/textinput/include/"
 cp -r "$TEXTINPUT_SHARE_DIR/HaskellMobile" "$WORK_DIR/textinput/"
 cp "$TEXTINPUT_SHARE_DIR/project.yml" "$WORK_DIR/textinput/"
 chmod -R u+w "$WORK_DIR/textinput"
@@ -293,6 +308,7 @@ cp "$IMAGE_SHARE_DIR/include/PermissionBridge.h" "$WORK_DIR/image/include/"
 cp "$IMAGE_SHARE_DIR/include/SecureStorageBridge.h" "$WORK_DIR/image/include/"
 cp "$IMAGE_SHARE_DIR/include/BleBridge.h" "$WORK_DIR/image/include/"
 cp "$IMAGE_SHARE_DIR/include/DialogBridge.h" "$WORK_DIR/image/include/"
+cp "$IMAGE_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/image/include/"
 cp -r "$IMAGE_SHARE_DIR/HaskellMobile" "$WORK_DIR/image/"
 cp "$IMAGE_SHARE_DIR/project.yml" "$WORK_DIR/image/"
 chmod -R u+w "$WORK_DIR/image"
@@ -331,6 +347,7 @@ cp "$SECURE_STORAGE_SHARE_DIR/include/PermissionBridge.h" "$WORK_DIR/securestora
 cp "$SECURE_STORAGE_SHARE_DIR/include/SecureStorageBridge.h" "$WORK_DIR/securestorage/include/"
 cp "$SECURE_STORAGE_SHARE_DIR/include/BleBridge.h" "$WORK_DIR/securestorage/include/"
 cp "$SECURE_STORAGE_SHARE_DIR/include/DialogBridge.h" "$WORK_DIR/securestorage/include/"
+cp "$SECURE_STORAGE_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/securestorage/include/"
 cp -r "$SECURE_STORAGE_SHARE_DIR/HaskellMobile" "$WORK_DIR/securestorage/"
 cp "$SECURE_STORAGE_SHARE_DIR/project.yml" "$WORK_DIR/securestorage/"
 chmod -R u+w "$WORK_DIR/securestorage"
@@ -368,6 +385,7 @@ cp "$NODEPOOL_SHARE_DIR/include/PermissionBridge.h" "$WORK_DIR/nodepool/include/
 cp "$NODEPOOL_SHARE_DIR/include/SecureStorageBridge.h" "$WORK_DIR/nodepool/include/"
 cp "$NODEPOOL_SHARE_DIR/include/BleBridge.h" "$WORK_DIR/nodepool/include/"
 cp "$NODEPOOL_SHARE_DIR/include/DialogBridge.h" "$WORK_DIR/nodepool/include/"
+cp "$NODEPOOL_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/nodepool/include/"
 cp -r "$NODEPOOL_SHARE_DIR/HaskellMobile" "$WORK_DIR/nodepool/"
 cp "$NODEPOOL_SHARE_DIR/project.yml" "$WORK_DIR/nodepool/"
 chmod -R u+w "$WORK_DIR/nodepool"
@@ -406,6 +424,7 @@ cp "$BLE_SHARE_DIR/include/PermissionBridge.h" "$WORK_DIR/ble/include/"
 cp "$BLE_SHARE_DIR/include/SecureStorageBridge.h" "$WORK_DIR/ble/include/"
 cp "$BLE_SHARE_DIR/include/BleBridge.h" "$WORK_DIR/ble/include/"
 cp "$BLE_SHARE_DIR/include/DialogBridge.h" "$WORK_DIR/ble/include/"
+cp "$BLE_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/ble/include/"
 cp -r "$BLE_SHARE_DIR/HaskellMobile" "$WORK_DIR/ble/"
 cp "$BLE_SHARE_DIR/project.yml" "$WORK_DIR/ble/"
 chmod -R u+w "$WORK_DIR/ble"
@@ -444,6 +463,7 @@ cp "$DIALOG_SHARE_DIR/include/PermissionBridge.h" "$WORK_DIR/dialog/include/"
 cp "$DIALOG_SHARE_DIR/include/SecureStorageBridge.h" "$WORK_DIR/dialog/include/"
 cp "$DIALOG_SHARE_DIR/include/BleBridge.h" "$WORK_DIR/dialog/include/"
 cp "$DIALOG_SHARE_DIR/include/DialogBridge.h" "$WORK_DIR/dialog/include/"
+cp "$DIALOG_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/dialog/include/"
 cp -r "$DIALOG_SHARE_DIR/HaskellMobile" "$WORK_DIR/dialog/"
 cp "$DIALOG_SHARE_DIR/project.yml" "$WORK_DIR/dialog/"
 chmod -R u+w "$WORK_DIR/dialog"
@@ -471,6 +491,45 @@ if [ -z "$DIALOG_APP" ]; then
     exit 1
 fi
 echo "Dialog app: $DIALOG_APP"
+
+# --- Stage and build location demo app ---
+echo "=== Staging location demo app ==="
+mkdir -p "$WORK_DIR/location/lib" "$WORK_DIR/location/include"
+cp "$LOCATION_SHARE_DIR/lib/libHaskellMobile.a" "$WORK_DIR/location/lib/"
+cp "$LOCATION_SHARE_DIR/include/HaskellMobile.h" "$WORK_DIR/location/include/"
+cp "$LOCATION_SHARE_DIR/include/UIBridge.h" "$WORK_DIR/location/include/"
+cp "$LOCATION_SHARE_DIR/include/PermissionBridge.h" "$WORK_DIR/location/include/"
+cp "$LOCATION_SHARE_DIR/include/SecureStorageBridge.h" "$WORK_DIR/location/include/"
+cp "$LOCATION_SHARE_DIR/include/BleBridge.h" "$WORK_DIR/location/include/"
+cp "$LOCATION_SHARE_DIR/include/DialogBridge.h" "$WORK_DIR/location/include/"
+cp "$LOCATION_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/location/include/"
+cp -r "$LOCATION_SHARE_DIR/HaskellMobile" "$WORK_DIR/location/"
+cp "$LOCATION_SHARE_DIR/project.yml" "$WORK_DIR/location/"
+chmod -R u+w "$WORK_DIR/location"
+
+echo "=== Generating location Xcode project ==="
+cd "$WORK_DIR/location"
+${xcodegen}/bin/xcodegen generate
+
+echo "=== Building location demo app for watchOS simulator ==="
+xcodebuild build \
+    -project HaskellMobile.xcodeproj \
+    -scheme "$SCHEME" \
+    -sdk watchsimulator \
+    -configuration Release \
+    -derivedDataPath "$WORK_DIR/location-build" \
+    CODE_SIGN_IDENTITY=- \
+    CODE_SIGNING_ALLOWED=NO \
+    ARCHS=arm64 \
+    ONLY_ACTIVE_ARCH=NO \
+    | tail -20
+
+LOCATION_APP=$(find "$WORK_DIR/location-build" -name "*.app" -type d | head -1)
+if [ -z "$LOCATION_APP" ]; then
+    echo "ERROR: Could not find location .app bundle"
+    exit 1
+fi
+echo "Location app: $LOCATION_APP"
 
 # --- Discover latest watchOS runtime ---
 echo "=== Discovering watchOS runtime ==="
@@ -535,7 +594,7 @@ sleep 5
 # ===========================================================================
 # Log subsystem differs from bundle ID for watchOS (bundle ID has .watchkitapp suffix)
 LOG_SUBSYSTEM="me.jappie.haskellmobile"
-export SIM_UDID BUNDLE_ID LOG_SUBSYSTEM COUNTER_APP SCROLL_APP TEXTINPUT_APP SECURE_STORAGE_APP IMAGE_APP NODEPOOL_APP BLE_APP DIALOG_APP WORK_DIR
+export SIM_UDID BUNDLE_ID LOG_SUBSYSTEM COUNTER_APP SCROLL_APP TEXTINPUT_APP SECURE_STORAGE_APP IMAGE_APP NODEPOOL_APP BLE_APP DIALOG_APP LOCATION_APP WORK_DIR
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0
@@ -593,6 +652,8 @@ echo "--- ble ---"
 run_with_retry "ble" bash "$TEST_SCRIPTS/watchos/ble.sh" || PHASE6_EXIT=1
 echo "--- dialog ---"
 run_with_retry "dialog" bash "$TEST_SCRIPTS/watchos/dialog.sh" || PHASE7_EXIT=1
+echo "--- location ---"
+run_with_retry "location" bash "$TEST_SCRIPTS/watchos/location.sh" || PHASE6_EXIT=1
 
 # --- Phase results ---
 if [ $PHASE1_EXIT -eq 0 ]; then
@@ -709,9 +770,9 @@ else
 fi
 
 if [ $PHASE6_OK -eq 1 ]; then
-    echo "PASS  Phase 6 — SecureStorage + BLE demo app"
+    echo "PASS  Phase 6 — SecureStorage + BLE + Location demo app"
 else
-    echo "FAIL  Phase 6 — SecureStorage + BLE demo app"
+    echo "FAIL  Phase 6 — SecureStorage + BLE + Location demo app"
     FINAL_EXIT=1
 fi
 

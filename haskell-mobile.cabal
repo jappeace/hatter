@@ -74,6 +74,7 @@ library
       HaskellMobile.SecureStorage
       HaskellMobile.Ble
       HaskellMobile.Dialog
+      HaskellMobile.Location
   hs-source-dirs:
       src
   build-depends:
@@ -89,6 +90,7 @@ library
       cbits/secure_storage_bridge.c
       cbits/ble_bridge.c
       cbits/dialog_bridge.c
+      cbits/location_bridge.c
   include-dirs:
       include
 

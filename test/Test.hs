@@ -74,6 +74,14 @@ import HaskellMobile.Ble
   , stopBleScan
   , dispatchBleScanResult
   )
+import HaskellMobile.Location
+  ( LocationData(..)
+  , LocationState(..)
+  , newLocationState
+  , startLocationUpdates
+  , stopLocationUpdates
+  , dispatchLocationUpdate
+  )
 import HaskellMobile.Render (newRenderState, renderWidget, dispatchEvent, dispatchTextEvent)
 import HaskellMobile.SecureStorage
   ( SecureStorageStatus(..)
@@ -105,7 +113,7 @@ main = do
   defaultMain (tests (acPermissionState ffiAppCtx) (acSecureStorageState ffiAppCtx) (acDialogState ffiAppCtx))
 
 tests :: PermissionState -> SecureStorageState -> DialogState -> TestTree
-tests ffiPermState ffiSecureStorageState ffiDialogState = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, scrollViewTests, textInputTests, imageTests, styledTests, textAlignTests, colorTests, registrationTests, localeTests, i18nTests, permissionTests ffiPermState, secureStorageTests ffiSecureStorageState, bleTests, dialogTests ffiDialogState, appContextTests, exceptionHandlerTests]
+tests ffiPermState ffiSecureStorageState ffiDialogState = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, scrollViewTests, textInputTests, imageTests, styledTests, textAlignTests, colorTests, registrationTests, localeTests, i18nTests, permissionTests ffiPermState, secureStorageTests ffiSecureStorageState, bleTests, dialogTests ffiDialogState, locationTests, appContextTests, exceptionHandlerTests]
 
 qcProps :: TestTree
 qcProps = testGroup "(checked by QuickCheck)"
@@ -285,11 +293,13 @@ uiTests = testGroup "UI"
       dummySecureStorageState <- newSecureStorageState
       dummyBleState  <- newBleState
       dummyDialogState <- newDialogState
+      dummyLocationState <- newLocationState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
             , userBleState           = dummyBleState
             , userDialogState        = dummyDialogState
+            , userLocationState      = dummyLocationState
             }
       widget <- maView mobileApp dummyUserState
       -- mobileApp is the counter demo; verify it's a column
@@ -681,11 +691,13 @@ registrationTests = testGroup "Registration"
       dummySecureStorageState <- newSecureStorageState
       dummyBleState  <- newBleState
       dummyDialogState <- newDialogState
+      dummyLocationState <- newLocationState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
             , userBleState           = dummyBleState
             , userDialogState        = dummyDialogState
+            , userLocationState      = dummyLocationState
             }
       viewFn <- readIORef (acViewFunction appCtx)
       widget <- viewFn dummyUserState
@@ -711,11 +723,13 @@ registrationTests = testGroup "Registration"
       dummySecureStorageState <- newSecureStorageState
       dummyBleState  <- newBleState
       dummyDialogState <- newDialogState
+      dummyLocationState <- newLocationState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
             , userBleState           = dummyBleState
             , userDialogState        = dummyDialogState
+            , userLocationState      = dummyLocationState
             }
       viewFnA <- readIORef (acViewFunction appCtxA)
       viewFnB <- readIORef (acViewFunction appCtxB)
@@ -1190,6 +1204,86 @@ dialogTests ffiDialogState = sequentialTestGroup "Dialog" AllFinish
       dialogActionFromInt 100 @?= Nothing
   ]
 
+locationTests :: TestTree
+locationTests = testGroup "Location"
+  [ testCase "desktop stub dispatches fixed location on startLocationUpdates" $ do
+      let app = MobileApp
+            { maContext = defaultMobileContext
+            , maView = \_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing })
+            }
+      ctxPtr <- newAppContext app
+      appCtx <- derefAppContext ctxPtr
+      let locationState = acLocationState appCtx
+      ref <- newIORef (Nothing :: Maybe LocationData)
+      startLocationUpdates locationState (\loc -> writeIORef ref (Just loc))
+      result <- readIORef ref
+      case result of
+        Nothing -> assertFailure "callback should have been fired by desktop stub"
+        Just loc -> do
+          -- Desktop stub dispatches lat=52.37, lon=4.90, alt=0.0, acc=10.0
+          ldLatitude loc @?= 52.37
+          ldLongitude loc @?= 4.90
+          ldAltitude loc @?= 0.0
+          ldAccuracy loc @?= 10.0
+      freeAppContext ctxPtr
+
+  , testCase "dispatchLocationUpdate fires callback with correct LocationData" $ do
+      locationState <- newLocationState
+      ref <- newIORef (Nothing :: Maybe LocationData)
+      writeIORef (lsUpdateCallback locationState) (Just (\loc -> writeIORef ref (Just loc)))
+      dispatchLocationUpdate locationState 48.86 2.35 35.0 5.0
+      result <- readIORef ref
+      case result of
+        Nothing -> assertFailure "callback should have been fired"
+        Just loc -> do
+          ldLatitude loc @?= 48.86
+          ldLongitude loc @?= 2.35
+          ldAltitude loc @?= 35.0
+          ldAccuracy loc @?= 5.0
+
+  , testCase "dispatchLocationUpdate with no active listener is no-op" $ do
+      locationState <- newLocationState
+      -- Should not throw or crash
+      dispatchLocationUpdate locationState 0.0 0.0 0.0 0.0
+
+  , testCase "stopLocationUpdates clears callback" $ do
+      let app = MobileApp
+            { maContext = defaultMobileContext
+            , maView = \_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing })
+            }
+      ctxPtr <- newAppContext app
+      appCtx <- derefAppContext ctxPtr
+      let locationState = acLocationState appCtx
+      startLocationUpdates locationState (\_ -> pure ())
+      stopLocationUpdates locationState
+      maybeCb <- readIORef (lsUpdateCallback locationState)
+      case maybeCb of
+        Nothing -> pure ()
+        Just _  -> assertFailure "callback should be Nothing after stopLocationUpdates"
+      freeAppContext ctxPtr
+
+  , testCase "startLocationUpdates replaces existing callback" $ do
+      let app = MobileApp
+            { maContext = defaultMobileContext
+            , maView = \_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing })
+            }
+      ctxPtr <- newAppContext app
+      appCtx <- derefAppContext ctxPtr
+      let locationState = acLocationState appCtx
+      refOld <- newIORef (0 :: Int)
+      refNew <- newIORef (0 :: Int)
+      writeIORef (lsUpdateCallback locationState) (Just (\_ -> modifyIORef' refOld (+ 1)))
+      -- Replace with new callback (startLocationUpdates calls stop first on the C side,
+      -- then installs new callback, then calls start which dispatches stub location)
+      startLocationUpdates locationState (\_ -> modifyIORef' refNew (+ 1))
+      oldCount <- readIORef refOld
+      newCount <- readIORef refNew
+      oldCount @?= 0
+      -- Desktop stub dispatches one location on start, so newCount should be 1
+      newCount @?= 1
+      freeAppContext ctxPtr
+  ]
+
 -- | Tests for the AppContext FFI path.
 appContextTests :: TestTree
 appContextTests = testGroup "AppContext"
@@ -1219,6 +1313,7 @@ viewIsErrorWidget ctxPtr = do
         , userSecureStorageState = acSecureStorageState appCtx
         , userBleState           = acBleState appCtx
         , userDialogState        = acDialogState appCtx
+        , userLocationState      = acLocationState appCtx
         }
   widget <- viewFn userState
   case widget of

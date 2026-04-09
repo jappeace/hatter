@@ -17,6 +17,7 @@ import Foreign.StablePtr (StablePtr, castPtrToStablePtr, castStablePtrToPtr, new
 import HaskellMobile.Ble (BleState(..), newBleState)
 import HaskellMobile.Dialog (DialogState(..), newDialogState)
 import HaskellMobile.Lifecycle (MobileContext)
+import HaskellMobile.Location (LocationState(..), newLocationState)
 import HaskellMobile.Permission (PermissionState(..), newPermissionState)
 import HaskellMobile.Render (RenderState, newRenderState)
 import HaskellMobile.SecureStorage (SecureStorageState(..), newSecureStorageState)
@@ -34,6 +35,7 @@ data AppContext = AppContext
   , acSecureStorageState  :: SecureStorageState
   , acBleState            :: BleState
   , acDialogState         :: DialogState
+  , acLocationState       :: LocationState
   , acViewFunction        :: IORef (UserState -> IO Widget)
   }
 
@@ -47,6 +49,7 @@ newAppContext mobileApp = do
   secureStorageState <- newSecureStorageState
   bleState           <- newBleState
   dialogState        <- newDialogState
+  locationState      <- newLocationState
   viewRef            <- newIORef (maView mobileApp)
   let appContext = AppContext
         { acMobileContext      = maContext mobileApp
@@ -55,6 +58,7 @@ newAppContext mobileApp = do
         , acSecureStorageState = secureStorageState
         , acBleState           = bleState
         , acDialogState        = dialogState
+        , acLocationState      = locationState
         , acViewFunction       = viewRef
         }
   ptr <- castPtr . castStablePtrToPtr <$> newStablePtr appContext
@@ -63,6 +67,7 @@ newAppContext mobileApp = do
   writeIORef (ssContextPtr secureStorageState) (castPtr ptr)
   writeIORef (blesContextPtr bleState) (castPtr ptr)
   writeIORef (dsContextPtr dialogState) (castPtr ptr)
+  writeIORef (lsContextPtr locationState) (castPtr ptr)
   pure ptr
 
 -- | Release a pointer previously created by 'newAppContext'.
