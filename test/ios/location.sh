@@ -56,7 +56,7 @@ if ! grep -q "setRoot" "$FULL_LOG" 2>/dev/null; then
     FULL_LOG="$STREAM_LOG"
 fi
 
-assert_log "$FULL_LOG" "LocationBridge\|Location bridge" "Location bridge log present"
+assert_log "$FULL_LOG" "Location demo app registered" "Location demo app started"
 assert_log "$FULL_LOG" "createNode" "createNode called (app renders)"
 assert_log "$FULL_LOG" "setRoot" "setRoot"
 
