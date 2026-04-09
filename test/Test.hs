@@ -85,6 +85,15 @@ import HaskellMobile.SecureStorage
   , dispatchSecureStorageResult
   , storageStatusFromInt
   )
+import HaskellMobile.Dialog
+  ( DialogAction(..)
+  , DialogConfig(..)
+  , DialogState(..)
+  , newDialogState
+  , showDialog
+  , dispatchDialogResult
+  , dialogActionFromInt
+  )
 
 main :: IO ()
 main = do
@@ -93,10 +102,10 @@ main = do
   -- one context can be active for FFI permission dispatch.
   ffiCtxPtr <- startMobileApp mobileApp
   ffiAppCtx <- derefAppContext ffiCtxPtr
-  defaultMain (tests (acPermissionState ffiAppCtx) (acSecureStorageState ffiAppCtx))
+  defaultMain (tests (acPermissionState ffiAppCtx) (acSecureStorageState ffiAppCtx) (acDialogState ffiAppCtx))
 
-tests :: PermissionState -> SecureStorageState -> TestTree
-tests ffiPermState ffiSecureStorageState = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, scrollViewTests, textInputTests, imageTests, styledTests, textAlignTests, colorTests, registrationTests, localeTests, i18nTests, permissionTests ffiPermState, secureStorageTests ffiSecureStorageState, bleTests, appContextTests, exceptionHandlerTests]
+tests :: PermissionState -> SecureStorageState -> DialogState -> TestTree
+tests ffiPermState ffiSecureStorageState ffiDialogState = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, scrollViewTests, textInputTests, imageTests, styledTests, textAlignTests, colorTests, registrationTests, localeTests, i18nTests, permissionTests ffiPermState, secureStorageTests ffiSecureStorageState, bleTests, dialogTests ffiDialogState, appContextTests, exceptionHandlerTests]
 
 qcProps :: TestTree
 qcProps = testGroup "(checked by QuickCheck)"
@@ -275,10 +284,12 @@ uiTests = testGroup "UI"
       dummyPermState <- newPermissionState
       dummySecureStorageState <- newSecureStorageState
       dummyBleState  <- newBleState
+      dummyDialogState <- newDialogState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
             , userBleState           = dummyBleState
+            , userDialogState        = dummyDialogState
             }
       widget <- maView mobileApp dummyUserState
       -- mobileApp is the counter demo; verify it's a column
@@ -669,10 +680,12 @@ registrationTests = testGroup "Registration"
       dummyPermState <- newPermissionState
       dummySecureStorageState <- newSecureStorageState
       dummyBleState  <- newBleState
+      dummyDialogState <- newDialogState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
             , userBleState           = dummyBleState
+            , userDialogState        = dummyDialogState
             }
       viewFn <- readIORef (acViewFunction appCtx)
       widget <- viewFn dummyUserState
@@ -697,10 +710,12 @@ registrationTests = testGroup "Registration"
       dummyPermState <- newPermissionState
       dummySecureStorageState <- newSecureStorageState
       dummyBleState  <- newBleState
+      dummyDialogState <- newDialogState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
             , userBleState           = dummyBleState
+            , userDialogState        = dummyDialogState
             }
       viewFnA <- readIORef (acViewFunction appCtxA)
       viewFnB <- readIORef (acViewFunction appCtxB)
@@ -1098,6 +1113,83 @@ bleTests = testGroup "BLE"
           bsrDeviceAddress scanResult @?= "FF:EE:DD:CC:BB:AA"
   ]
 
+-- | Dialog tests.  The @ffiDialogState@ parameter is the 'DialogState'
+-- from a context created once in 'main' via 'startMobileApp'.  This
+-- ensures the C desktop stub's context pointer is valid for FFI round-trip
+-- tests.
+-- Uses 'sequentialTestGroup' because these tests share mutable state
+-- (the Haskell callback registry and the C global context pointer).
+dialogTests :: DialogState -> TestTree
+dialogTests ffiDialogState = sequentialTestGroup "Dialog" AllFinish
+  [ testCase "showDialog registers callback and desktop stub fires button1" $ do
+      ref <- newIORef (Nothing :: Maybe DialogAction)
+      showDialog ffiDialogState
+        DialogConfig
+          { dcTitle   = "Test Alert"
+          , dcMessage = "A test message"
+          , dcButton1 = "OK"
+          , dcButton2 = Nothing
+          , dcButton3 = Nothing
+          }
+        (\action -> writeIORef ref (Just action))
+      result <- readIORef ref
+      result @?= Just DialogButton1
+
+  , testCase "dispatchDialogResult fires registered callback" $ do
+      ref <- newIORef (Nothing :: Maybe DialogAction)
+      dialogState <- newDialogState
+      modifyIORef' (dsCallbacks dialogState) (\_ ->
+        IntMap.singleton 0 (\action -> writeIORef ref (Just action)))
+      dispatchDialogResult dialogState 0 1  -- button2
+      result <- readIORef ref
+      result @?= Just DialogButton2
+
+  , testCase "dispatchDialogResult with DialogDismissed" $ do
+      ref <- newIORef (Nothing :: Maybe DialogAction)
+      dialogState <- newDialogState
+      modifyIORef' (dsCallbacks dialogState) (\_ ->
+        IntMap.singleton 0 (\action -> writeIORef ref (Just action)))
+      dispatchDialogResult dialogState 0 3  -- dismissed
+      result <- readIORef ref
+      result @?= Just DialogDismissed
+
+  , testCase "dispatchDialogResult removes callback after firing" $ do
+      ref <- newIORef (0 :: Int)
+      dialogState <- newDialogState
+      modifyIORef' (dsCallbacks dialogState) (\_ ->
+        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      dispatchDialogResult dialogState 0 0
+      count1 <- readIORef ref
+      count1 @?= 1
+      -- Second dispatch for same ID should be a no-op (callback removed)
+      dispatchDialogResult dialogState 0 0
+      count2 <- readIORef ref
+      count2 @?= 1
+
+  , testCase "unknown requestId is silently logged" $ do
+      dialogState <- newDialogState
+      -- Should not throw (logs to stderr)
+      dispatchDialogResult dialogState 999 0
+
+  , testCase "unknown action code is silently logged" $ do
+      ref <- newIORef (0 :: Int)
+      dialogState <- newDialogState
+      modifyIORef' (dsCallbacks dialogState) (\_ ->
+        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      dispatchDialogResult dialogState 0 42
+      count <- readIORef ref
+      count @?= 0
+
+  , testCase "dialogActionFromInt round-trips" $ do
+      dialogActionFromInt 0 @?= Just DialogButton1
+      dialogActionFromInt 1 @?= Just DialogButton2
+      dialogActionFromInt 2 @?= Just DialogButton3
+      dialogActionFromInt 3 @?= Just DialogDismissed
+      dialogActionFromInt 4 @?= Nothing
+      dialogActionFromInt (-1) @?= Nothing
+      dialogActionFromInt 100 @?= Nothing
+  ]
+
 -- | Tests for the AppContext FFI path.
 appContextTests :: TestTree
 appContextTests = testGroup "AppContext"
@@ -1126,6 +1218,7 @@ viewIsErrorWidget ctxPtr = do
         { userPermissionState    = acPermissionState appCtx
         , userSecureStorageState = acSecureStorageState appCtx
         , userBleState           = acBleState appCtx
+        , userDialogState        = acDialogState appCtx
         }
   widget <- viewFn userState
   case widget of

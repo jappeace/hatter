@@ -3,6 +3,7 @@
 #include "PermissionBridge.h"
 #include "SecureStorageBridge.h"
 #include "BleBridge.h"
+#include "DialogBridge.h"
 
 /* Dispatch a text change event to Haskell.
  * Not declared in HaskellMobile.h but exported via foreign export ccall. */

@@ -3,6 +3,7 @@
 #include "PermissionBridge.h"
 #include "SecureStorageBridge.h"
 #include "BleBridge.h"
+#include "DialogBridge.h"
 
 /* iOS UI bridge setup — called from Swift before haskellRenderUI */
 void setup_ios_ui_bridge(void *viewController, void *haskellCtx);
@@ -15,3 +16,6 @@ void setup_ios_secure_storage_bridge(void *haskellCtx);
 
 /* iOS BLE bridge setup — called from Swift during initialisation */
 void setup_ios_ble_bridge(void *haskellCtx);
+
+/* iOS dialog bridge setup — called from Swift during initialisation */
+void setup_ios_dialog_bridge(void *haskellCtx);

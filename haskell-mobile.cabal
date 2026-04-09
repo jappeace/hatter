@@ -73,6 +73,7 @@ library
       HaskellMobile.Permission
       HaskellMobile.SecureStorage
       HaskellMobile.Ble
+      HaskellMobile.Dialog
   hs-source-dirs:
       src
   build-depends:
@@ -87,6 +88,7 @@ library
       cbits/permission_bridge.c
       cbits/secure_storage_bridge.c
       cbits/ble_bridge.c
+      cbits/dialog_bridge.c
   include-dirs:
       include
 

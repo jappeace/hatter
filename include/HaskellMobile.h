@@ -84,4 +84,17 @@ void haskellOnSecureStorageResult(void *ctx, int32_t requestId,
  * ctx must be a pointer returned by haskellRunMain(). */
 void haskellOnBleScanResult(void *ctx, const char *name, const char *address, int32_t rssi);
 
+/* Dialog action codes */
+#define DIALOG_BUTTON_1   0
+#define DIALOG_BUTTON_2   1
+#define DIALOG_BUTTON_3   2
+#define DIALOG_DISMISSED  3
+
+/* Dispatch a dialog result from native code back to Haskell.
+ * requestId:  opaque ID from the original dialog_show() call.
+ * actionCode: DIALOG_BUTTON_1 (0), DIALOG_BUTTON_2 (1),
+ *             DIALOG_BUTTON_3 (2), or DIALOG_DISMISSED (3).
+ * ctx must be a pointer returned by haskellRunMain(). */
+void haskellOnDialogResult(void *ctx, int32_t requestId, int32_t actionCode);
+
 #endif /* HASKELL_MOBILE_H */

@@ -8,6 +8,7 @@
 
 #include "UIBridge.h"
 #include "SecureStorageBridge.h"
+#include "DialogBridge.h"
 #include <os/log.h>
 #include <string.h>
 
@@ -36,6 +37,12 @@ extern void watchos_secure_storage_read(void *ctx, int32_t requestId,
                                          const char *key);
 extern void watchos_secure_storage_delete(void *ctx, int32_t requestId,
                                            const char *key);
+
+/* Forward declaration of Swift @_cdecl dialog function */
+extern void watchos_dialog_show(void *ctx, int32_t requestId,
+                                 const char *title, const char *message,
+                                 const char *button1, const char *button2,
+                                 const char *button3);
 
 static UIBridgeCallbacks g_watchos_callbacks = {
     .createNode  = watchos_create_node,
@@ -74,4 +81,8 @@ void setup_watchos_ui_bridge(void *haskellCtx)
                                   watchos_secure_storage_read,
                                   watchos_secure_storage_delete);
     os_log_info(log, "watchOS secure storage bridge initialized");
+
+    /* Register Swift dialog callback with platform-agnostic dispatcher */
+    dialog_register_impl(watchos_dialog_show);
+    os_log_info(log, "watchOS dialog bridge initialized");
 }
