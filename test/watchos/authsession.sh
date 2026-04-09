@@ -24,7 +24,7 @@ xcrun simctl spawn "$SIM_UDID" log stream \
 LOG_STREAM_PID=$!
 sleep 5
 
-xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID"
+xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" --autotest-buttons
 
 render_done=0
 wait_for_log "$STREAM_LOG" "setRoot" 60
@@ -43,7 +43,7 @@ if [ $render_done -eq 0 ]; then
     xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
     sleep 3
     > "$STREAM_LOG"
-    xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID"
+    xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" --autotest-buttons
     wait_for_log "$STREAM_LOG" "setRoot" 60 || true
 fi
 
