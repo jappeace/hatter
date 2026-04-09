@@ -1,5 +1,6 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE OverloadedStrings #-}
 -- | BLE (Bluetooth Low Energy) scanning API for mobile platforms.
 --
 -- Provides adapter status check and start\/stop scan functionality.
