@@ -110,22 +110,21 @@ This way the linker only pulls in symbols that are actually referenced, keeping 
 
 ## Prevention: `.so` Size Guard
 
-To prevent a recurrence, `mkAndroidLib` now checks the `.so` size in its `installPhase` and fails the build if it exceeds `soMaxSizeMB` (default: 200 MB). A normal counter app `.so` is ~80 MB; consumer apps with deps are ~100 MB. The 200 MB limit catches the kind of 4.5x bloat seen here while leaving room for legitimate growth.
+Two layers of protection:
 
-```nix
-mkAndroidLib {
-  # ...
-  soMaxSizeMB = 200;  # default, override per-app if needed
-};
-```
-
-If triggered, the build fails with a clear diagnostic:
+**CI test suite (hard fail):** `nix/emulator-all.nix` checks the `.so` size of every test app before booting the emulator. If any `.so` exceeds 120 MB, the test fails immediately with a clear diagnostic. The counter app `.so` is ~80 MB, so 120 MB catches bloat early while leaving room for legitimate growth from new features.
 
 ```
-FATAL: libhaskellmobile.so is 373 MB, exceeds 200 MB limit.
-This usually means boot package .a files ended up in the --whole-archive link group.
-Check that crossDeps .a files are in the correct directory (lib/ vs lib-boot/).
+OK    haskell-mobile-android .so is 79 MB
+OK    haskell-mobile-scroll-android .so is 79 MB
+...
+FAIL  haskell-mobile-android .so is 373 MB (limit: 120 MB)
+
+FATAL: .so size limit exceeded. This usually means boot package .a files
+ended up in the --whole-archive link group. See docs/ci-ram-regression-110.md
 ```
+
+**`mkAndroidLib` (warning):** The user-facing builder prints the `.so` size and warns if it exceeds `soMaxSizeMB` (default 200 MB). This is a soft warning, not a hard fail, because consumer apps (e.g. prrrrrrrrr with sqlite-simple) may legitimately be larger.
 
 ---
 
@@ -141,4 +140,4 @@ The emulator RAM remains at 6144 MB even though the proper fix landed. This prov
 
 2. **Separate link groups for different archive roles.** Boot packages, consumer deps, and core RTS libraries have different linking requirements. Mixing them in a single directory conflates these roles.
 
-3. **Binary size is a canary for memory issues.** A 4.5x increase in `.so` size directly translates to increased runtime memory pressure. The `.so` size guard in `mkAndroidLib` now catches this automatically at build time.
+3. **Binary size is a canary for memory issues.** A 4.5x increase in `.so` size directly translates to increased runtime memory pressure. The `.so` size guard in the CI test suite now catches this automatically before the emulator even boots.
