@@ -6,6 +6,7 @@
 -- and logs the result via platformLog.
 module Main where
 
+import qualified Data.ByteString as BS
 import Data.Text (pack)
 import Foreign.Ptr (Ptr)
 import HaskellMobile
@@ -53,7 +54,7 @@ httpDemoView userState = do
               { hrMethod  = HttpGet
               , hrUrl     = "http://localhost:8765/"
               , hrHeaders = []
-              , hrBody    = Nothing
+              , hrBody    = BS.empty
               }
             (\result -> case result of
               Right response ->
