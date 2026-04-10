@@ -72,7 +72,7 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
     private native void onLocationResult(double lat, double lon, double alt, double acc);
     private native void onAuthSessionResult(int requestId, int statusCode,
                                              String redirectUrl, String errorMsg);
-    private native void onCameraResult(int requestId, int statusCode, String filePath,
+    private native void onCameraResult(int requestId, int statusCode,
                                        byte[] imageData, int width, int height);
     private native void onVideoFrame(int requestId, byte[] frameData, int width, int height);
     private native void onAudioChunk(int requestId, byte[] audioData);
@@ -504,7 +504,7 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
         try {
             if (cameraDevice == null) {
                 android.util.Log.e("CameraBridge", "capturePhoto: no camera device");
-                onCameraResult(requestId, 4 /* CAMERA_ERROR */, null, null, 0, 0);
+                onCameraResult(requestId, 4 /* CAMERA_ERROR */, null, 0, 0);
                 return;
             }
 
@@ -521,21 +521,8 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
                         buffer.get(bytes);
                         image.close();
 
-                        java.io.File photoFile = new java.io.File(
-                            getCacheDir(), "capture_" + requestId + ".jpg");
-                        try {
-                            java.io.FileOutputStream fos = new java.io.FileOutputStream(photoFile);
-                            fos.write(bytes);
-                            fos.close();
-                            onCameraResult(requestId, 0 /* CAMERA_SUCCESS */,
-                                photoFile.getAbsolutePath(),
-                                bytes, imgWidth, imgHeight);
-                        } catch (java.io.IOException e) {
-                            android.util.Log.e("CameraBridge",
-                                "capturePhoto: write failed: " + e.getMessage());
-                            onCameraResult(requestId, 4 /* CAMERA_ERROR */,
-                                null, null, 0, 0);
-                        }
+                        onCameraResult(requestId, 0 /* CAMERA_SUCCESS */,
+                            bytes, imgWidth, imgHeight);
                     }
                     reader.close();
                 }
@@ -557,7 +544,7 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
                             android.util.Log.e("CameraBridge",
                                 "capturePhoto: capture failed: " + e.getMessage());
                             onCameraResult(requestId, 4 /* CAMERA_ERROR */,
-                                null, null, 0, 0);
+                                null, 0, 0);
                         }
                     }
 
@@ -566,17 +553,17 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
                         android.util.Log.e("CameraBridge",
                             "capturePhoto: session config failed");
                         onCameraResult(requestId, 4 /* CAMERA_ERROR */,
-                            null, null, 0, 0);
+                            null, 0, 0);
                     }
                 }, null);
         } catch (CameraAccessException e) {
             android.util.Log.e("CameraBridge",
                 "capturePhoto: camera access error: " + e.getMessage());
-            onCameraResult(requestId, 4 /* CAMERA_ERROR */, null, null, 0, 0);
+            onCameraResult(requestId, 4 /* CAMERA_ERROR */, null, 0, 0);
         } catch (Exception e) {
             android.util.Log.e("CameraBridge",
                 "capturePhoto failed: " + e.getMessage());
-            onCameraResult(requestId, 4 /* CAMERA_ERROR */, null, null, 0, 0);
+            onCameraResult(requestId, 4 /* CAMERA_ERROR */, null, 0, 0);
         }
     }
 
@@ -592,7 +579,7 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
         try {
             if (cameraDevice == null) {
                 android.util.Log.e("CameraBridge", "startVideoCapture: no camera device");
-                onCameraResult(requestId, 4 /* CAMERA_ERROR */, null, null, 0, 0);
+                onCameraResult(requestId, 4 /* CAMERA_ERROR */, null, 0, 0);
                 return;
             }
 
@@ -633,7 +620,7 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
                             android.util.Log.e("CameraBridge",
                                 "startVideoCapture: repeating request failed: " + e.getMessage());
                             onCameraResult(requestId, 4 /* CAMERA_ERROR */,
-                                null, null, 0, 0);
+                                null, 0, 0);
                         }
                     }
 
@@ -642,7 +629,7 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
                         android.util.Log.e("CameraBridge",
                             "startVideoCapture: session config failed");
                         onCameraResult(requestId, 4 /* CAMERA_ERROR */,
-                            null, null, 0, 0);
+                            null, 0, 0);
                     }
                 }, null);
 
@@ -680,7 +667,7 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
         } catch (Exception e) {
             android.util.Log.e("CameraBridge",
                 "startVideoCapture failed: " + e.getMessage());
-            onCameraResult(requestId, 4 /* CAMERA_ERROR */, null, null, 0, 0);
+            onCameraResult(requestId, 4 /* CAMERA_ERROR */, null, 0, 0);
         }
     }
 
@@ -713,12 +700,12 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
             }
 
             onCameraResult(videoRequestId, 0 /* CAMERA_SUCCESS */,
-                null, null, 0, 0);
+                null, 0, 0);
         } catch (Exception e) {
             android.util.Log.e("CameraBridge",
                 "stopVideoCapture failed: " + e.getMessage());
             onCameraResult(videoRequestId, 4 /* CAMERA_ERROR */,
-                null, null, 0, 0);
+                null, 0, 0);
         }
     }
 

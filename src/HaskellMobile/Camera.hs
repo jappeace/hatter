@@ -3,13 +3,13 @@
 -- | Camera capture API for mobile platforms.
 --
 -- Provides session management (start\/stop), photo capture, and video
--- recording with file-path results delivered via callbacks.
+-- recording with results delivered via callbacks.
 -- On desktop (no platform bridge registered) the C stub dispatches
--- dummy file paths so that @cabal test@ exercises the callback path
+-- dummy results so that @cabal test@ exercises the callback path
 -- without native code.
 --
--- Photo captures include raw image bytes as a 'Picture' alongside the
--- file path.  Video recording supports per-frame and per-audio-chunk
+-- Photo captures deliver raw image bytes as a 'Picture'.
+-- Video recording supports per-frame and per-audio-chunk
 -- push callbacks that mirror the native Camera2\/AVFoundation model.
 --
 -- The camera session is owned by 'CameraState', not by the CameraView
@@ -40,7 +40,6 @@ import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import Data.Int (Int32)
 import Data.IntMap.Strict (IntMap)
 import Data.IntMap.Strict qualified as IntMap
-import Data.Text (Text)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
@@ -53,7 +52,7 @@ data CameraSource
 
 -- | Outcome of a camera capture operation.
 data CameraStatus
-  = CameraSuccess          -- ^ Capture completed; file path is available.
+  = CameraSuccess          -- ^ Capture completed successfully.
   | CameraCancelled        -- ^ User cancelled the capture.
   | CameraPermissionDenied -- ^ Camera permission was denied.
   | CameraUnavailable      -- ^ Camera hardware is not available.
@@ -73,8 +72,6 @@ data Picture = Picture
 -- | Result delivered to a capture callback.
 data CameraResult = CameraResult
   { crStatus   :: CameraStatus
-  , crFilePath :: Maybe Text
-    -- ^ Absolute path to the captured file, or 'Nothing' on failure.
   , crPicture  :: Maybe Picture
     -- ^ Raw image data for photo captures, or 'Nothing' for video
     -- results and error results.
@@ -175,7 +172,7 @@ startVideoCapture cameraState frameCallback audioCallback completionCallback = d
   c_cameraStartVideo ctx (fromIntegral requestId)
 
 -- | Stop recording video. The callback registered by 'startVideoCapture'
--- will be fired with the video file path.
+-- will be fired with a completion result.
 -- Safe to call when not recording (no-op).
 stopVideoCapture :: CameraState -> IO ()
 stopVideoCapture _cameraState =
@@ -186,10 +183,10 @@ stopVideoCapture _cameraState =
 -- frame\/audio callbacks) after firing.
 -- Unknown request IDs or status codes are silently logged to stderr.
 dispatchCameraResult :: CameraState -> CInt -> CInt
-                     -> Maybe Text -> Maybe ByteString -> CInt -> CInt
+                     -> Maybe ByteString -> CInt -> CInt
                      -> IO ()
 dispatchCameraResult cameraState requestId statusCode
-                     maybeFilePath maybeImageData imageWidth imageHeight =
+                     maybeImageData imageWidth imageHeight =
   case cameraStatusFromInt statusCode of
     Nothing -> hPutStrLn stderr $
       "dispatchCameraResult: unknown status code " ++ show statusCode
@@ -206,9 +203,6 @@ dispatchCameraResult cameraState requestId statusCode
             _ -> Nothing
           result = CameraResult
             { crStatus   = status
-            , crFilePath = case status of
-                CameraSuccess -> maybeFilePath
-                _             -> Nothing
             , crPicture  = maybePicture
             }
       callbacks <- readIORef (csCallbacks cameraState)

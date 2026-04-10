@@ -48,7 +48,7 @@ extern void haskellOnAuthSessionResult(void *ctx, int32_t requestId,
                                         const char *redirectUrl,
                                         const char *errorMessage);
 extern void haskellOnCameraResult(void *ctx, int32_t requestId,
-                                   int32_t statusCode, const char *filePath,
+                                   int32_t statusCode,
                                    const uint8_t *imageData, int32_t imageDataLen,
                                    int32_t width, int32_t height);
 

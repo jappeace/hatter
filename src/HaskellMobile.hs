@@ -382,25 +382,23 @@ foreign export ccall haskellOnAuthSessionResult :: Ptr AppContext -> CInt -> CIn
 
 -- | Handle a camera result from native code. Dispatches to the
 -- callback registered by 'capturePhoto' or 'startVideoCapture'.
--- The @cFilePath@ parameter is non-null only for successful captures.
 -- The @imageDataPtr@/@imageDataLen@/@width@/@height@ parameters carry
 -- raw JPEG bytes for photo captures; null\/0 for video completions and
 -- error results.
-haskellOnCameraResult :: Ptr AppContext -> CInt -> CInt -> CString
+haskellOnCameraResult :: Ptr AppContext -> CInt -> CInt
                       -> Ptr Word8 -> CInt -> CInt -> CInt -> IO ()
-haskellOnCameraResult ctxPtr requestId statusCode cFilePath
+haskellOnCameraResult ctxPtr requestId statusCode
                       imageDataPtr imageDataLen width height =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
-    maybeFilePath <- peekOptionalCString cFilePath
     maybeImageData <- if imageDataPtr == nullPtr || imageDataLen <= 0
       then pure Nothing
       else Just <$> BS.packCStringLen (castPtr imageDataPtr, fromIntegral imageDataLen)
     dispatchCameraResult (acCameraState appCtx) requestId statusCode
-      maybeFilePath maybeImageData width height
+      maybeImageData width height
 
 foreign export ccall haskellOnCameraResult
-  :: Ptr AppContext -> CInt -> CInt -> CString
+  :: Ptr AppContext -> CInt -> CInt
   -> Ptr Word8 -> CInt -> CInt -> CInt -> IO ()
 
 -- | Handle a video frame from native code. Dispatches to the

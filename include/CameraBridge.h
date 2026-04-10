@@ -20,8 +20,8 @@
  * Haskell calls camera_start_session/stop_session/capture_photo/
  * start_video/stop_video through these wrappers.  When no platform
  * callbacks are registered (desktop), start_session is a no-op,
- * capture_photo dispatches a success result with a dummy file path,
- * and start_video dispatches a success result with a dummy video path.
+ * capture_photo dispatches a success result with dummy JPEG bytes,
+ * and start_video dispatches fake frames and a success completion.
  *
  * On Android/iOS the platform-specific setup function fills in real
  * implementations via camera_register_impl().
@@ -45,8 +45,8 @@ void camera_capture_photo(void *ctx, int32_t requestId);
  * requestId: opaque ID from Haskell (used to dispatch the result). */
 void camera_start_video(void *ctx, int32_t requestId);
 
-/* Stop recording video.  The result callback registered by
- * camera_start_video is fired with the video file path. */
+/* Stop recording video.  The completion callback registered by
+ * camera_start_video is fired with a success result. */
 void camera_stop_video(void);
 
 /* Register platform-specific implementations.
@@ -64,7 +64,7 @@ void camera_register_impl(
  * imageData/imageDataLen/width/height are non-null/non-zero only for
  * successful photo captures; video completions pass NULL/0/0/0. */
 extern void haskellOnCameraResult(void *ctx, int32_t requestId,
-    int32_t statusCode, const char *filePath,
+    int32_t statusCode,
     const uint8_t *imageData, int32_t imageDataLen,
     int32_t width, int32_t height);
 

@@ -1461,9 +1461,6 @@ cameraTests = testGroup "Camera"
         Nothing -> assertFailure "callback should have been fired by desktop stub"
         Just result -> do
           crStatus result @?= CameraSuccess
-          case crFilePath result of
-            Nothing -> assertFailure "file path should be present on success"
-            Just _  -> pure ()
           case crPicture result of
             Nothing -> assertFailure "picture should be present for photo capture"
             Just pic -> do
@@ -1498,9 +1495,6 @@ cameraTests = testGroup "Camera"
         Nothing -> assertFailure "completion callback should have been fired by desktop stub"
         Just result -> do
           crStatus result @?= CameraSuccess
-          case crFilePath result of
-            Nothing -> assertFailure "file path should be present on success"
-            Just _  -> pure ()
           crPicture result @?= Nothing
       freeAppContext ctxPtr
 
@@ -1510,14 +1504,13 @@ cameraTests = testGroup "Camera"
       modifyIORef' (csCallbacks cameraState)
         (IntMap.insert 0 (\result -> writeIORef ref (Just result)))
       let jpegBytes = BS.pack [0xFF, 0xD8, 0xFF, 0xD9]
-      dispatchCameraResult cameraState 0 0 (Just "/tmp/photo.jpg")
+      dispatchCameraResult cameraState 0 0
         (Just jpegBytes) 640 480
       maybeResult <- readIORef ref
       case maybeResult of
         Nothing -> assertFailure "callback should have been fired"
         Just result -> do
           crStatus result @?= CameraSuccess
-          crFilePath result @?= Just "/tmp/photo.jpg"
           case crPicture result of
             Nothing -> assertFailure "picture should be present"
             Just pic -> do
@@ -1530,7 +1523,7 @@ cameraTests = testGroup "Camera"
       ref <- newIORef (Nothing :: Maybe CameraResult)
       modifyIORef' (csCallbacks cameraState)
         (IntMap.insert 0 (\result -> writeIORef ref (Just result)))
-      dispatchCameraResult cameraState 0 0 (Just "/tmp/video.mp4")
+      dispatchCameraResult cameraState 0 0
         Nothing 0 0
       maybeResult <- readIORef ref
       case maybeResult of
@@ -1545,7 +1538,7 @@ cameraTests = testGroup "Camera"
       modifyIORef' (csCallbacks cameraState)
         (IntMap.insert 0 (\result -> writeIORef ref (Just result)))
       let jpegBytes = BS.pack [0xFF, 0xD8, 0xFF, 0xD9]
-      dispatchCameraResult cameraState 0 4 Nothing (Just jpegBytes) 1 1
+      dispatchCameraResult cameraState 0 4 (Just jpegBytes) 1 1
       maybeResult <- readIORef ref
       case maybeResult of
         Nothing -> assertFailure "callback should have been fired"
@@ -1556,7 +1549,7 @@ cameraTests = testGroup "Camera"
   , testCase "dispatchCameraResult with no callback is no-op" $ do
       cameraState <- newCameraState
       -- Should not throw or crash
-      dispatchCameraResult cameraState 99 0 Nothing Nothing 0 0
+      dispatchCameraResult cameraState 99 0 Nothing 0 0
 
   , testCase "dispatchVideoFrame fires frame callback" $ do
       cameraState <- newCameraState
@@ -1593,7 +1586,7 @@ cameraTests = testGroup "Camera"
         (IntMap.insert 0 (\_ -> pure ()))
       modifyIORef' (csAudioCallbacks cameraState)
         (IntMap.insert 0 (\_ -> pure ()))
-      dispatchCameraResult cameraState 0 0 Nothing Nothing 0 0
+      dispatchCameraResult cameraState 0 0 Nothing 0 0
       -- After dispatch, all callbacks for requestId 0 should be gone
       callbacks <- readIORef (csCallbacks cameraState)
       IntMap.member 0 callbacks @?= False

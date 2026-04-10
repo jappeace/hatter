@@ -21,7 +21,7 @@
 
 /* Haskell FFI exports (dispatches camera results back to Haskell callbacks) */
 extern void haskellOnCameraResult(void *ctx, int32_t requestId,
-                                    int32_t statusCode, const char *filePath,
+                                    int32_t statusCode,
                                     const uint8_t *imageData, int32_t imageDataLen,
                                     int32_t width, int32_t height);
 extern void haskellOnVideoFrame(void *ctx, int32_t requestId,
@@ -188,14 +188,9 @@ void setup_android_camera_bridge(JNIEnv *env, jobject activity, void *haskellCtx
 JNIEXPORT void JNICALL
 JNI_METHOD(onCameraResult)(JNIEnv *env, jobject thiz,
                             jint requestId, jint statusCode,
-                            jstring filePath,
                             jbyteArray imageData, jint width, jint height)
 {
     g_env = env;
-    const char *cpath = NULL;
-    if (filePath) {
-        cpath = (*env)->GetStringUTFChars(env, filePath, NULL);
-    }
 
     const uint8_t *imgBytes = NULL;
     int32_t imgLen = 0;
@@ -204,17 +199,14 @@ JNI_METHOD(onCameraResult)(JNIEnv *env, jobject thiz,
         imgBytes = (const uint8_t *)(*env)->GetByteArrayElements(env, imageData, NULL);
     }
 
-    LOGI("onCameraResult(requestId=%d, status=%d, path=%s, imgLen=%d, %dx%d)",
-         requestId, statusCode, cpath ? cpath : "null", imgLen, width, height);
+    LOGI("onCameraResult(requestId=%d, status=%d, imgLen=%d, %dx%d)",
+         requestId, statusCode, imgLen, width, height);
     haskellOnCameraResult(g_haskell_ctx, (int32_t)requestId,
-                           (int32_t)statusCode, cpath,
+                           (int32_t)statusCode,
                            imgBytes, imgLen, (int32_t)width, (int32_t)height);
 
     if (imgBytes) {
         (*env)->ReleaseByteArrayElements(env, imageData, (jbyte *)imgBytes, JNI_ABORT);
-    }
-    if (cpath) {
-        (*env)->ReleaseStringUTFChars(env, filePath, cpath);
     }
 }
 

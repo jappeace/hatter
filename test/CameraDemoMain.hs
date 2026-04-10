@@ -48,7 +48,6 @@ cameraDemoView userState = pure $ Column
           capturePhoto (userCameraState userState) $ \result ->
             case crStatus result of
               CameraSuccess -> do
-                platformLog ("Photo captured: " <> maybe "no path" id (crFilePath result))
                 case crPicture result of
                   Just pic ->
                     platformLog ("Picture: " <> pack (show (pictureWidth pic))
@@ -78,7 +77,7 @@ cameraDemoView userState = pure $ Column
             (\result ->
               case crStatus result of
                 CameraSuccess ->
-                  platformLog ("Video captured: " <> maybe "no path" id (crFilePath result))
+                  platformLog "Video capture completed"
                 CameraCancelled ->
                   platformLog "Video capture cancelled"
                 CameraPermissionDenied ->

@@ -134,14 +134,13 @@ void haskellOnAuthSessionResult(void *ctx, int32_t requestId,
  * statusCode:   CAMERA_SUCCESS (0), CAMERA_CANCELLED (1),
  *               CAMERA_PERMISSION_DENIED (2), CAMERA_UNAVAILABLE (3),
  *               or CAMERA_ERROR (4).
- * filePath:     null-terminated path to captured file, or NULL.
  * imageData:    JPEG-encoded image bytes, or NULL.
  * imageDataLen: length of imageData in bytes, or 0.
  * width:        image width in pixels, or 0.
  * height:       image height in pixels, or 0.
  * ctx must be a pointer returned by haskellRunMain(). */
 void haskellOnCameraResult(void *ctx, int32_t requestId,
-                            int32_t statusCode, const char *filePath,
+                            int32_t statusCode,
                             const uint8_t *imageData, int32_t imageDataLen,
                             int32_t width, int32_t height);
 

@@ -21,7 +21,7 @@ static os_log_t g_log;
 
 /* Haskell FFI exports (dispatches camera results back to Haskell callbacks) */
 extern void haskellOnCameraResult(void *ctx, int32_t requestId,
-                                    int32_t statusCode, const char *filePath,
+                                    int32_t statusCode,
                                     const uint8_t *imageData, int32_t imageDataLen,
                                     int32_t width, int32_t height);
 extern void haskellOnVideoFrame(void *ctx, int32_t requestId,
@@ -56,7 +56,7 @@ extern void haskellOnAudioChunk(void *ctx, int32_t requestId,
         LOGE("Photo capture error: %{public}@", error.localizedDescription);
         dispatch_async(dispatch_get_main_queue(), ^{
             haskellOnCameraResult(self.haskellCtx, self.photoRequestId,
-                                   CAMERA_ERROR, NULL, NULL, 0, 0, 0);
+                                   CAMERA_ERROR, NULL, 0, 0, 0);
         });
         return;
     }
@@ -66,7 +66,7 @@ extern void haskellOnAudioChunk(void *ctx, int32_t requestId,
         LOGE("Photo capture: no data representation");
         dispatch_async(dispatch_get_main_queue(), ^{
             haskellOnCameraResult(self.haskellCtx, self.photoRequestId,
-                                   CAMERA_ERROR, NULL, NULL, 0, 0, 0);
+                                   CAMERA_ERROR, NULL, 0, 0, 0);
         });
         return;
     }
@@ -75,19 +75,13 @@ extern void haskellOnAudioChunk(void *ctx, int32_t requestId,
     int32_t imgWidth = dimensions.width;
     int32_t imgHeight = dimensions.height;
 
-    NSString *tempDir = NSTemporaryDirectory();
-    NSString *fileName = [NSString stringWithFormat:@"capture_%d.jpg", self.photoRequestId];
-    NSString *filePath = [tempDir stringByAppendingPathComponent:fileName];
-    [data writeToFile:filePath atomically:YES];
-
-    LOGI("Photo saved: %{public}@ (%dx%d, %lu bytes)",
-         filePath, imgWidth, imgHeight, (unsigned long)[data length]);
-    const char *cpath = [filePath UTF8String];
+    LOGI("Photo captured: %dx%d, %lu bytes",
+         imgWidth, imgHeight, (unsigned long)[data length]);
     const uint8_t *imgBytes = (const uint8_t *)[data bytes];
     int32_t imgLen = (int32_t)[data length];
     dispatch_async(dispatch_get_main_queue(), ^{
         haskellOnCameraResult(self.haskellCtx, self.photoRequestId,
-                               CAMERA_SUCCESS, cpath,
+                               CAMERA_SUCCESS,
                                imgBytes, imgLen, imgWidth, imgHeight);
     });
 }
@@ -261,7 +255,7 @@ static void ios_camera_capture_photo(void *ctx, int32_t requestId)
     if (!g_delegate || !g_delegate.photoOutput ||
         !g_delegate.captureSession || !g_delegate.captureSession.isRunning) {
         LOGE("capture_photo: no active session");
-        haskellOnCameraResult(ctx, requestId, CAMERA_ERROR, NULL, NULL, 0, 0, 0);
+        haskellOnCameraResult(ctx, requestId, CAMERA_ERROR, NULL, 0, 0, 0);
         return;
     }
 
@@ -279,7 +273,7 @@ static void ios_camera_start_video(void *ctx, int32_t requestId)
     if (!g_delegate || !g_delegate.videoDataOutput ||
         !g_delegate.captureSession || !g_delegate.captureSession.isRunning) {
         LOGE("start_video: no active session");
-        haskellOnCameraResult(ctx, requestId, CAMERA_ERROR, NULL, NULL, 0, 0, 0);
+        haskellOnCameraResult(ctx, requestId, CAMERA_ERROR, NULL, 0, 0, 0);
         return;
     }
 
@@ -315,7 +309,7 @@ static void ios_camera_stop_video(void)
     /* Fire completion callback */
     dispatch_async(dispatch_get_main_queue(), ^{
         haskellOnCameraResult(g_delegate.haskellCtx, g_delegate.videoRequestId,
-                               CAMERA_SUCCESS, NULL, NULL, 0, 0, 0);
+                               CAMERA_SUCCESS, NULL, 0, 0, 0);
     });
 }
 
