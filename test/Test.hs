@@ -135,6 +135,19 @@ import HaskellMobile.BottomSheet
   , dispatchBottomSheetResult
   , bottomSheetActionFromInt
   )
+import HaskellMobile.Http
+  ( HttpMethod(..)
+  , HttpRequest(..)
+  , HttpResponse(..)
+  , HttpError(..)
+  , HttpState(..)
+  , newHttpState
+  , httpMethodToInt
+  , performRequest
+  , serializeHeaders
+  , parseHeaders
+  , dispatchHttpResult
+  )
 
 main :: IO ()
 main = do
@@ -143,10 +156,10 @@ main = do
   -- one context can be active for FFI permission dispatch.
   ffiCtxPtr <- startMobileApp mobileApp
   ffiAppCtx <- derefAppContext ffiCtxPtr
-  defaultMain (tests (acPermissionState ffiAppCtx) (acSecureStorageState ffiAppCtx) (acDialogState ffiAppCtx) (acAuthSessionState ffiAppCtx) (acBottomSheetState ffiAppCtx))
+  defaultMain (tests (acPermissionState ffiAppCtx) (acSecureStorageState ffiAppCtx) (acDialogState ffiAppCtx) (acAuthSessionState ffiAppCtx) (acBottomSheetState ffiAppCtx) (acHttpState ffiAppCtx))
 
-tests :: PermissionState -> SecureStorageState -> DialogState -> AuthSessionState -> BottomSheetState -> TestTree
-tests ffiPermState ffiSecureStorageState ffiDialogState ffiAuthSessionState ffiBottomSheetState = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, scrollViewTests, textInputTests, imageTests, webViewTests, styledTests, textAlignTests, colorTests, registrationTests, localeTests, i18nTests, permissionTests ffiPermState, secureStorageTests ffiSecureStorageState, bleTests, dialogTests ffiDialogState, locationTests, cameraTests, authSessionTests ffiAuthSessionState, bottomSheetTests ffiBottomSheetState, appContextTests, exceptionHandlerTests]
+tests :: PermissionState -> SecureStorageState -> DialogState -> AuthSessionState -> BottomSheetState -> HttpState -> TestTree
+tests ffiPermState ffiSecureStorageState ffiDialogState ffiAuthSessionState ffiBottomSheetState ffiHttpState = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, scrollViewTests, textInputTests, imageTests, webViewTests, styledTests, textAlignTests, colorTests, registrationTests, localeTests, i18nTests, permissionTests ffiPermState, secureStorageTests ffiSecureStorageState, bleTests, dialogTests ffiDialogState, locationTests, cameraTests, authSessionTests ffiAuthSessionState, bottomSheetTests ffiBottomSheetState, httpTests ffiHttpState, appContextTests, exceptionHandlerTests]
 
 qcProps :: TestTree
 qcProps = testGroup "(checked by QuickCheck)"
@@ -330,6 +343,7 @@ uiTests = testGroup "UI"
       dummyAuthSessionState <- newAuthSessionState
       dummyCameraState <- newCameraState
       dummyBottomSheetState <- newBottomSheetState
+      dummyHttpState <- newHttpState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
@@ -339,6 +353,7 @@ uiTests = testGroup "UI"
             , userAuthSessionState   = dummyAuthSessionState
             , userCameraState        = dummyCameraState
             , userBottomSheetState   = dummyBottomSheetState
+            , userHttpState          = dummyHttpState
             }
       widget <- maView mobileApp dummyUserState
       -- mobileApp is the counter demo; verify it's a column
@@ -777,6 +792,7 @@ registrationTests = testGroup "Registration"
       dummyAuthSessionState <- newAuthSessionState
       dummyCameraState <- newCameraState
       dummyBottomSheetState <- newBottomSheetState
+      dummyHttpState <- newHttpState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
@@ -786,6 +802,7 @@ registrationTests = testGroup "Registration"
             , userAuthSessionState   = dummyAuthSessionState
             , userCameraState        = dummyCameraState
             , userBottomSheetState   = dummyBottomSheetState
+            , userHttpState          = dummyHttpState
             }
       viewFn <- readIORef (acViewFunction appCtx)
       widget <- viewFn dummyUserState
@@ -815,6 +832,7 @@ registrationTests = testGroup "Registration"
       dummyAuthSessionState <- newAuthSessionState
       dummyCameraState <- newCameraState
       dummyBottomSheetState <- newBottomSheetState
+      dummyHttpState <- newHttpState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
@@ -824,6 +842,7 @@ registrationTests = testGroup "Registration"
             , userAuthSessionState   = dummyAuthSessionState
             , userCameraState        = dummyCameraState
             , userBottomSheetState   = dummyBottomSheetState
+            , userHttpState          = dummyHttpState
             }
       viewFnA <- readIORef (acViewFunction appCtxA)
       viewFnB <- readIORef (acViewFunction appCtxB)
@@ -1708,6 +1727,90 @@ cameraTests = testGroup "Camera"
       stopCameraSession cameraState
   ]
 
+httpTests :: HttpState -> TestTree
+httpTests ffiHttpState = sequentialTestGroup "Http" AllFinish
+  [ testCase "desktop stub returns 200 OK on GET" $ do
+      ref <- newIORef (Nothing :: Maybe (Either HttpError HttpResponse))
+      let request = HttpRequest
+            { hrMethod  = HttpGet
+            , hrUrl     = "http://localhost/test"
+            , hrHeaders = []
+            , hrBody    = BS.empty
+            }
+      performRequest ffiHttpState request (\result -> writeIORef ref (Just result))
+      result <- readIORef ref
+      case result of
+        Just (Right response) ->
+          hrStatusCode response @?= 200
+        _ -> assertFailure $ "expected Right HttpResponse, got: " ++ show result
+
+  , testCase "dispatchHttpResult success fires callback with status and body" $ do
+      ref <- newIORef (Nothing :: Maybe (Either HttpError HttpResponse))
+      httpState <- newHttpState
+      modifyIORef' (hsCallbacks httpState) (\_ ->
+        IntMap.singleton 0 (\result -> writeIORef ref (Just result)))
+      dispatchHttpResult httpState 0 0 200 (Just "Content-Type: text/html\n") (BS.pack [72, 105])
+      result <- readIORef ref
+      case result of
+        Just (Right response) -> do
+          hrStatusCode response @?= 200
+          hrRespBody response @?= BS.pack [72, 105]
+          hrRespHeaders response @?= [("Content-Type", "text/html")]
+        _ -> assertFailure $ "expected Right HttpResponse, got: " ++ show result
+
+  , testCase "dispatchHttpResult network error fires Left callback" $ do
+      ref <- newIORef (Nothing :: Maybe (Either HttpError HttpResponse))
+      httpState <- newHttpState
+      modifyIORef' (hsCallbacks httpState) (\_ ->
+        IntMap.singleton 0 (\result -> writeIORef ref (Just result)))
+      dispatchHttpResult httpState 0 1 0 (Just "connection refused") BS.empty
+      result <- readIORef ref
+      result @?= Just (Left (HttpNetworkError "connection refused"))
+
+  , testCase "dispatchHttpResult timeout fires Left callback" $ do
+      ref <- newIORef (Nothing :: Maybe (Either HttpError HttpResponse))
+      httpState <- newHttpState
+      modifyIORef' (hsCallbacks httpState) (\_ ->
+        IntMap.singleton 0 (\result -> writeIORef ref (Just result)))
+      dispatchHttpResult httpState 0 2 0 Nothing BS.empty
+      result <- readIORef ref
+      result @?= Just (Left HttpTimeout)
+
+  , testCase "callback removed after dispatch (idempotency)" $ do
+      ref <- newIORef (0 :: Int)
+      httpState <- newHttpState
+      modifyIORef' (hsCallbacks httpState) (\_ ->
+        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      dispatchHttpResult httpState 0 0 200 Nothing BS.empty
+      count1 <- readIORef ref
+      count1 @?= 1
+      -- Second dispatch for same ID should be a no-op (callback removed)
+      dispatchHttpResult httpState 0 0 200 Nothing BS.empty
+      count2 <- readIORef ref
+      count2 @?= 1
+
+  , testCase "unknown requestId does not crash" $ do
+      httpState <- newHttpState
+      -- Should not throw (logs to stderr)
+      dispatchHttpResult httpState 999 0 200 Nothing BS.empty
+
+  , testCase "header serialization round-trips" $ do
+      let headers = [("Content-Type", "application/json"), ("Authorization", "Bearer tok123")]
+      let serialized = serializeHeaders headers
+      let parsed = parseHeaders serialized
+      parsed @?= headers
+
+  , testCase "parseHeaders skips malformed lines" $ do
+      let headerText = "Good-Header: value\nBadLine\nAnother: ok\n"
+      parseHeaders headerText @?= [("Good-Header", "value"), ("Another", "ok")]
+
+  , testCase "httpMethodToInt covers all constructors" $ do
+      httpMethodToInt HttpGet @?= 0
+      httpMethodToInt HttpPost @?= 1
+      httpMethodToInt HttpPut @?= 2
+      httpMethodToInt HttpDelete @?= 3
+  ]
+
 appContextTests :: TestTree
 appContextTests = testGroup "AppContext"
   [ testCase "newAppContext produces working lifecycle context" $ do
@@ -1740,6 +1843,7 @@ viewIsErrorWidget ctxPtr = do
         , userAuthSessionState   = acAuthSessionState appCtx
         , userCameraState        = acCameraState appCtx
         , userBottomSheetState   = acBottomSheetState appCtx
+        , userHttpState          = acHttpState appCtx
         }
   widget <- viewFn userState
   case widget of

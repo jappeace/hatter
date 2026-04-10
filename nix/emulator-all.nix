@@ -182,6 +182,17 @@ let
     name = "haskell-mobile-bottomsheet-apk";
   };
 
+  httpAndroid = import ./android.nix {
+    inherit sources androidArch;
+    mainModule = ../test/HttpDemoMain.hs;
+  };
+  httpApk = lib.mkApk {
+    sharedLibs = [{ lib = httpAndroid; inherit abiDir; }];
+    androidSrc = ../android;
+    apkName = "haskell-mobile-http.apk";
+    name = "haskell-mobile-http-apk";
+  };
+
   androidComposition = pkgs.androidenv.composeAndroidPackages {
     platformVersions = [ emulatorApiLevel ];
     includeEmulator = true;
@@ -234,6 +245,7 @@ WEBVIEW_APK="${webviewApk}/haskell-mobile-webview.apk"
 AUTH_SESSION_APK="${authSessionApk}/haskell-mobile-authsession.apk"
 CAMERA_APK="${cameraApk}/haskell-mobile-camera.apk"
 BOTTOM_SHEET_APK="${bottomSheetApk}/haskell-mobile-bottomsheet.apk"
+HTTP_APK="${httpApk}/haskell-mobile-http.apk"
 PACKAGE="me.jappie.haskellmobile"
 ACTIVITY=".MainActivity"
 DEVICE_NAME="test_all"
@@ -257,7 +269,8 @@ for so_path in \
     "${webviewAndroid}/lib/${abiDir}/libhaskellmobile.so" \
     "${authSessionAndroid}/lib/${abiDir}/libhaskellmobile.so" \
     "${cameraAndroid}/lib/${abiDir}/libhaskellmobile.so" \
-    "${bottomSheetAndroid}/lib/${abiDir}/libhaskellmobile.so"; do
+    "${bottomSheetAndroid}/lib/${abiDir}/libhaskellmobile.so" \
+    "${httpAndroid}/lib/${abiDir}/libhaskellmobile.so"; do
     SO_BYTES=$(stat -c %s "$so_path")
     SO_MB=$((SO_BYTES / 1048576))
     SO_LABEL=$(echo "$so_path" | grep -oP '[^/]+(?=/lib/)')
@@ -322,6 +335,7 @@ PHASE8_OK=0
 PHASE9_OK=0
 PHASE10_OK=0
 PHASE11_OK=0
+PHASE12_OK=0
 
 cleanup() {
     echo ""
@@ -438,7 +452,7 @@ sleep 30
 # ===========================================================================
 # PHASE 1 + PHASE 2 — Run test scripts
 # ===========================================================================
-export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK CAMERA_APK BOTTOM_SHEET_APK PACKAGE ACTIVITY WORK_DIR
+export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK CAMERA_APK BOTTOM_SHEET_APK HTTP_APK PACKAGE ACTIVITY WORK_DIR
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0
@@ -451,6 +465,7 @@ PHASE8_EXIT=0
 PHASE9_EXIT=0
 PHASE10_EXIT=0
 PHASE11_EXIT=0
+PHASE12_EXIT=0
 
 # run_with_retry LABEL COMMAND [ARGS...]
 # Runs the command up to 10 times. Succeeds on first pass, fails only if all 10 fail.
@@ -519,6 +534,15 @@ echo "--- camera ---"
 run_with_retry "camera" bash "$TEST_SCRIPTS/android/camera.sh" || PHASE10_EXIT=1
 echo "--- bottomsheet ---"
 run_with_retry "bottomsheet" bash "$TEST_SCRIPTS/android/bottomsheet.sh" || PHASE11_EXIT=1
+echo "--- http ---"
+# Start a local HTTP server and expose it to the emulator via adb reverse
+python3 -m http.server 8765 --directory "$WORK_DIR" &
+HTTP_SERVER_PID=$!
+sleep 2
+"$ADB" -s "$EMULATOR_SERIAL" reverse tcp:8765 tcp:8765 || echo "WARNING: adb reverse failed"
+run_with_retry "http" bash "$TEST_SCRIPTS/android/http.sh" || PHASE12_EXIT=1
+kill "$HTTP_SERVER_PID" 2>/dev/null || true
+"$ADB" -s "$EMULATOR_SERIAL" reverse --remove tcp:8765 2>/dev/null || true
 
 # --- Phase results ---
 if [ $PHASE1_EXIT -eq 0 ]; then
@@ -629,6 +653,16 @@ else
     echo "PHASE 11 FAILED"
 fi
 
+if [ $PHASE12_EXIT -eq 0 ]; then
+    PHASE12_OK=1
+    echo ""
+    echo "PHASE 12 PASSED"
+else
+    PHASE12_OK=0
+    echo ""
+    echo "PHASE 12 FAILED"
+fi
+
 # ===========================================================================
 # Final report
 # ===========================================================================
@@ -713,6 +747,13 @@ if [ $PHASE11_OK -eq 1 ]; then
     echo "PASS  Phase 11 — BottomSheet demo app"
 else
     echo "FAIL  Phase 11 — BottomSheet demo app"
+    FINAL_EXIT=1
+fi
+
+if [ $PHASE12_OK -eq 1 ]; then
+    echo "PASS  Phase 12 — HTTP demo app"
+else
+    echo "FAIL  Phase 12 — HTTP demo app"
     FINAL_EXIT=1
 fi
 
