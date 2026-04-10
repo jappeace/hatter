@@ -162,5 +162,14 @@ void haskellOnVideoFrame(void *ctx, int32_t requestId,
  * ctx must be a pointer returned by haskellRunMain(). */
 void haskellOnAudioChunk(void *ctx, int32_t requestId,
                           const uint8_t *audioData, int32_t audioDataLen);
+/* Bottom sheet action codes */
+#define BOTTOM_SHEET_DISMISSED -1
+/* actionCode >= 0: 0-based index of the selected item */
+
+/* Dispatch a bottom sheet result from native code back to Haskell.
+ * requestId:  opaque ID from the original bottom_sheet_show() call.
+ * actionCode: >= 0 for item index, BOTTOM_SHEET_DISMISSED (-1) for dismiss.
+ * ctx must be a pointer returned by haskellRunMain(). */
+void haskellOnBottomSheetResult(void *ctx, int32_t requestId, int32_t actionCode);
 
 #endif /* HASKELL_MOBILE_H */

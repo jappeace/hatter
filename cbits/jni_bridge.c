@@ -20,6 +20,7 @@
 #include "LocationBridge.h"
 #include "AuthSessionBridge.h"
 #include "CameraBridge.h"
+#include "BottomSheetBridge.h"
 
 /* Runs the user's Haskell main via RTS API (cbits/run_main.c).
  * Returns the opaque AppContext pointer. */
@@ -51,6 +52,7 @@ extern void haskellOnCameraResult(void *ctx, int32_t requestId,
                                    int32_t statusCode,
                                    const uint8_t *imageData, int32_t imageDataLen,
                                    int32_t width, int32_t height);
+extern void haskellOnBottomSheetResult(void *ctx, int32_t requestId, int32_t actionCode);
 
 /* Android UI bridge (from ui_bridge_android.c) */
 extern void setup_android_ui_bridge(JNIEnv *env, jobject activity, void *haskellCtx);
@@ -77,6 +79,8 @@ extern void setup_android_auth_session_bridge(JNIEnv *env, jobject activity, voi
 
 /* Android camera bridge (from camera_bridge_android.c) */
 extern void setup_android_camera_bridge(JNIEnv *env, jobject activity, void *haskellCtx);
+/* Android bottom sheet bridge (from bottom_sheet_android.c) */
+extern void setup_android_bottom_sheet_bridge(JNIEnv *env, jobject activity, void *haskellCtx);
 
 /* Lifecycle event codes (must match HaskellMobile.h) */
 #define LIFECYCLE_CREATE     0
@@ -155,6 +159,7 @@ JNI_METHOD(renderUI)(JNIEnv *env, jobject thiz)
     setup_android_location_bridge(env, thiz, g_haskell_ctx);
     setup_android_auth_session_bridge(env, thiz, g_haskell_ctx);
     setup_android_camera_bridge(env, thiz, g_haskell_ctx);
+    setup_android_bottom_sheet_bridge(env, thiz, g_haskell_ctx);
     haskellRenderUI(g_haskell_ctx);
 }
 

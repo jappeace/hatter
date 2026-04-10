@@ -126,6 +126,15 @@ import HaskellMobile.AuthSession
   , dispatchAuthSessionResult
   , authSessionResultFromInt
   )
+import HaskellMobile.BottomSheet
+  ( BottomSheetAction(..)
+  , BottomSheetConfig(..)
+  , BottomSheetState(..)
+  , newBottomSheetState
+  , showBottomSheet
+  , dispatchBottomSheetResult
+  , bottomSheetActionFromInt
+  )
 
 main :: IO ()
 main = do
@@ -134,10 +143,10 @@ main = do
   -- one context can be active for FFI permission dispatch.
   ffiCtxPtr <- startMobileApp mobileApp
   ffiAppCtx <- derefAppContext ffiCtxPtr
-  defaultMain (tests (acPermissionState ffiAppCtx) (acSecureStorageState ffiAppCtx) (acDialogState ffiAppCtx) (acAuthSessionState ffiAppCtx))
+  defaultMain (tests (acPermissionState ffiAppCtx) (acSecureStorageState ffiAppCtx) (acDialogState ffiAppCtx) (acAuthSessionState ffiAppCtx) (acBottomSheetState ffiAppCtx))
 
-tests :: PermissionState -> SecureStorageState -> DialogState -> AuthSessionState -> TestTree
-tests ffiPermState ffiSecureStorageState ffiDialogState ffiAuthSessionState = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, scrollViewTests, textInputTests, imageTests, webViewTests, styledTests, textAlignTests, colorTests, registrationTests, localeTests, i18nTests, permissionTests ffiPermState, secureStorageTests ffiSecureStorageState, bleTests, dialogTests ffiDialogState, locationTests, cameraTests, authSessionTests ffiAuthSessionState, appContextTests, exceptionHandlerTests]
+tests :: PermissionState -> SecureStorageState -> DialogState -> AuthSessionState -> BottomSheetState -> TestTree
+tests ffiPermState ffiSecureStorageState ffiDialogState ffiAuthSessionState ffiBottomSheetState = testGroup "Tests" [qcProps, unitTests, lifecycleTests, uiTests, scrollViewTests, textInputTests, imageTests, webViewTests, styledTests, textAlignTests, colorTests, registrationTests, localeTests, i18nTests, permissionTests ffiPermState, secureStorageTests ffiSecureStorageState, bleTests, dialogTests ffiDialogState, locationTests, cameraTests, authSessionTests ffiAuthSessionState, bottomSheetTests ffiBottomSheetState, appContextTests, exceptionHandlerTests]
 
 qcProps :: TestTree
 qcProps = testGroup "(checked by QuickCheck)"
@@ -320,6 +329,7 @@ uiTests = testGroup "UI"
       dummyLocationState <- newLocationState
       dummyAuthSessionState <- newAuthSessionState
       dummyCameraState <- newCameraState
+      dummyBottomSheetState <- newBottomSheetState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
@@ -328,6 +338,7 @@ uiTests = testGroup "UI"
             , userLocationState      = dummyLocationState
             , userAuthSessionState   = dummyAuthSessionState
             , userCameraState        = dummyCameraState
+            , userBottomSheetState   = dummyBottomSheetState
             }
       widget <- maView mobileApp dummyUserState
       -- mobileApp is the counter demo; verify it's a column
@@ -765,6 +776,7 @@ registrationTests = testGroup "Registration"
       dummyLocationState <- newLocationState
       dummyAuthSessionState <- newAuthSessionState
       dummyCameraState <- newCameraState
+      dummyBottomSheetState <- newBottomSheetState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
@@ -773,6 +785,7 @@ registrationTests = testGroup "Registration"
             , userLocationState      = dummyLocationState
             , userAuthSessionState   = dummyAuthSessionState
             , userCameraState        = dummyCameraState
+            , userBottomSheetState   = dummyBottomSheetState
             }
       viewFn <- readIORef (acViewFunction appCtx)
       widget <- viewFn dummyUserState
@@ -801,6 +814,7 @@ registrationTests = testGroup "Registration"
       dummyLocationState <- newLocationState
       dummyAuthSessionState <- newAuthSessionState
       dummyCameraState <- newCameraState
+      dummyBottomSheetState <- newBottomSheetState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
@@ -809,6 +823,7 @@ registrationTests = testGroup "Registration"
             , userLocationState      = dummyLocationState
             , userAuthSessionState   = dummyAuthSessionState
             , userCameraState        = dummyCameraState
+            , userBottomSheetState   = dummyBottomSheetState
             }
       viewFnA <- readIORef (acViewFunction appCtxA)
       viewFnB <- readIORef (acViewFunction appCtxB)
@@ -1443,6 +1458,66 @@ locationTests = testGroup "Location"
       freeAppContext ctxPtr
   ]
 
+bottomSheetTests :: BottomSheetState -> TestTree
+bottomSheetTests ffiBottomSheetState = sequentialTestGroup "BottomSheet" AllFinish
+  [ testCase "showBottomSheet registers callback and desktop stub selects first item" $ do
+      ref <- newIORef (Nothing :: Maybe BottomSheetAction)
+      showBottomSheet ffiBottomSheetState
+        BottomSheetConfig
+          { bscTitle = "Actions"
+          , bscItems = ["Edit", "Delete", "Share"]
+          }
+        (\action -> writeIORef ref (Just action))
+      result <- readIORef ref
+      result @?= Just (BottomSheetItemSelected 0)
+
+  , testCase "dispatchBottomSheetResult fires ItemSelected callback" $ do
+      ref <- newIORef (Nothing :: Maybe BottomSheetAction)
+      bottomSheetState <- newBottomSheetState
+      modifyIORef' (bssCallbacks bottomSheetState) (\_ ->
+        IntMap.singleton 0 (\action -> writeIORef ref (Just action)))
+      dispatchBottomSheetResult bottomSheetState 0 2  -- item index 2
+      result <- readIORef ref
+      result @?= Just (BottomSheetItemSelected 2)
+
+  , testCase "dispatchBottomSheetResult fires Dismissed callback" $ do
+      ref <- newIORef (Nothing :: Maybe BottomSheetAction)
+      bottomSheetState <- newBottomSheetState
+      modifyIORef' (bssCallbacks bottomSheetState) (\_ ->
+        IntMap.singleton 0 (\action -> writeIORef ref (Just action)))
+      dispatchBottomSheetResult bottomSheetState 0 (-1)  -- dismissed
+      result <- readIORef ref
+      result @?= Just BottomSheetDismissed
+
+  , testCase "callback removed after dispatch (idempotency)" $ do
+      ref <- newIORef (0 :: Int)
+      bottomSheetState <- newBottomSheetState
+      modifyIORef' (bssCallbacks bottomSheetState) (\_ ->
+        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      dispatchBottomSheetResult bottomSheetState 0 0
+      count1 <- readIORef ref
+      count1 @?= 1
+      -- Second dispatch for same ID should be a no-op (callback removed)
+      dispatchBottomSheetResult bottomSheetState 0 0
+      count2 <- readIORef ref
+      count2 @?= 1
+
+  , testCase "bottomSheetActionFromInt roundtrips valid codes" $ do
+      bottomSheetActionFromInt 0 @?= Just (BottomSheetItemSelected 0)
+      bottomSheetActionFromInt 1 @?= Just (BottomSheetItemSelected 1)
+      bottomSheetActionFromInt 5 @?= Just (BottomSheetItemSelected 5)
+      bottomSheetActionFromInt (-1) @?= Just BottomSheetDismissed
+
+  , testCase "bottomSheetActionFromInt rejects invalid codes" $ do
+      bottomSheetActionFromInt (-2) @?= Nothing
+      bottomSheetActionFromInt (-100) @?= Nothing
+
+  , testCase "unknown requestId does not crash" $ do
+      bottomSheetState <- newBottomSheetState
+      -- Should not throw (logs to stderr)
+      dispatchBottomSheetResult bottomSheetState 999 0
+  ]
+
 -- | Tests for the AppContext FFI path.
 cameraTests :: TestTree
 cameraTests = testGroup "Camera"
@@ -1664,6 +1739,7 @@ viewIsErrorWidget ctxPtr = do
         , userLocationState      = acLocationState appCtx
         , userAuthSessionState   = acAuthSessionState appCtx
         , userCameraState        = acCameraState appCtx
+        , userBottomSheetState   = acBottomSheetState appCtx
         }
   widget <- viewFn userState
   case widget of

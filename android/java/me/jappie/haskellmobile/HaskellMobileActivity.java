@@ -76,6 +76,7 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
                                        byte[] imageData, int width, int height);
     private native void onVideoFrame(int requestId, byte[] frameData, int width, int height);
     private native void onAudioChunk(int requestId, byte[] audioData);
+    private native void onBottomSheetResult(int requestId, int actionCode);
 
     private static final String SECURE_PREFS_NAME = "haskell_mobile_secure_storage";
 
@@ -319,6 +320,36 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
             }
         });
 
+        builder.show();
+    }
+
+    /**
+     * Show a bottom sheet / action menu. Called from native code via JNI.
+     * requestId: opaque ID passed back in the result callback.
+     * title: bottom sheet title.
+     * items: newline-separated item labels.
+     */
+    public void showBottomSheet(final int requestId, String title, String items) {
+        final boolean[] itemSelected = {false};
+        String[] itemLabels = items.split("\n");
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(title);
+        builder.setItems(itemLabels, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                itemSelected[0] = true;
+                onBottomSheetResult(requestId, which);
+            }
+        });
+        builder.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface dialog) {
+                if (!itemSelected[0]) {
+                    onBottomSheetResult(requestId, -1); // BOTTOM_SHEET_DISMISSED
+                }
+            }
+        });
         builder.show();
     }
 
