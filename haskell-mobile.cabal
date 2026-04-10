@@ -84,7 +84,8 @@ library
   build-depends:
       text,
       containers,
-      bytestring
+      bytestring,
+      transformers
   c-sources:
       cbits/android_stubs.c
       cbits/platform_log.c

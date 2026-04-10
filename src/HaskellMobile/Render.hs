@@ -2,12 +2,17 @@
 -- | Rendering engine that converts a 'Widget' tree into native UI
 -- via the C bridge.
 --
--- Uses a full clear-and-rebuild strategy on every render.
+-- Uses an incremental diff strategy: on each render, the new widget
+-- tree is compared (via derived 'Eq') against the previously rendered
+-- tree.  Only changed subtrees are destroyed and recreated; unchanged
+-- nodes keep their native views.
+--
 -- Callbacks are stored in a shared 'ActionState' registry that is
 -- never cleared during rendering — handles inside widget configs
 -- reference stable entries in the registry.
 module HaskellMobile.Render
   ( RenderState(..)
+  , RenderedNode(..)
   , newRenderState
   , renderWidget
   , dispatchEvent
@@ -15,6 +20,7 @@ module HaskellMobile.Render
   )
 where
 
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Int (Int32)
 import Data.Text (Text, pack)
 import HaskellMobile.Action (Action(..), ActionState, OnChange(..), lookupAction, lookupTextAction)
@@ -22,19 +28,64 @@ import HaskellMobile.Widget (ButtonConfig(..), FontConfig(..), ImageConfig(..), 
 import HaskellMobile.UIBridge qualified as Bridge
 import System.IO (hPutStrLn, stderr)
 
+-- ---------------------------------------------------------------------------
+-- Rendered tree: retained structure for incremental diffing
+-- ---------------------------------------------------------------------------
+
+-- | A snapshot of a rendered widget, retaining the widget value
+-- (for equality comparison) and native node IDs.
+data RenderedNode
+  = RenderedLeaf
+      Widget         -- ^ Widget value for equality comparison.
+      Int32          -- ^ Native node ID from the platform bridge.
+  | RenderedContainer
+      Widget         -- ^ Widget value (Column/Row/ScrollView with children).
+      Int32          -- ^ Native node ID.
+      [RenderedNode] -- ^ Rendered children.
+  | RenderedStyled
+      Widget         -- ^ Widget value (Styled wrapper).
+      WidgetStyle    -- ^ Applied style (for change detection).
+      RenderedNode   -- ^ Child (Styled doesn't own a native node).
+
+-- | Get the native node ID for a rendered node.
+-- 'RenderedStyled' follows through to its child's node ID.
+renderedNodeId :: RenderedNode -> Int32
+renderedNodeId (RenderedLeaf _ nodeId)         = nodeId
+renderedNodeId (RenderedContainer _ nodeId _)  = nodeId
+renderedNodeId (RenderedStyled _ _ child)      = renderedNodeId child
+
+-- | Get the widget value for a rendered node.
+renderedWidget :: RenderedNode -> Widget
+renderedWidget (RenderedLeaf widget _)        = widget
+renderedWidget (RenderedContainer widget _ _) = widget
+renderedWidget (RenderedStyled widget _ _)    = widget
+
+-- ---------------------------------------------------------------------------
+-- Render state
+-- ---------------------------------------------------------------------------
+
 -- | Mutable state for the rendering engine.
--- Holds a reference to the shared 'ActionState' callback registry.
+-- Holds a reference to the shared 'ActionState' callback registry
+-- and the previously rendered tree for incremental diffing.
 data RenderState = RenderState
-  { rsActionState :: ActionState
+  { rsActionState  :: ActionState
     -- ^ Shared callback registry (never cleared during rendering).
+  , rsRenderedTree :: IORef (Maybe RenderedNode)
+    -- ^ The previously rendered tree, or 'Nothing' for the first render.
   }
 
 -- | Create a fresh 'RenderState' wrapping the given 'ActionState'.
 newRenderState :: ActionState -> IO RenderState
-newRenderState actionState =
+newRenderState actionState = do
+  renderedTree <- newIORef Nothing
   pure RenderState
-    { rsActionState = actionState
+    { rsActionState  = actionState
+    , rsRenderedTree = renderedTree
     }
+
+-- ---------------------------------------------------------------------------
+-- Bridge helpers
+-- ---------------------------------------------------------------------------
 
 -- | Map an 'InputType' to the numeric code sent to the platform bridge.
 inputTypeToInt :: InputType -> Int32
@@ -46,67 +97,6 @@ applyFontConfig :: Int32 -> Maybe FontConfig -> IO ()
 applyFontConfig nodeId (Just (FontConfig size)) =
   Bridge.setNumProp nodeId Bridge.PropFontSize size
 applyFontConfig _nodeId Nothing = pure ()
-
--- | Render a single 'Widget' node, returning its native node ID.
-renderNode :: Widget -> IO Int32
-renderNode (Text config) = do
-  nodeId <- Bridge.createNode Bridge.NodeText
-  Bridge.setStrProp nodeId Bridge.PropText (tcLabel config)
-  applyFontConfig nodeId (tcFontConfig config)
-  pure nodeId
-renderNode (Button config) = do
-  nodeId <- Bridge.createNode Bridge.NodeButton
-  Bridge.setStrProp nodeId Bridge.PropText (bcLabel config)
-  Bridge.setHandler nodeId Bridge.EventClick (actionId (bcAction config))
-  applyFontConfig nodeId (bcFontConfig config)
-  pure nodeId
-renderNode (TextInput config) = do
-  nodeId <- Bridge.createNode Bridge.NodeTextInput
-  Bridge.setStrProp nodeId Bridge.PropText (tiValue config)
-  Bridge.setStrProp nodeId Bridge.PropHint (tiHint config)
-  Bridge.setNumProp nodeId Bridge.PropInputType (fromIntegral (inputTypeToInt (tiInputType config)))
-  Bridge.setHandler nodeId Bridge.EventTextChange (onChangeId (tiOnChange config))
-  applyFontConfig nodeId (tiFontConfig config)
-  pure nodeId
-renderNode (Column children) = do
-  nodeId <- Bridge.createNode Bridge.NodeColumn
-  renderChildren nodeId children
-  pure nodeId
-renderNode (Row children) = do
-  nodeId <- Bridge.createNode Bridge.NodeRow
-  renderChildren nodeId children
-  pure nodeId
-renderNode (ScrollView children) = do
-  nodeId <- Bridge.createNode Bridge.NodeScrollView
-  renderChildren nodeId children
-  pure nodeId
-renderNode (Image config) = do
-  nodeId <- Bridge.createNode Bridge.NodeImage
-  case icSource config of
-    ImageResource (ResourceName name) -> Bridge.setStrProp nodeId Bridge.PropImageResource name
-    ImageData bytes                   -> Bridge.setImageData nodeId bytes
-    ImageFile path                    -> Bridge.setStrProp nodeId Bridge.PropImageFile (pack path)
-  Bridge.setNumProp nodeId Bridge.PropScaleType (scaleTypeToDouble (icScaleType config))
-  pure nodeId
-renderNode (WebView config) = do
-  nodeId <- Bridge.createNode Bridge.NodeWebView
-  Bridge.setStrProp nodeId Bridge.PropWebViewUrl (wvUrl config)
-  case wvOnPageLoad config of
-    Just action -> Bridge.setHandler nodeId Bridge.EventClick (actionId action)
-    Nothing     -> pure ()
-  pure nodeId
-renderNode (Styled style child) = do
-  nodeId <- renderNode child
-  applyStyle nodeId style
-  pure nodeId
-
--- | Render a list of children and add them to a parent container.
-renderChildren :: Int32 -> [Widget] -> IO ()
-renderChildren parentId children =
-  mapM_ (\child -> do
-    childId <- renderNode child
-    Bridge.addChild parentId childId
-  ) children
 
 -- | Map a 'ScaleType' to the numeric code sent to the platform bridge.
 scaleTypeToDouble :: ScaleType -> Double
@@ -137,15 +127,209 @@ applyStyle nodeId style = do
     Just color -> Bridge.setStrProp nodeId Bridge.PropBgColor (colorToHex color)
     Nothing    -> pure ()
 
--- | Full render: clear the screen, build the widget tree, and set
--- the root node.  Callback registries are /not/ cleared — handles
--- in the widget tree reference stable entries in the shared
--- 'ActionState'.
+-- ---------------------------------------------------------------------------
+-- Creating rendered nodes from scratch
+-- ---------------------------------------------------------------------------
+
+-- | Create a native node from a 'Widget', returning a 'RenderedNode'
+-- snapshot. Used for fresh creation (no old node to diff against).
+createRenderedNode :: Widget -> IO RenderedNode
+createRenderedNode widget@(Text config) = do
+  nodeId <- Bridge.createNode Bridge.NodeText
+  Bridge.setStrProp nodeId Bridge.PropText (tcLabel config)
+  applyFontConfig nodeId (tcFontConfig config)
+  pure (RenderedLeaf widget nodeId)
+createRenderedNode widget@(Button config) = do
+  nodeId <- Bridge.createNode Bridge.NodeButton
+  Bridge.setStrProp nodeId Bridge.PropText (bcLabel config)
+  Bridge.setHandler nodeId Bridge.EventClick (actionId (bcAction config))
+  applyFontConfig nodeId (bcFontConfig config)
+  pure (RenderedLeaf widget nodeId)
+createRenderedNode widget@(TextInput config) = do
+  nodeId <- Bridge.createNode Bridge.NodeTextInput
+  Bridge.setStrProp nodeId Bridge.PropText (tiValue config)
+  Bridge.setStrProp nodeId Bridge.PropHint (tiHint config)
+  Bridge.setNumProp nodeId Bridge.PropInputType (fromIntegral (inputTypeToInt (tiInputType config)))
+  Bridge.setHandler nodeId Bridge.EventTextChange (onChangeId (tiOnChange config))
+  applyFontConfig nodeId (tiFontConfig config)
+  pure (RenderedLeaf widget nodeId)
+createRenderedNode widget@(Column children) = do
+  nodeId <- Bridge.createNode Bridge.NodeColumn
+  childNodes <- mapM (\child -> do
+    childNode <- createRenderedNode child
+    Bridge.addChild nodeId (renderedNodeId childNode)
+    pure childNode
+    ) children
+  pure (RenderedContainer widget nodeId childNodes)
+createRenderedNode widget@(Row children) = do
+  nodeId <- Bridge.createNode Bridge.NodeRow
+  childNodes <- mapM (\child -> do
+    childNode <- createRenderedNode child
+    Bridge.addChild nodeId (renderedNodeId childNode)
+    pure childNode
+    ) children
+  pure (RenderedContainer widget nodeId childNodes)
+createRenderedNode widget@(ScrollView children) = do
+  nodeId <- Bridge.createNode Bridge.NodeScrollView
+  childNodes <- mapM (\child -> do
+    childNode <- createRenderedNode child
+    Bridge.addChild nodeId (renderedNodeId childNode)
+    pure childNode
+    ) children
+  pure (RenderedContainer widget nodeId childNodes)
+createRenderedNode widget@(Image config) = do
+  nodeId <- Bridge.createNode Bridge.NodeImage
+  case icSource config of
+    ImageResource (ResourceName name) -> Bridge.setStrProp nodeId Bridge.PropImageResource name
+    ImageData bytes                   -> Bridge.setImageData nodeId bytes
+    ImageFile path                    -> Bridge.setStrProp nodeId Bridge.PropImageFile (pack path)
+  Bridge.setNumProp nodeId Bridge.PropScaleType (scaleTypeToDouble (icScaleType config))
+  pure (RenderedLeaf widget nodeId)
+createRenderedNode widget@(WebView config) = do
+  nodeId <- Bridge.createNode Bridge.NodeWebView
+  Bridge.setStrProp nodeId Bridge.PropWebViewUrl (wvUrl config)
+  case wvOnPageLoad config of
+    Just action -> Bridge.setHandler nodeId Bridge.EventClick (actionId action)
+    Nothing     -> pure ()
+  pure (RenderedLeaf widget nodeId)
+createRenderedNode widget@(Styled style child) = do
+  childNode <- createRenderedNode child
+  applyStyle (renderedNodeId childNode) style
+  pure (RenderedStyled widget style childNode)
+
+-- ---------------------------------------------------------------------------
+-- Destroying rendered subtrees
+-- ---------------------------------------------------------------------------
+
+-- | Recursively destroy all native nodes in a rendered subtree.
+destroyRenderedSubtree :: RenderedNode -> IO ()
+destroyRenderedSubtree (RenderedLeaf _ nodeId) =
+  Bridge.destroyNode nodeId
+destroyRenderedSubtree (RenderedContainer _ nodeId children) = do
+  mapM_ destroyRenderedSubtree children
+  Bridge.destroyNode nodeId
+destroyRenderedSubtree (RenderedStyled _ _ child) =
+  destroyRenderedSubtree child
+
+-- ---------------------------------------------------------------------------
+-- Incremental diff algorithm
+-- ---------------------------------------------------------------------------
+
+-- | Check whether two widgets use the same constructor (node type).
+-- Does not compare contents — just the outermost constructor tag.
+sameNodeType :: Widget -> Widget -> Bool
+sameNodeType (Text _)        (Text _)        = True
+sameNodeType (Button _)      (Button _)      = True
+sameNodeType (TextInput _)   (TextInput _)   = True
+sameNodeType (Column _)      (Column _)      = True
+sameNodeType (Row _)         (Row _)         = True
+sameNodeType (ScrollView _)  (ScrollView _)  = True
+sameNodeType (Image _)       (Image _)       = True
+sameNodeType (WebView _)     (WebView _)     = True
+sameNodeType (Styled _ _)    (Styled _ _)    = True
+sameNodeType _               _               = False
+
+-- | Diff the old rendered tree against a new 'Widget' and produce
+-- an updated 'RenderedNode', emitting only the necessary bridge calls.
+--
+-- Cases:
+-- 1. No old node -> create from scratch.
+-- 2. @newWidget == renderedWidget oldNode@ -> reuse native node entirely (zero work).
+-- 3. Same container type, children differ -> keep container, diff children.
+-- 4. Same Styled, diff child recursively, re-apply style if changed.
+-- 5. Same leaf type but properties differ -> destroy old, create new.
+-- 6. Different node type -> destroy old subtree, create new.
+diffRenderNode :: Maybe RenderedNode -> Widget -> IO RenderedNode
+-- Case 1: No previous node — create from scratch.
+diffRenderNode Nothing newWidget =
+  createRenderedNode newWidget
+
+-- Case 2: Exact match — reuse native node entirely.
+diffRenderNode (Just oldNode) newWidget
+  | newWidget == renderedWidget oldNode =
+    pure oldNode
+
+-- Case 4: Both are Styled — diff child recursively.
+diffRenderNode (Just (RenderedStyled _ oldStyle oldChild)) (Styled newStyle newChild) = do
+  diffedChild <- diffRenderNode (Just oldChild) newChild
+  if newStyle /= oldStyle
+    then applyStyle (renderedNodeId diffedChild) newStyle
+    else pure ()
+  pure (RenderedStyled (Styled newStyle newChild) newStyle diffedChild)
+
+-- Case 3: Same container type, children may differ — keep container, diff children.
+diffRenderNode (Just oldNode@(RenderedContainer _ containerNodeId oldChildren)) newWidget
+  | sameNodeType (renderedWidget oldNode) newWidget =
+    case newWidget of
+      Column newChildren     -> diffContainer containerNodeId oldChildren newChildren newWidget
+      Row newChildren        -> diffContainer containerNodeId oldChildren newChildren newWidget
+      ScrollView newChildren -> diffContainer containerNodeId oldChildren newChildren newWidget
+      -- Non-container but same type at container level shouldn't happen,
+      -- but fall through to destroy+create for safety.
+      _ -> replaceNode oldNode newWidget
+
+-- Case 5/6: Same leaf type with different properties, or completely different
+-- node types — destroy old and create new.
+diffRenderNode (Just oldNode) newWidget =
+  replaceNode oldNode newWidget
+
+-- | Diff container children: remove all children from parent, diff each
+-- individually, then re-add all in correct order.
+diffContainer :: Int32 -> [RenderedNode] -> [Widget]
+              -> Widget -> IO RenderedNode
+diffContainer containerNodeId oldChildren newChildren newWidget = do
+  -- Remove all children from the container (order may change).
+  mapM_ (\oldChild -> Bridge.removeChild containerNodeId (renderedNodeId oldChild)) oldChildren
+  -- Diff each child position, pairing old children with new where available.
+  let paired = zipPadded oldChildren newChildren
+  diffedChildren <- mapM (\(maybeOld, newChild) ->
+    diffRenderNode maybeOld newChild
+    ) paired
+  -- Destroy any excess old children that weren't paired.
+  let excessOld = drop (length newChildren) oldChildren
+  mapM_ destroyRenderedSubtree excessOld
+  -- Re-add all children in the correct order.
+  mapM_ (\child -> Bridge.addChild containerNodeId (renderedNodeId child)) diffedChildren
+  pure (RenderedContainer newWidget containerNodeId diffedChildren)
+
+-- | Zip two lists, padding the shorter one with 'Nothing'.
+-- Returns @(Maybe old, new)@ pairs covering all new elements.
+zipPadded :: [a] -> [b] -> [(Maybe a, b)]
+zipPadded [] newItems           = map (\new -> (Nothing, new)) newItems
+zipPadded _ []                  = []
+zipPadded (old:olds) (new:news) = (Just old, new) : zipPadded olds news
+
+-- | Destroy an old node and create a fresh replacement.
+replaceNode :: RenderedNode -> Widget -> IO RenderedNode
+replaceNode oldNode newWidget = do
+  destroyRenderedSubtree oldNode
+  createRenderedNode newWidget
+
+-- ---------------------------------------------------------------------------
+-- Top-level render entry point
+-- ---------------------------------------------------------------------------
+
+-- | Incremental render: diffs the new widget tree against the previously
+-- rendered tree and emits only the necessary bridge operations.
+--
+-- On the first call (no previous tree), performs a full creation.
+-- On subsequent calls, reuses unchanged native nodes.
 renderWidget :: RenderState -> Widget -> IO ()
-renderWidget _rs widget = do
-  Bridge.clear
-  rootId <- renderNode widget
-  Bridge.setRoot rootId
+renderWidget rs widget = do
+  oldTree <- readIORef (rsRenderedTree rs)
+  newTree <- diffRenderNode oldTree widget
+  -- Set root if this is the first render or the root node changed.
+  case oldTree of
+    Nothing -> Bridge.setRoot (renderedNodeId newTree)
+    Just old
+      | renderedNodeId old /= renderedNodeId newTree ->
+          Bridge.setRoot (renderedNodeId newTree)
+      | otherwise -> pure ()
+  writeIORef (rsRenderedTree rs) (Just newTree)
+
+-- ---------------------------------------------------------------------------
+-- Event dispatch
+-- ---------------------------------------------------------------------------
 
 -- | Dispatch a native click event to the registered Haskell callback.
 -- Logs an error to stderr if the callbackId is not found.

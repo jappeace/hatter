@@ -1,3 +1,5 @@
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 -- | Opaque callback handles for the widget system.
 --
@@ -31,6 +33,8 @@ module HaskellMobile.Action
   )
 where
 
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Trans.Reader (ReaderT(..))
 import Data.IORef (IORef, newIORef, readIORef, modifyIORef')
 import Data.Int (Int32)
 import Data.IntMap.Strict (IntMap)
@@ -40,12 +44,12 @@ import Data.Text (Text)
 -- | An opaque handle to a click / tap callback.
 -- Carries only an 'Int32' identifier, so it derives 'Eq' and 'Show'.
 newtype Action = Action { actionId :: Int32 }
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 -- | An opaque handle to a text-change callback.
 -- Carries only an 'Int32' identifier, so it derives 'Eq' and 'Show'.
 newtype OnChange = OnChange { onChangeId :: Int32 }
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 -- | Mutable callback storage shared between 'ActionM' (creation)
 -- and the render/dispatch engine (lookup).
@@ -74,24 +78,9 @@ newActionState = do
 -- The constructor is hidden so that users cannot construct arbitrary
 -- 'ActionM' values — they must go through 'createAction' and
 -- 'createOnChange'.
-newtype ActionM a = ActionM { unActionM :: ActionState -> IO a }
-
-instance Functor ActionM where
-  fmap f (ActionM g) = ActionM (\state -> fmap f (g state))
-
-instance Applicative ActionM where
-  pure x = ActionM (\_state -> pure x)
-  ActionM mf <*> ActionM mx = ActionM (\state -> mf state <*> mx state)
-
-instance Monad ActionM where
-  ActionM mx >>= f = ActionM (\state -> do
-    x <- mx state
-    unActionM (f x) state)
-
--- | Lift an arbitrary 'IO' action into 'ActionM'.
--- Useful for creating 'IORef's in init blocks.
-liftIO :: IO a -> ActionM a
-liftIO action = ActionM (\_state -> action)
+newtype ActionM a = ActionM (ActionState -> IO a)
+  deriving (Functor, Applicative, Monad, MonadIO)
+    via (ReaderT ActionState IO)
 
 -- | Register a click/tap callback and return its opaque handle.
 createAction :: IO () -> ActionM Action
