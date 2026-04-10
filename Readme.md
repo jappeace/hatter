@@ -15,4 +15,10 @@ provided android and IOS.
 This project cross-compiles a Haskell library to Android (APK) and iOS (static library / IPA),
 with a thin platform-native UI layer (Kotlin for Android, Swift for iOS).
 The library fully controls the UI.
-This is different from say Simplex chat where they appear to use 
+This is different from say Simplex chat where they call into the library to do Haskell from dirty java/swift code.
+This library writes basically all swift/java code you'll ever need for you,
+and allows you to do sweet haskell.
+
+Haskell is in fact fantastic for UI.
+Having strong type safety around callbacks and widget's 
+makes it a lot easier to write them.
