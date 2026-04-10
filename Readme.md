@@ -31,3 +31,4 @@ they keep shoving into our face for UI.
 With [vibes](https://jappie.me/haskell-vibes.html) in hand I put my malice
 into crafting something good.
 
+# How to use
