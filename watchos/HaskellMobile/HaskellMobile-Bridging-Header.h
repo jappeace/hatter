@@ -8,6 +8,7 @@
 #include "AuthSessionBridge.h"
 #include "CameraBridge.h"
 #include "BottomSheetBridge.h"
+#include "NetworkStatusBridge.h"
 
 /* Dispatch a text change event to Haskell.
  * Not declared in HaskellMobile.h but exported via foreign export ccall. */

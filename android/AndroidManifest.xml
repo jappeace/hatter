@@ -6,6 +6,8 @@
 
     <!-- WebView requires internet access -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Network connectivity monitoring (normal permission, no runtime request) -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Runtime permissions (requested at runtime via Permission API) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

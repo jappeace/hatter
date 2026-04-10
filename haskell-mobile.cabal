@@ -79,6 +79,7 @@ library
       HaskellMobile.Camera
       HaskellMobile.BottomSheet
       HaskellMobile.Http
+      HaskellMobile.NetworkStatus
   hs-source-dirs:
       src
   build-depends:
@@ -100,6 +101,7 @@ library
       cbits/camera_bridge.c
       cbits/bottom_sheet_bridge.c
       cbits/http_bridge.c
+      cbits/network_status_bridge.c
   include-dirs:
       include
 

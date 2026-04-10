@@ -42,6 +42,7 @@ import HaskellMobile.AuthSession (newAuthSessionState)
 import HaskellMobile.Camera (newCameraState)
 import HaskellMobile.BottomSheet (newBottomSheetState)
 import HaskellMobile.Http (newHttpState)
+import HaskellMobile.NetworkStatus (newNetworkStatusState)
 import Test.Helpers (testApp, viewIsErrorWidget)
 
 -- | Tests for the AppContext-based registration.
@@ -74,6 +75,7 @@ registrationTests = testGroup "Registration"
       dummyCameraState <- newCameraState
       dummyBottomSheetState <- newBottomSheetState
       dummyHttpState <- newHttpState
+      dummyNetworkStatusState <- newNetworkStatusState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
@@ -84,6 +86,7 @@ registrationTests = testGroup "Registration"
             , userCameraState        = dummyCameraState
             , userBottomSheetState   = dummyBottomSheetState
             , userHttpState          = dummyHttpState
+            , userNetworkStatusState = dummyNetworkStatusState
             }
       viewFn <- readIORef (acViewFunction appCtx)
       widget <- viewFn dummyUserState
@@ -118,6 +121,7 @@ registrationTests = testGroup "Registration"
       dummyCameraState <- newCameraState
       dummyBottomSheetState <- newBottomSheetState
       dummyHttpState <- newHttpState
+      dummyNetworkStatusState <- newNetworkStatusState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
@@ -128,6 +132,7 @@ registrationTests = testGroup "Registration"
             , userCameraState        = dummyCameraState
             , userBottomSheetState   = dummyBottomSheetState
             , userHttpState          = dummyHttpState
+            , userNetworkStatusState = dummyNetworkStatusState
             }
       viewFnA <- readIORef (acViewFunction appCtxA)
       viewFnB <- readIORef (acViewFunction appCtxB)
