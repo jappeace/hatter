@@ -26,7 +26,7 @@ if [ $ui_done -eq 0 ]; then
     echo "WARNING: Counter: 1 not found — retrying with relaunch"
     xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
     sleep 3
-    > "$STREAM_LOG"
+    : > "$STREAM_LOG"
     xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" --autotest
     wait_for_log "$STREAM_LOG" "setStrProp.*Counter: 1" 60 || true
 fi

@@ -11,7 +11,7 @@ EXIT_CODE=0
 start_app "$COUNTER_APK" "buttons"
 
 LOGCAT_STREAM_FILE="$WORK_DIR/buttons_log.txt"
-> "$LOGCAT_STREAM_FILE"
+: > "$LOGCAT_STREAM_FILE"
 "$ADB" -s "$EMULATOR_SERIAL" logcat '*:I' > "$LOGCAT_STREAM_FILE" 2>&1 &
 LOGCAT_STREAM_PID=$!
 

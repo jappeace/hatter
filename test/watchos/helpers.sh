@@ -39,6 +39,7 @@ assert_log() {
         echo "PASS: $label"
     else
         echo "FAIL: $label"
+        # shellcheck disable=SC2034  # set for caller
         EXIT_CODE=1
     fi
 }
@@ -70,12 +71,12 @@ start_app() {
     APP_START_TIME=$(date "+%Y-%m-%d %H:%M:%S")
 
     STREAM_LOG="$WORK_DIR/${label}_stream.txt"
-    > "$STREAM_LOG"
+    : > "$STREAM_LOG"
     xcrun simctl spawn "$SIM_UDID" log stream \
         --level info \
         --predicate "subsystem == \"$LOG_SUBSYSTEM\"" \
         --style compact \
-        > "$STREAM_LOG" 2>&1 &
+        : > "$STREAM_LOG" 2>&1 &
     LOG_STREAM_PID=$!
     sleep 5
 
@@ -96,7 +97,7 @@ wait_for_render() {
         echo "WARNING: setRoot not found — retrying with relaunch"
         xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
         sleep 3
-        > "$STREAM_LOG"
+        : > "$STREAM_LOG"
         xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" "$@"
         wait_for_log "$STREAM_LOG" "setRoot" 60 || true
     fi

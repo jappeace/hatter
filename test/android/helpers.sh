@@ -168,6 +168,7 @@ assert_logcat() {
         echo "PASS: $label"
     else
         echo "FAIL: $label"
+        # shellcheck disable=SC2034  # set for caller
         EXIT_CODE=1
     fi
 }

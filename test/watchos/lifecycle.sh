@@ -20,7 +20,7 @@ if [ $lifecycle_done -eq 0 ]; then
     echo "WARNING: Lifecycle events not found — retrying with relaunch"
     xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
     sleep 3
-    > "$STREAM_LOG"
+    : > "$STREAM_LOG"
     xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID"
     wait_for_log "$STREAM_LOG" "Lifecycle: Create" 30 || true
 fi
