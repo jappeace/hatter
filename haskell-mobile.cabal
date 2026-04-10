@@ -61,6 +61,7 @@ library
   import: common-options
   exposed-modules:
       HaskellMobile
+      HaskellMobile.Action
       HaskellMobile.AppContext
       HaskellMobile.Types
       HaskellMobile.Lifecycle
@@ -83,7 +84,8 @@ library
   build-depends:
       text,
       containers,
-      bytestring
+      bytestring,
+      transformers
   c-sources:
       cbits/android_stubs.c
       cbits/platform_log.c
