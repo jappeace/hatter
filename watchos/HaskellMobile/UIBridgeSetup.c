@@ -10,6 +10,7 @@
 #include "SecureStorageBridge.h"
 #include "DialogBridge.h"
 #include "AuthSessionBridge.h"
+#include "BottomSheetBridge.h"
 #include <os/log.h>
 #include <string.h>
 
@@ -49,6 +50,10 @@ extern void watchos_dialog_show(void *ctx, int32_t requestId,
 extern void watchos_auth_session_start(void *ctx, int32_t requestId,
                                         const char *authUrl,
                                         const char *callbackScheme);
+
+/* Forward declaration of Swift @_cdecl bottom sheet function */
+extern void watchos_bottom_sheet_show(void *ctx, int32_t requestId,
+                                       const char *title, const char *items);
 
 static UIBridgeCallbacks g_watchos_callbacks = {
     .createNode  = watchos_create_node,
@@ -95,4 +100,8 @@ void setup_watchos_ui_bridge(void *haskellCtx)
     /* Register Swift auth session callback with platform-agnostic dispatcher */
     auth_session_register_impl(watchos_auth_session_start);
     os_log_info(log, "watchOS auth session bridge initialized");
+
+    /* Register Swift bottom sheet callback with platform-agnostic dispatcher */
+    bottom_sheet_register_impl(watchos_bottom_sheet_show);
+    os_log_info(log, "watchOS bottom sheet bridge initialized");
 }

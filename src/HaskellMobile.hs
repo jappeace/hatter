@@ -16,6 +16,7 @@ module HaskellMobile
   , haskellOnLocationUpdate
   , haskellOnAuthSessionResult
   , haskellOnCameraResult
+  , haskellOnBottomSheetResult
   -- Error handling
   , errorWidget
   -- Re-exports from Lifecycle
@@ -90,6 +91,11 @@ module HaskellMobile
   , stopVideoCapture
   , haskellOnVideoFrame
   , haskellOnAudioChunk
+  -- Re-exports from BottomSheet
+  , BottomSheetAction(..)
+  , BottomSheetConfig(..)
+  , BottomSheetState(..)
+  , showBottomSheet
   )
 where
 
@@ -105,6 +111,13 @@ import HaskellMobile.AuthSession
   , AuthSessionState(..)
   , startAuthSession
   , dispatchAuthSessionResult
+  )
+import HaskellMobile.BottomSheet
+  ( BottomSheetAction(..)
+  , BottomSheetConfig(..)
+  , BottomSheetState(..)
+  , showBottomSheet
+  , dispatchBottomSheetResult
   )
 import HaskellMobile.Ble
   ( BleAdapterStatus(..)
@@ -230,6 +243,7 @@ renderView ctxPtr = do
         , userLocationState      = acLocationState appCtx
         , userAuthSessionState   = acAuthSessionState appCtx
         , userCameraState        = acCameraState appCtx
+        , userBottomSheetState   = acBottomSheetState appCtx
         }
   widget <- viewFunction userState
   renderWidget (acRenderState appCtx) widget
@@ -426,6 +440,15 @@ haskellOnAudioChunk ctxPtr requestId audioDataPtr audioDataLen =
 
 foreign export ccall haskellOnAudioChunk
   :: Ptr AppContext -> CInt -> Ptr Word8 -> CInt -> IO ()
+-- | Handle a bottom sheet result from native code. Dispatches to the
+-- callback registered by 'showBottomSheet'.
+haskellOnBottomSheetResult :: Ptr AppContext -> CInt -> CInt -> IO ()
+haskellOnBottomSheetResult ctxPtr requestId actionCode =
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    dispatchBottomSheetResult (acBottomSheetState appCtx) requestId actionCode
+
+foreign export ccall haskellOnBottomSheetResult :: Ptr AppContext -> CInt -> CInt -> IO ()
 
 -- | Peek an optional CString: returns 'Nothing' for null pointers,
 -- 'Just' with the decoded 'Text' otherwise.
