@@ -120,7 +120,7 @@ start_app() {
         --level info \
         --predicate "subsystem == \"$BUNDLE_ID\"" \
         --style compact \
-        : > "$STREAM_LOG" 2>&1 &
+        > "$STREAM_LOG" 2>&1 &
     LOG_STREAM_PID=$!
     sleep 5
 
