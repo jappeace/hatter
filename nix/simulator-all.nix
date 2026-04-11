@@ -186,6 +186,17 @@ let
     name = "haskell-mobile-http-simulator-app";
   };
 
+  networkStatusIos = import ./ios.nix {
+    inherit sources;
+    mainModule = ../test/NetworkStatusDemoMain.hs;
+    simulator = true;
+  };
+  networkStatusSimApp = lib.mkSimulatorApp {
+    iosLib = networkStatusIos;
+    iosSrc = ../ios;
+    name = "haskell-mobile-networkstatus-simulator-app";
+  };
+
   xcodegen = pkgs.xcodegen;
 
   testScripts = builtins.path { path = ../test; name = "test-scripts"; };
@@ -221,6 +232,7 @@ AUTH_SESSION_SHARE_DIR="${authSessionSimApp}/share/ios"
 CAMERA_SHARE_DIR="${cameraSimApp}/share/ios"
 BOTTOM_SHEET_SHARE_DIR="${bottomSheetSimApp}/share/ios"
 HTTP_SHARE_DIR="${httpSimApp}/share/ios"
+NETWORK_STATUS_SHARE_DIR="${networkStatusSimApp}/share/ios"
 TEST_SCRIPTS="${testScripts}"
 
 # --- Temp working directory ---
@@ -320,6 +332,7 @@ cp "$COUNTER_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/counter/include/"
 cp "$COUNTER_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/counter/include/"
 cp "$COUNTER_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/counter/include/"
 cp "$COUNTER_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/counter/include/"
+cp "$COUNTER_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/counter/include/"
 cp -r "$COUNTER_SHARE_DIR/HaskellMobile" "$WORK_DIR/counter/"
 cp "$COUNTER_SHARE_DIR/project.yml" "$WORK_DIR/counter/"
 chmod -R u+w "$WORK_DIR/counter"
@@ -363,6 +376,7 @@ cp "$SCROLL_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/scroll/include/"
 cp "$SCROLL_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/scroll/include/"
 cp "$SCROLL_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/scroll/include/"
 cp "$SCROLL_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/scroll/include/"
+cp "$SCROLL_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/scroll/include/"
 cp -r "$SCROLL_SHARE_DIR/HaskellMobile" "$WORK_DIR/scroll/"
 cp "$SCROLL_SHARE_DIR/project.yml" "$WORK_DIR/scroll/"
 chmod -R u+w "$WORK_DIR/scroll"
@@ -406,6 +420,7 @@ cp "$TEXTINPUT_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/textinput/inclu
 cp "$TEXTINPUT_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/textinput/include/"
 cp "$TEXTINPUT_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/textinput/include/"
 cp "$TEXTINPUT_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/textinput/include/"
+cp "$TEXTINPUT_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/textinput/include/"
 cp -r "$TEXTINPUT_SHARE_DIR/HaskellMobile" "$WORK_DIR/textinput/"
 cp "$TEXTINPUT_SHARE_DIR/project.yml" "$WORK_DIR/textinput/"
 chmod -R u+w "$WORK_DIR/textinput"
@@ -449,6 +464,7 @@ cp "$PERMISSION_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/permission/inc
 cp "$PERMISSION_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/permission/include/"
 cp "$PERMISSION_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/permission/include/"
 cp "$PERMISSION_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/permission/include/"
+cp "$PERMISSION_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/permission/include/"
 cp -r "$PERMISSION_SHARE_DIR/HaskellMobile" "$WORK_DIR/permission/"
 cp "$PERMISSION_SHARE_DIR/project.yml" "$WORK_DIR/permission/"
 chmod -R u+w "$WORK_DIR/permission"
@@ -492,6 +508,7 @@ cp "$SECURE_STORAGE_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/securestor
 cp "$SECURE_STORAGE_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/securestorage/include/"
 cp "$SECURE_STORAGE_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/securestorage/include/"
 cp "$SECURE_STORAGE_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/securestorage/include/"
+cp "$SECURE_STORAGE_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/securestorage/include/"
 cp -r "$SECURE_STORAGE_SHARE_DIR/HaskellMobile" "$WORK_DIR/securestorage/"
 cp "$SECURE_STORAGE_SHARE_DIR/project.yml" "$WORK_DIR/securestorage/"
 chmod -R u+w "$WORK_DIR/securestorage"
@@ -535,6 +552,7 @@ cp "$IMAGE_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/image/include/"
 cp "$IMAGE_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/image/include/"
 cp "$IMAGE_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/image/include/"
 cp "$IMAGE_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/image/include/"
+cp "$IMAGE_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/image/include/"
 cp -r "$IMAGE_SHARE_DIR/HaskellMobile" "$WORK_DIR/image/"
 cp "$IMAGE_SHARE_DIR/project.yml" "$WORK_DIR/image/"
 chmod -R u+w "$WORK_DIR/image"
@@ -578,6 +596,7 @@ cp "$NODEPOOL_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/nodepool/include
 cp "$NODEPOOL_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/nodepool/include/"
 cp "$NODEPOOL_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/nodepool/include/"
 cp "$NODEPOOL_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/nodepool/include/"
+cp "$NODEPOOL_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/nodepool/include/"
 cp -r "$NODEPOOL_SHARE_DIR/HaskellMobile" "$WORK_DIR/nodepool/"
 cp "$NODEPOOL_SHARE_DIR/project.yml" "$WORK_DIR/nodepool/"
 chmod -R u+w "$WORK_DIR/nodepool"
@@ -621,6 +640,7 @@ cp "$BLE_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/ble/include/"
 cp "$BLE_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/ble/include/"
 cp "$BLE_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/ble/include/"
 cp "$BLE_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/ble/include/"
+cp "$BLE_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/ble/include/"
 cp -r "$BLE_SHARE_DIR/HaskellMobile" "$WORK_DIR/ble/"
 cp "$BLE_SHARE_DIR/project.yml" "$WORK_DIR/ble/"
 chmod -R u+w "$WORK_DIR/ble"
@@ -664,6 +684,7 @@ cp "$DIALOG_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/dialog/include/"
 cp "$DIALOG_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/dialog/include/"
 cp "$DIALOG_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/dialog/include/"
 cp "$DIALOG_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/dialog/include/"
+cp "$DIALOG_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/dialog/include/"
 cp -r "$DIALOG_SHARE_DIR/HaskellMobile" "$WORK_DIR/dialog/"
 cp "$DIALOG_SHARE_DIR/project.yml" "$WORK_DIR/dialog/"
 chmod -R u+w "$WORK_DIR/dialog"
@@ -707,6 +728,7 @@ cp "$LOCATION_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/location/include
 cp "$LOCATION_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/location/include/"
 cp "$LOCATION_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/location/include/"
 cp "$LOCATION_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/location/include/"
+cp "$LOCATION_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/location/include/"
 cp -r "$LOCATION_SHARE_DIR/HaskellMobile" "$WORK_DIR/location/"
 cp "$LOCATION_SHARE_DIR/project.yml" "$WORK_DIR/location/"
 chmod -R u+w "$WORK_DIR/location"
@@ -750,6 +772,7 @@ cp "$WEBVIEW_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/webview/include/"
 cp "$WEBVIEW_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/webview/include/"
 cp "$WEBVIEW_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/webview/include/"
 cp "$WEBVIEW_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/webview/include/"
+cp "$WEBVIEW_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/webview/include/"
 cp -r "$WEBVIEW_SHARE_DIR/HaskellMobile" "$WORK_DIR/webview/"
 cp "$WEBVIEW_SHARE_DIR/project.yml" "$WORK_DIR/webview/"
 chmod -R u+w "$WORK_DIR/webview"
@@ -793,6 +816,7 @@ cp "$AUTH_SESSION_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/authsession/
 cp "$AUTH_SESSION_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/authsession/include/"
 cp "$AUTH_SESSION_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/authsession/include/"
 cp "$AUTH_SESSION_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/authsession/include/"
+cp "$AUTH_SESSION_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/authsession/include/"
 cp -r "$AUTH_SESSION_SHARE_DIR/HaskellMobile" "$WORK_DIR/authsession/"
 cp "$AUTH_SESSION_SHARE_DIR/project.yml" "$WORK_DIR/authsession/"
 chmod -R u+w "$WORK_DIR/authsession"
@@ -836,6 +860,7 @@ cp "$CAMERA_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/camera/include/"
 cp "$CAMERA_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/camera/include/"
 cp "$CAMERA_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/camera/include/"
 cp "$CAMERA_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/camera/include/"
+cp "$CAMERA_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/camera/include/"
 cp -r "$CAMERA_SHARE_DIR/HaskellMobile" "$WORK_DIR/camera/"
 cp "$CAMERA_SHARE_DIR/project.yml" "$WORK_DIR/camera/"
 chmod -R u+w "$WORK_DIR/camera"
@@ -879,6 +904,7 @@ cp "$BOTTOM_SHEET_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/bottomsheet/
 cp "$BOTTOM_SHEET_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/bottomsheet/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/bottomsheet/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/bottomsheet/include/"
+cp "$BOTTOM_SHEET_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/bottomsheet/include/"
 cp -r "$BOTTOM_SHEET_SHARE_DIR/HaskellMobile" "$WORK_DIR/bottomsheet/"
 cp "$BOTTOM_SHEET_SHARE_DIR/project.yml" "$WORK_DIR/bottomsheet/"
 chmod -R u+w "$WORK_DIR/bottomsheet"
@@ -922,6 +948,7 @@ cp "$HTTP_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/http/include/"
 cp "$HTTP_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/http/include/"
 cp "$HTTP_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/http/include/"
 cp "$HTTP_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/http/include/"
+cp "$HTTP_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/http/include/"
 cp -r "$HTTP_SHARE_DIR/HaskellMobile" "$WORK_DIR/http/"
 cp "$HTTP_SHARE_DIR/project.yml" "$WORK_DIR/http/"
 chmod -R u+w "$WORK_DIR/http"
@@ -949,6 +976,50 @@ if [ -z "$HTTP_APP" ]; then
     exit 1
 fi
 echo "HTTP app: $HTTP_APP"
+
+# --- Stage and build network status demo app ---
+echo "=== Staging network status demo app ==="
+mkdir -p "$WORK_DIR/networkstatus/lib" "$WORK_DIR/networkstatus/include"
+cp "$NETWORK_STATUS_SHARE_DIR/lib/libHaskellMobile.a" "$WORK_DIR/networkstatus/lib/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/HaskellMobile.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/UIBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/PermissionBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/SecureStorageBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/BleBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/DialogBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/networkstatus/include/"
+cp -r "$NETWORK_STATUS_SHARE_DIR/HaskellMobile" "$WORK_DIR/networkstatus/"
+cp "$NETWORK_STATUS_SHARE_DIR/project.yml" "$WORK_DIR/networkstatus/"
+chmod -R u+w "$WORK_DIR/networkstatus"
+
+echo "=== Generating network status Xcode project ==="
+cd "$WORK_DIR/networkstatus"
+${xcodegen}/bin/xcodegen generate
+
+echo "=== Building network status demo app for simulator ==="
+xcodebuild build \
+    -project HaskellMobile.xcodeproj \
+    -scheme "$SCHEME" \
+    -sdk iphonesimulator \
+    -configuration Release \
+    -derivedDataPath "$WORK_DIR/networkstatus-build" \
+    CODE_SIGN_IDENTITY=- \
+    CODE_SIGNING_ALLOWED=NO \
+    ARCHS=arm64 \
+    ONLY_ACTIVE_ARCH=NO \
+    | tail -20
+
+NETWORK_STATUS_APP=$(find "$WORK_DIR/networkstatus-build" -name "*.app" -type d | head -1)
+if [ -z "$NETWORK_STATUS_APP" ]; then
+    echo "ERROR: Could not find network status .app bundle"
+    exit 1
+fi
+echo "Network status app: $NETWORK_STATUS_APP"
 
 # --- Discover latest iOS runtime ---
 echo "=== Discovering iOS runtime ==="
@@ -1011,7 +1082,7 @@ sleep 5
 # ===========================================================================
 # PHASE 1 + PHASE 2 — Run test scripts
 # ===========================================================================
-export SIM_UDID BUNDLE_ID COUNTER_APP SCROLL_APP TEXTINPUT_APP PERMISSION_APP SECURE_STORAGE_APP IMAGE_APP NODEPOOL_APP BLE_APP DIALOG_APP LOCATION_APP WEBVIEW_APP AUTH_SESSION_APP CAMERA_APP BOTTOM_SHEET_APP HTTP_APP WORK_DIR
+export SIM_UDID BUNDLE_ID COUNTER_APP SCROLL_APP TEXTINPUT_APP PERMISSION_APP SECURE_STORAGE_APP IMAGE_APP NODEPOOL_APP BLE_APP DIALOG_APP LOCATION_APP WEBVIEW_APP AUTH_SESSION_APP CAMERA_APP BOTTOM_SHEET_APP HTTP_APP NETWORK_STATUS_APP WORK_DIR
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0
@@ -1095,6 +1166,8 @@ echo "--- bottomsheet ---"
 run_with_retry "bottomsheet" bash "$TEST_SCRIPTS/ios/bottomsheet.sh" || PHASE11_EXIT=1
 echo "--- http ---"
 run_with_retry "http" bash "$TEST_SCRIPTS/ios/http.sh" || PHASE12_EXIT=1
+echo "--- networkstatus ---"
+run_with_retry "networkstatus" bash "$TEST_SCRIPTS/ios/network_status.sh" || PHASE7_EXIT=1
 
 # --- Phase results ---
 if [ $PHASE1_EXIT -eq 0 ]; then

@@ -38,3 +38,7 @@ void setup_ios_bottom_sheet_bridge(void *haskellCtx);
 
 /* iOS HTTP bridge setup — called from Swift during initialisation */
 void setup_ios_http_bridge(void *haskellCtx);
+
+#include "NetworkStatusBridge.h"
+/* iOS network status bridge setup — called from Swift during initialisation */
+void setup_ios_network_status_bridge(void *haskellCtx);

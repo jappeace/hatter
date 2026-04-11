@@ -17,6 +17,7 @@ import HaskellMobile.Dialog (DialogState)
 import HaskellMobile.Http (HttpState)
 import HaskellMobile.Lifecycle (MobileContext)
 import HaskellMobile.Location (LocationState)
+import HaskellMobile.NetworkStatus (NetworkStatusState)
 import HaskellMobile.Permission (PermissionState)
 import HaskellMobile.SecureStorage (SecureStorageState)
 import HaskellMobile.Widget (Widget)
@@ -34,7 +35,8 @@ data UserState = UserState
   , userAuthSessionState   :: AuthSessionState
   , userCameraState        :: CameraState
   , userBottomSheetState   :: BottomSheetState
-  , userHttpState          :: HttpState
+  , userHttpState              :: HttpState
+  , userNetworkStatusState    :: NetworkStatusState
   }
 
 -- | Application definition record. Downstream apps create one of these

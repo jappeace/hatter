@@ -29,6 +29,7 @@ class HaskellBridge {
         setup_ios_camera_bridge(context)
         setup_ios_bottom_sheet_bridge(context)
         setup_ios_http_bridge(context)
+        setup_ios_network_status_bridge(context)
     }
 
     /// Call Haskell's haskellGreet and return the result as a Swift String.

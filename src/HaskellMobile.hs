@@ -27,6 +27,7 @@ module HaskellMobile
   , haskellOnCameraResult
   , haskellOnBottomSheetResult
   , haskellOnHttpResult
+  , haskellOnNetworkStatusChange
   -- Error handling
   , errorWidget
   -- Re-exports from Lifecycle
@@ -113,6 +114,12 @@ module HaskellMobile
   , HttpError(..)
   , HttpState(..)
   , performRequest
+  -- Re-exports from NetworkStatus
+  , NetworkTransport(..)
+  , NetworkStatus(..)
+  , NetworkStatusState(..)
+  , startNetworkMonitoring
+  , stopNetworkMonitoring
   )
 where
 
@@ -194,6 +201,14 @@ import HaskellMobile.Location
   , startLocationUpdates
   , stopLocationUpdates
   , dispatchLocationUpdate
+  )
+import HaskellMobile.NetworkStatus
+  ( NetworkTransport(..)
+  , NetworkStatus(..)
+  , NetworkStatusState(..)
+  , startNetworkMonitoring
+  , stopNetworkMonitoring
+  , dispatchNetworkStatusChange
   )
 import HaskellMobile.Lifecycle
   ( LifecycleEvent(..)
@@ -285,7 +300,8 @@ renderView ctxPtr = do
         , userAuthSessionState   = acAuthSessionState appCtx
         , userCameraState        = acCameraState appCtx
         , userBottomSheetState   = acBottomSheetState appCtx
-        , userHttpState          = acHttpState appCtx
+        , userHttpState              = acHttpState appCtx
+        , userNetworkStatusState    = acNetworkStatusState appCtx
         }
   widget <- viewFunction userState
   renderWidget (acRenderState appCtx) widget
@@ -511,6 +527,16 @@ haskellOnHttpResult ctxPtr requestId resultCode httpStatus
 foreign export ccall haskellOnHttpResult
   :: Ptr AppContext -> CInt -> CInt -> CInt
   -> CString -> Ptr Word8 -> CInt -> IO ()
+
+-- | Handle a network status change from native code. Dispatches to the
+-- callback registered by 'startNetworkMonitoring'.
+haskellOnNetworkStatusChange :: Ptr AppContext -> CInt -> CInt -> IO ()
+haskellOnNetworkStatusChange ctxPtr cConnected cTransport =
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    dispatchNetworkStatusChange (acNetworkStatusState appCtx) cConnected cTransport
+
+foreign export ccall haskellOnNetworkStatusChange :: Ptr AppContext -> CInt -> CInt -> IO ()
 
 -- | Peek an optional CString: returns 'Nothing' for null pointers,
 -- 'Just' with the decoded 'Text' otherwise.

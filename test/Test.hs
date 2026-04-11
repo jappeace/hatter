@@ -12,7 +12,7 @@ import HaskellMobile.Http (HttpState)
 import Test.Helpers (testApp)
 import Test.CoreTests (qcProps, unitTests, lifecycleTests, localeTests, i18nTests)
 import Test.WidgetTests (uiTests, scrollViewTests, textInputTests, imageTests, webViewTests, styledTests, textAlignTests, colorTests)
-import Test.PlatformTests (permissionTests, secureStorageTests, bleTests, dialogTests, authSessionTests, locationTests, bottomSheetTests, cameraTests, httpTests)
+import Test.PlatformTests (permissionTests, secureStorageTests, bleTests, dialogTests, authSessionTests, locationTests, bottomSheetTests, cameraTests, httpTests, networkStatusTests)
 import Test.AppContextTests (registrationTests, appContextTests, exceptionHandlerTests)
 import Test.ActionTests (actionTests, widgetEqTests, incrementalRenderTests)
 
@@ -57,6 +57,7 @@ tests ffiPermState ffiSecureStorageState ffiDialogState ffiAuthSessionState ffiB
     , authSessionTests ffiAuthSessionState
     , bottomSheetTests ffiBottomSheetState
     , httpTests ffiHttpState
+    , networkStatusTests
     , appContextTests
     , exceptionHandlerTests
     , actionTests

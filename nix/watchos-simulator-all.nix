@@ -165,6 +165,17 @@ let
     name = "haskell-mobile-watchos-bottomsheet-simulator-app";
   };
 
+  networkStatusWatchos = import ./watchos.nix {
+    inherit sources;
+    mainModule = ../test/NetworkStatusDemoMain.hs;
+    simulator = true;
+  };
+  networkStatusSimApp = lib.mkWatchOSSimulatorApp {
+    watchosLib = networkStatusWatchos;
+    watchosSrc = ../watchos;
+    name = "haskell-mobile-watchos-networkstatus-simulator-app";
+  };
+
   xcodegen = pkgs.xcodegen;
 
   testScripts = builtins.path { path = ../test; name = "test-scripts"; };
@@ -198,6 +209,7 @@ WEBVIEW_SHARE_DIR="${webviewSimApp}/share/watchos"
 AUTH_SESSION_SHARE_DIR="${authSessionSimApp}/share/watchos"
 CAMERA_SHARE_DIR="${cameraSimApp}/share/watchos"
 BOTTOM_SHEET_SHARE_DIR="${bottomSheetSimApp}/share/watchos"
+NETWORK_STATUS_SHARE_DIR="${networkStatusSimApp}/share/watchos"
 TEST_SCRIPTS="${testScripts}"
 
 # --- Temp working directory ---
@@ -216,6 +228,7 @@ PHASE8_OK=0
 PHASE9_OK=0
 PHASE10_OK=0
 PHASE11_OK=0
+PHASE12_OK=0
 
 cleanup() {
     echo ""
@@ -251,7 +264,8 @@ for share_dir in \
     "$WEBVIEW_SHARE_DIR" \
     "$AUTH_SESSION_SHARE_DIR" \
     "$CAMERA_SHARE_DIR" \
-    "$BOTTOM_SHEET_SHARE_DIR"; do
+    "$BOTTOM_SHEET_SHARE_DIR" \
+    "$NETWORK_STATUS_SHARE_DIR"; do
     a_path="$share_dir/lib/libHaskellMobile.a"
     A_BYTES=$(stat -f %z "$a_path" 2>/dev/null || stat -c %s "$a_path" 2>/dev/null || echo 0)
     A_MB=$((A_BYTES / 1048576))
@@ -292,6 +306,7 @@ cp "$COUNTER_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/counter/include/"
 cp "$COUNTER_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/counter/include/"
 cp "$COUNTER_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/counter/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/counter/include/"
+cp "$COUNTER_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/counter/include/"
 cp -r "$COUNTER_SHARE_DIR/HaskellMobile" "$WORK_DIR/counter/"
 cp "$COUNTER_SHARE_DIR/project.yml" "$WORK_DIR/counter/"
 chmod -R u+w "$WORK_DIR/counter"
@@ -334,6 +349,7 @@ cp "$SCROLL_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/scroll/include/"
 cp "$SCROLL_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/scroll/include/"
 cp "$SCROLL_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/scroll/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/scroll/include/"
+cp "$SCROLL_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/scroll/include/"
 cp -r "$SCROLL_SHARE_DIR/HaskellMobile" "$WORK_DIR/scroll/"
 cp "$SCROLL_SHARE_DIR/project.yml" "$WORK_DIR/scroll/"
 chmod -R u+w "$WORK_DIR/scroll"
@@ -376,6 +392,7 @@ cp "$TEXTINPUT_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/textinput/include/
 cp "$TEXTINPUT_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/textinput/include/"
 cp "$TEXTINPUT_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/textinput/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/textinput/include/"
+cp "$TEXTINPUT_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/textinput/include/"
 cp -r "$TEXTINPUT_SHARE_DIR/HaskellMobile" "$WORK_DIR/textinput/"
 cp "$TEXTINPUT_SHARE_DIR/project.yml" "$WORK_DIR/textinput/"
 chmod -R u+w "$WORK_DIR/textinput"
@@ -418,6 +435,7 @@ cp "$IMAGE_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/image/include/"
 cp "$IMAGE_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/image/include/"
 cp "$IMAGE_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/image/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/image/include/"
+cp "$IMAGE_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/image/include/"
 cp -r "$IMAGE_SHARE_DIR/HaskellMobile" "$WORK_DIR/image/"
 cp "$IMAGE_SHARE_DIR/project.yml" "$WORK_DIR/image/"
 chmod -R u+w "$WORK_DIR/image"
@@ -460,6 +478,7 @@ cp "$SECURE_STORAGE_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/securestorage
 cp "$SECURE_STORAGE_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/securestorage/include/"
 cp "$SECURE_STORAGE_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/securestorage/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/securestorage/include/"
+cp "$SECURE_STORAGE_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/securestorage/include/"
 cp -r "$SECURE_STORAGE_SHARE_DIR/HaskellMobile" "$WORK_DIR/securestorage/"
 cp "$SECURE_STORAGE_SHARE_DIR/project.yml" "$WORK_DIR/securestorage/"
 chmod -R u+w "$WORK_DIR/securestorage"
@@ -501,6 +520,7 @@ cp "$NODEPOOL_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/nodepool/include/"
 cp "$NODEPOOL_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/nodepool/include/"
 cp "$NODEPOOL_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/nodepool/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/nodepool/include/"
+cp "$NODEPOOL_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/nodepool/include/"
 cp -r "$NODEPOOL_SHARE_DIR/HaskellMobile" "$WORK_DIR/nodepool/"
 cp "$NODEPOOL_SHARE_DIR/project.yml" "$WORK_DIR/nodepool/"
 chmod -R u+w "$WORK_DIR/nodepool"
@@ -543,6 +563,7 @@ cp "$BLE_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/ble/include/"
 cp "$BLE_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/ble/include/"
 cp "$BLE_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/ble/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/ble/include/"
+cp "$BLE_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/ble/include/"
 cp -r "$BLE_SHARE_DIR/HaskellMobile" "$WORK_DIR/ble/"
 cp "$BLE_SHARE_DIR/project.yml" "$WORK_DIR/ble/"
 chmod -R u+w "$WORK_DIR/ble"
@@ -585,6 +606,7 @@ cp "$DIALOG_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/dialog/include/"
 cp "$DIALOG_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/dialog/include/"
 cp "$DIALOG_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/dialog/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/dialog/include/"
+cp "$DIALOG_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/dialog/include/"
 cp -r "$DIALOG_SHARE_DIR/HaskellMobile" "$WORK_DIR/dialog/"
 cp "$DIALOG_SHARE_DIR/project.yml" "$WORK_DIR/dialog/"
 chmod -R u+w "$WORK_DIR/dialog"
@@ -627,6 +649,7 @@ cp "$LOCATION_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/location/include/"
 cp "$LOCATION_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/location/include/"
 cp "$LOCATION_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/location/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/location/include/"
+cp "$LOCATION_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/location/include/"
 cp -r "$LOCATION_SHARE_DIR/HaskellMobile" "$WORK_DIR/location/"
 cp "$LOCATION_SHARE_DIR/project.yml" "$WORK_DIR/location/"
 chmod -R u+w "$WORK_DIR/location"
@@ -669,6 +692,7 @@ cp "$WEBVIEW_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/webview/include/"
 cp "$WEBVIEW_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/webview/include/"
 cp "$WEBVIEW_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/webview/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/webview/include/"
+cp "$WEBVIEW_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/webview/include/"
 cp -r "$WEBVIEW_SHARE_DIR/HaskellMobile" "$WORK_DIR/webview/"
 cp "$WEBVIEW_SHARE_DIR/project.yml" "$WORK_DIR/webview/"
 chmod -R u+w "$WORK_DIR/webview"
@@ -711,6 +735,7 @@ cp "$AUTH_SESSION_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/authsession/inc
 cp "$AUTH_SESSION_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/authsession/include/"
 cp "$AUTH_SESSION_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/authsession/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/authsession/include/"
+cp "$AUTH_SESSION_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/authsession/include/"
 cp -r "$AUTH_SESSION_SHARE_DIR/HaskellMobile" "$WORK_DIR/authsession/"
 cp "$AUTH_SESSION_SHARE_DIR/project.yml" "$WORK_DIR/authsession/"
 chmod -R u+w "$WORK_DIR/authsession"
@@ -753,6 +778,7 @@ cp "$CAMERA_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/camera/include/"
 cp "$CAMERA_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/camera/include/"
 cp "$CAMERA_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/camera/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/camera/include/"
+cp "$CAMERA_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/camera/include/"
 cp -r "$CAMERA_SHARE_DIR/HaskellMobile" "$WORK_DIR/camera/"
 cp "$CAMERA_SHARE_DIR/project.yml" "$WORK_DIR/camera/"
 chmod -R u+w "$WORK_DIR/camera"
@@ -795,6 +821,7 @@ cp "$BOTTOM_SHEET_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/bottomsheet/inc
 cp "$BOTTOM_SHEET_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/bottomsheet/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/bottomsheet/include/"
 cp "$BOTTOM_SHEET_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/bottomsheet/include/"
+cp "$BOTTOM_SHEET_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/bottomsheet/include/"
 cp -r "$BOTTOM_SHEET_SHARE_DIR/HaskellMobile" "$WORK_DIR/bottomsheet/"
 cp "$BOTTOM_SHEET_SHARE_DIR/project.yml" "$WORK_DIR/bottomsheet/"
 chmod -R u+w "$WORK_DIR/bottomsheet"
@@ -822,6 +849,49 @@ if [ -z "$BOTTOM_SHEET_APP" ]; then
     exit 1
 fi
 echo "BottomSheet app: $BOTTOM_SHEET_APP"
+
+# --- Stage and build networkstatus demo app ---
+echo "=== Staging networkstatus demo app ==="
+mkdir -p "$WORK_DIR/networkstatus/lib" "$WORK_DIR/networkstatus/include"
+cp "$NETWORK_STATUS_SHARE_DIR/lib/libHaskellMobile.a" "$WORK_DIR/networkstatus/lib/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/HaskellMobile.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/UIBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/PermissionBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/SecureStorageBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/BleBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/DialogBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/networkstatus/include/"
+cp "$NETWORK_STATUS_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/networkstatus/include/"
+cp -r "$NETWORK_STATUS_SHARE_DIR/HaskellMobile" "$WORK_DIR/networkstatus/"
+cp "$NETWORK_STATUS_SHARE_DIR/project.yml" "$WORK_DIR/networkstatus/"
+chmod -R u+w "$WORK_DIR/networkstatus"
+
+echo "=== Generating networkstatus Xcode project ==="
+cd "$WORK_DIR/networkstatus"
+${xcodegen}/bin/xcodegen generate
+
+echo "=== Building networkstatus demo app for watchOS simulator ==="
+xcodebuild build \
+    -project HaskellMobile.xcodeproj \
+    -scheme "$SCHEME" \
+    -sdk watchsimulator \
+    -configuration Release \
+    -derivedDataPath "$WORK_DIR/networkstatus-build" \
+    CODE_SIGN_IDENTITY=- \
+    CODE_SIGNING_ALLOWED=NO \
+    ARCHS=arm64 \
+    ONLY_ACTIVE_ARCH=NO \
+    | tail -20
+
+NETWORK_STATUS_APP=$(find "$WORK_DIR/networkstatus-build" -name "*.app" -type d | head -1)
+if [ -z "$NETWORK_STATUS_APP" ]; then
+    echo "ERROR: Could not find networkstatus .app bundle"
+    exit 1
+fi
+echo "NetworkStatus app: $NETWORK_STATUS_APP"
 
 # --- Discover latest watchOS runtime ---
 echo "=== Discovering watchOS runtime ==="
@@ -886,7 +956,7 @@ sleep 5
 # ===========================================================================
 # Log subsystem differs from bundle ID for watchOS (bundle ID has .watchkitapp suffix)
 LOG_SUBSYSTEM="me.jappie.haskellmobile"
-export SIM_UDID BUNDLE_ID LOG_SUBSYSTEM COUNTER_APP SCROLL_APP TEXTINPUT_APP SECURE_STORAGE_APP IMAGE_APP NODEPOOL_APP BLE_APP DIALOG_APP LOCATION_APP WEBVIEW_APP AUTH_SESSION_APP CAMERA_APP BOTTOM_SHEET_APP WORK_DIR
+export SIM_UDID BUNDLE_ID LOG_SUBSYSTEM COUNTER_APP SCROLL_APP TEXTINPUT_APP SECURE_STORAGE_APP IMAGE_APP NODEPOOL_APP BLE_APP DIALOG_APP LOCATION_APP WEBVIEW_APP AUTH_SESSION_APP CAMERA_APP BOTTOM_SHEET_APP NETWORK_STATUS_APP WORK_DIR
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0
@@ -899,6 +969,7 @@ PHASE8_EXIT=0
 PHASE9_EXIT=0
 PHASE10_EXIT=0
 PHASE11_EXIT=0
+PHASE12_EXIT=0
 
 # run_with_retry LABEL COMMAND [ARGS...]
 # Runs the command up to 10 times. Succeeds on first pass, fails only if all 10 fail.
@@ -958,6 +1029,8 @@ echo "--- camera ---"
 run_with_retry "camera" bash "$TEST_SCRIPTS/watchos/camera.sh" || PHASE10_EXIT=1
 echo "--- bottomsheet ---"
 run_with_retry "bottomsheet" bash "$TEST_SCRIPTS/watchos/bottomsheet.sh" || PHASE11_EXIT=1
+echo "--- networkstatus ---"
+run_with_retry "networkstatus" bash "$TEST_SCRIPTS/watchos/network_status.sh" || PHASE12_EXIT=1
 
 # --- Phase results ---
 if [ $PHASE1_EXIT -eq 0 ]; then
@@ -1068,6 +1141,16 @@ else
     echo "PHASE 11 FAILED"
 fi
 
+if [ $PHASE12_EXIT -eq 0 ]; then
+    PHASE12_OK=1
+    echo ""
+    echo "PHASE 12 PASSED"
+else
+    PHASE12_OK=0
+    echo ""
+    echo "PHASE 12 FAILED"
+fi
+
 # ===========================================================================
 # Final report
 # ===========================================================================
@@ -1152,6 +1235,13 @@ if [ $PHASE11_OK -eq 1 ]; then
     echo "PASS  Phase 11 — BottomSheet demo app"
 else
     echo "FAIL  Phase 11 — BottomSheet demo app"
+    FINAL_EXIT=1
+fi
+
+if [ $PHASE12_OK -eq 1 ]; then
+    echo "PASS  Phase 12 — NetworkStatus demo app"
+else
+    echo "FAIL  Phase 12 — NetworkStatus demo app"
     FINAL_EXIT=1
 fi
 

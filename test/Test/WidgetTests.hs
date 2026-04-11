@@ -53,6 +53,7 @@ import HaskellMobile.AuthSession (newAuthSessionState)
 import HaskellMobile.Camera (newCameraState)
 import HaskellMobile.BottomSheet (newBottomSheetState)
 import HaskellMobile.Http (newHttpState)
+import HaskellMobile.NetworkStatus (newNetworkStatusState)
 import Test.Helpers (withActions, testApp)
 
 uiTests :: TestTree
@@ -145,6 +146,7 @@ uiTests = testGroup "UI"
       dummyCameraState <- newCameraState
       dummyBottomSheetState <- newBottomSheetState
       dummyHttpState <- newHttpState
+      dummyNetworkStatusState <- newNetworkStatusState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
@@ -155,6 +157,7 @@ uiTests = testGroup "UI"
             , userCameraState        = dummyCameraState
             , userBottomSheetState   = dummyBottomSheetState
             , userHttpState          = dummyHttpState
+            , userNetworkStatusState = dummyNetworkStatusState
             }
       app <- testApp
       widget <- maView app dummyUserState

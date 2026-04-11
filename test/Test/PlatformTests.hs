@@ -1,5 +1,5 @@
 -- | Platform service tests: Permission, SecureStorage, BLE, Dialog,
--- AuthSession, Location, BottomSheet, Camera, HTTP.
+-- AuthSession, Location, BottomSheet, Camera, HTTP, NetworkStatus.
 module Test.PlatformTests
   ( permissionTests
   , secureStorageTests
@@ -10,6 +10,7 @@ module Test.PlatformTests
   , bottomSheetTests
   , cameraTests
   , httpTests
+  , networkStatusTests
   ) where
 
 import Test.Tasty
@@ -120,6 +121,17 @@ import HaskellMobile.Http
   , serializeHeaders
   , parseHeaders
   , dispatchHttpResult
+  )
+import HaskellMobile.NetworkStatus
+  ( NetworkTransport(..)
+  , NetworkStatus(..)
+  , NetworkStatusState(..)
+  , newNetworkStatusState
+  , startNetworkMonitoring
+  , stopNetworkMonitoring
+  , dispatchNetworkStatusChange
+  , networkTransportFromInt
+  , networkTransportToInt
   )
 import Test.Helpers (makeSimpleApp)
 
@@ -964,4 +976,87 @@ httpTests ffiHttpState = sequentialTestGroup "Http" AllFinish
       httpMethodToInt HttpPost @?= 1
       httpMethodToInt HttpPut @?= 2
       httpMethodToInt HttpDelete @?= 3
+  ]
+
+networkStatusTests :: TestTree
+networkStatusTests = testGroup "NetworkStatus"
+  [ testCase "desktop stub dispatches connected WiFi on startNetworkMonitoring" $ do
+      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing }))
+      ctxPtr <- newAppContext app
+      appCtx <- derefAppContext ctxPtr
+      let networkStatusState = acNetworkStatusState appCtx
+      ref <- newIORef (Nothing :: Maybe NetworkStatus)
+      startNetworkMonitoring networkStatusState (\status -> writeIORef ref (Just status))
+      result <- readIORef ref
+      case result of
+        Nothing -> assertFailure "callback should have been fired by desktop stub"
+        Just status -> do
+          nsConnected status @?= True
+          nsTransport status @?= TransportWifi
+      freeAppContext ctxPtr
+
+  , testCase "dispatchNetworkStatusChange fires callback with correct data" $ do
+      networkStatusState <- newNetworkStatusState
+      ref <- newIORef (Nothing :: Maybe NetworkStatus)
+      writeIORef (nssUpdateCallback networkStatusState) (Just (\status -> writeIORef ref (Just status)))
+      dispatchNetworkStatusChange networkStatusState 1 2
+      result <- readIORef ref
+      case result of
+        Nothing -> assertFailure "callback should have been fired"
+        Just status -> do
+          nsConnected status @?= True
+          nsTransport status @?= TransportCellular
+
+  , testCase "dispatchNetworkStatusChange with no active listener is no-op" $ do
+      networkStatusState <- newNetworkStatusState
+      dispatchNetworkStatusChange networkStatusState 1 1
+
+  , testCase "stopNetworkMonitoring clears callback" $ do
+      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing }))
+      ctxPtr <- newAppContext app
+      appCtx <- derefAppContext ctxPtr
+      let networkStatusState = acNetworkStatusState appCtx
+      startNetworkMonitoring networkStatusState (\_ -> pure ())
+      stopNetworkMonitoring networkStatusState
+      maybeCb <- readIORef (nssUpdateCallback networkStatusState)
+      case maybeCb of
+        Nothing -> pure ()
+        Just _  -> assertFailure "callback should be Nothing after stopNetworkMonitoring"
+      freeAppContext ctxPtr
+
+  , testCase "startNetworkMonitoring replaces existing callback" $ do
+      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing }))
+      ctxPtr <- newAppContext app
+      appCtx <- derefAppContext ctxPtr
+      let networkStatusState = acNetworkStatusState appCtx
+      refOld <- newIORef (0 :: Int)
+      refNew <- newIORef (0 :: Int)
+      writeIORef (nssUpdateCallback networkStatusState) (Just (\_ -> modifyIORef' refOld (+ 1)))
+      startNetworkMonitoring networkStatusState (\_ -> modifyIORef' refNew (+ 1))
+      oldCount <- readIORef refOld
+      newCount <- readIORef refNew
+      oldCount @?= 0
+      newCount @?= 1
+      freeAppContext ctxPtr
+
+  , testCase "networkTransportFromInt roundtrips for all transports" $
+      mapM_ (\transport ->
+        networkTransportFromInt (networkTransportToInt transport) @?= transport
+      ) [TransportNone, TransportWifi, TransportCellular, TransportEthernet, TransportOther]
+
+  , testCase "networkTransportFromInt maps unknown codes to TransportOther" $ do
+      networkTransportFromInt 99 @?= TransportOther
+      networkTransportFromInt (-1) @?= TransportOther
+
+  , testCase "disconnected status sets nsConnected to False" $ do
+      networkStatusState <- newNetworkStatusState
+      ref <- newIORef (Nothing :: Maybe NetworkStatus)
+      writeIORef (nssUpdateCallback networkStatusState) (Just (\status -> writeIORef ref (Just status)))
+      dispatchNetworkStatusChange networkStatusState 0 0
+      result <- readIORef ref
+      case result of
+        Nothing -> assertFailure "callback should have been fired"
+        Just status -> do
+          nsConnected status @?= False
+          nsTransport status @?= TransportNone
   ]

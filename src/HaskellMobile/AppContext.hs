@@ -23,6 +23,7 @@ import HaskellMobile.Dialog (DialogState(..), newDialogState)
 import HaskellMobile.Http (HttpState(..), newHttpState)
 import HaskellMobile.Lifecycle (MobileContext)
 import HaskellMobile.Location (LocationState(..), newLocationState)
+import HaskellMobile.NetworkStatus (NetworkStatusState(..), newNetworkStatusState)
 import HaskellMobile.Permission (PermissionState(..), newPermissionState)
 import HaskellMobile.Render (RenderState, newRenderState)
 import HaskellMobile.SecureStorage (SecureStorageState(..), newSecureStorageState)
@@ -45,6 +46,7 @@ data AppContext = AppContext
   , acCameraState         :: CameraState
   , acBottomSheetState    :: BottomSheetState
   , acHttpState           :: HttpState
+  , acNetworkStatusState  :: NetworkStatusState
   , acViewFunction        :: IORef (UserState -> IO Widget)
   , acDismissAction       :: Action
     -- ^ Pre-registered dismiss action for the error widget.
@@ -71,6 +73,7 @@ newAppContext mobileApp = do
   cameraState        <- newCameraState
   bottomSheetState   <- newBottomSheetState
   httpState          <- newHttpState
+  networkStatusState <- newNetworkStatusState
   viewRef            <- newIORef (maView mobileApp)
   -- Pre-register a dismiss action that reads from an IORef.
   -- The real dismiss logic is written by handleException at exception time.
@@ -89,6 +92,7 @@ newAppContext mobileApp = do
         , acCameraState        = cameraState
         , acBottomSheetState   = bottomSheetState
         , acHttpState          = httpState
+        , acNetworkStatusState = networkStatusState
         , acViewFunction       = viewRef
         , acDismissAction      = dismissAction
         , acDismissRef         = dismissRef
@@ -105,6 +109,7 @@ newAppContext mobileApp = do
   writeIORef (csContextPtr cameraState) (castPtr ptr)
   writeIORef (bssContextPtr bottomSheetState) (castPtr ptr)
   writeIORef (hsContextPtr httpState) (castPtr ptr)
+  writeIORef (nssContextPtr networkStatusState) (castPtr ptr)
   pure ptr
 
 -- | Release a pointer previously created by 'newAppContext'.

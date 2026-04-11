@@ -29,6 +29,9 @@ import android.os.Handler;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.Manifest;
 import android.os.Bundle;
 import android.text.Editable;
@@ -79,6 +82,7 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
     private native void onBottomSheetResult(int requestId, int actionCode);
     private native void onHttpResult(int requestId, int resultCode, int httpStatus,
                                       String headers, byte[] body);
+    private native void onNetworkStatusChange(int connected, int transport);
 
     private static final String SECURE_PREFS_NAME = "haskell_mobile_secure_storage";
 
@@ -87,6 +91,9 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
 
     private LocationManager locationManager;
     private LocationListener locationListener;
+
+    private ConnectivityManager connectivityManager;
+    private ConnectivityManager.NetworkCallback networkCallback;
 
     private int pendingAuthRequestId = -1;
     private boolean authRedirectReceived = false;
@@ -542,6 +549,74 @@ public class HaskellMobileActivity extends Activity implements View.OnClickListe
         } catch (Exception e) {
             android.util.Log.e("LocationBridge",
                 "stopLocationUpdates failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Start monitoring network connectivity. Called from native code via JNI.
+     * Uses ConnectivityManager.registerDefaultNetworkCallback (API 26+).
+     * Updates are delivered via onNetworkStatusChange JNI callback.
+     */
+    public void startNetworkMonitoring() {
+        try {
+            connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (connectivityManager == null) {
+                android.util.Log.e("NetworkStatusBridge", "ConnectivityManager unavailable");
+                return;
+            }
+
+            networkCallback = new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
+                    int transport;
+                    if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                        transport = 1; /* NETWORK_TRANSPORT_WIFI */
+                    } else if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
+                        transport = 2; /* NETWORK_TRANSPORT_CELLULAR */
+                    } else if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
+                        transport = 3; /* NETWORK_TRANSPORT_ETHERNET */
+                    } else {
+                        transport = 4; /* NETWORK_TRANSPORT_OTHER */
+                    }
+                    final int t = transport;
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            onNetworkStatusChange(1, t);
+                        }
+                    });
+                }
+
+                @Override
+                public void onLost(Network network) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            onNetworkStatusChange(0, 0); /* disconnected, NETWORK_TRANSPORT_NONE */
+                        }
+                    });
+                }
+            };
+
+            connectivityManager.registerDefaultNetworkCallback(networkCallback);
+        } catch (Exception e) {
+            android.util.Log.e("NetworkStatusBridge",
+                "startNetworkMonitoring failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Stop monitoring network connectivity. Called from native code via JNI.
+     */
+    public void stopNetworkMonitoring() {
+        try {
+            if (connectivityManager != null && networkCallback != null) {
+                connectivityManager.unregisterNetworkCallback(networkCallback);
+                networkCallback = null;
+            }
+        } catch (Exception e) {
+            android.util.Log.e("NetworkStatusBridge",
+                "stopNetworkMonitoring failed: " + e.getMessage());
         }
     }
 

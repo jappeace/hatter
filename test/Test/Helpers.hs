@@ -107,6 +107,7 @@ viewIsErrorWidget ctxPtr = do
         , userCameraState        = acCameraState appCtx
         , userBottomSheetState   = acBottomSheetState appCtx
         , userHttpState          = acHttpState appCtx
+        , userNetworkStatusState = acNetworkStatusState appCtx
         }
   widget <- viewFn userState
   case widget of
