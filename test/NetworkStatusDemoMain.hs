@@ -10,55 +10,60 @@
 -- button press instead.
 module Main where
 
+import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Text (pack)
 import Foreign.Ptr (Ptr)
 import HaskellMobile
   ( MobileApp(..)
-  , UserState(..)
+  , Action
+  , NetworkStatusState(..)
   , startMobileApp
+  , derefAppContext
   , platformLog
   , startNetworkMonitoring
   , stopNetworkMonitoring
   , loggingMobileContext
   , AppContext
+  , newActionState
+  , runActionM
+  , createAction
   )
+import HaskellMobile.AppContext (AppContext(..))
 import HaskellMobile.NetworkStatus (NetworkStatus(..), NetworkTransport(..))
 import HaskellMobile.Widget (ButtonConfig(..), TextConfig(..), Widget(..))
 
 main :: IO (Ptr AppContext)
 main = do
   platformLog "Network status demo app registered"
-  startMobileApp networkStatusDemoApp
-
--- | Network status demo: provides start/stop monitoring buttons.
--- Used by integration tests to verify the network status FFI bridge
--- end-to-end.
-networkStatusDemoApp :: MobileApp
-networkStatusDemoApp = MobileApp
-  { maContext = loggingMobileContext
-  , maView    = networkStatusDemoView
-  }
+  actionState <- newActionState
+  nssRef <- newIORef (Nothing :: Maybe NetworkStatusState)
+  (onStartMonitoring, onStopMonitoring) <- runActionM actionState $ do
+    start <- createAction $ do
+      Just networkStatusState <- readIORef nssRef
+      startNetworkMonitoring networkStatusState $ \networkStatus ->
+        platformLog ("Network: connected=" <> pack (show (nsConnected networkStatus))
+                    <> " transport=" <> pack (show (nsTransport networkStatus)))
+      platformLog "Network monitoring started"
+    stop <- createAction $ do
+      Just networkStatusState <- readIORef nssRef
+      stopNetworkMonitoring networkStatusState
+      platformLog "Network monitoring stopped"
+    pure (start, stop)
+  ctxPtr <- startMobileApp MobileApp
+    { maContext     = loggingMobileContext
+    , maView        = \_userState -> networkStatusDemoView onStartMonitoring onStopMonitoring
+    , maActionState = actionState
+    }
+  appCtx <- derefAppContext ctxPtr
+  writeIORef nssRef (Just (acNetworkStatusState appCtx))
+  pure ctxPtr
 
 -- | Builds a Column with a label and start/stop monitoring buttons.
--- The view itself is pure — all network status FFI calls happen in
--- button callbacks to avoid JNI reentrancy issues during rendering.
-networkStatusDemoView :: UserState -> IO Widget
-networkStatusDemoView userState = pure $ Column
+networkStatusDemoView :: Action -> Action -> IO Widget
+networkStatusDemoView onStartMonitoring onStopMonitoring = pure $ Column
   [ Text TextConfig { tcLabel = "Network Status Demo", tcFontConfig = Nothing }
   , Button ButtonConfig
-      { bcLabel = "Start Monitoring"
-      , bcAction = do
-          startNetworkMonitoring (userNetworkStatusState userState) $ \networkStatus ->
-            platformLog ("Network: connected=" <> pack (show (nsConnected networkStatus))
-                        <> " transport=" <> pack (show (nsTransport networkStatus)))
-          platformLog "Network monitoring started"
-      , bcFontConfig = Nothing
-      }
+      { bcLabel = "Start Monitoring", bcAction = onStartMonitoring, bcFontConfig = Nothing }
   , Button ButtonConfig
-      { bcLabel = "Stop Monitoring"
-      , bcAction = do
-          stopNetworkMonitoring (userNetworkStatusState userState)
-          platformLog "Network monitoring stopped"
-      , bcFontConfig = Nothing
-      }
+      { bcLabel = "Stop Monitoring", bcAction = onStopMonitoring, bcFontConfig = Nothing }
   ]

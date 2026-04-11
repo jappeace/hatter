@@ -196,6 +196,17 @@ let
     name = "haskell-mobile-http-apk";
   };
 
+  networkStatusAndroid = import ./android.nix {
+    inherit sources androidArch;
+    mainModule = ../test/NetworkStatusDemoMain.hs;
+  };
+  networkStatusApk = lib.mkApk {
+    sharedLibs = [{ lib = networkStatusAndroid; inherit abiDir; }];
+    androidSrc = ../android;
+    apkName = "haskell-mobile-networkstatus.apk";
+    name = "haskell-mobile-networkstatus-apk";
+  };
+
   androidComposition = pkgs.androidenv.composeAndroidPackages {
     platformVersions = [ emulatorApiLevel ];
     includeEmulator = true;
@@ -249,6 +260,7 @@ AUTH_SESSION_APK="${authSessionApk}/haskell-mobile-authsession.apk"
 CAMERA_APK="${cameraApk}/haskell-mobile-camera.apk"
 BOTTOM_SHEET_APK="${bottomSheetApk}/haskell-mobile-bottomsheet.apk"
 HTTP_APK="${httpApk}/haskell-mobile-http.apk"
+NETWORK_STATUS_APK="${networkStatusApk}/haskell-mobile-networkstatus.apk"
 PACKAGE="me.jappie.haskellmobile"
 ACTIVITY=".MainActivity"
 DEVICE_NAME="test_all"
@@ -273,7 +285,8 @@ for so_path in \
     "${authSessionAndroid}/lib/${abiDir}/libhaskellmobile.so" \
     "${cameraAndroid}/lib/${abiDir}/libhaskellmobile.so" \
     "${bottomSheetAndroid}/lib/${abiDir}/libhaskellmobile.so" \
-    "${httpAndroid}/lib/${abiDir}/libhaskellmobile.so"; do
+    "${httpAndroid}/lib/${abiDir}/libhaskellmobile.so" \
+    "${networkStatusAndroid}/lib/${abiDir}/libhaskellmobile.so"; do
     SO_BYTES=$(stat -c %s "$so_path")
     SO_MB=$((SO_BYTES / 1048576))
     SO_LABEL=$(echo "$so_path" | grep -oP '[^/]+(?=/lib/)')
@@ -455,7 +468,7 @@ sleep 30
 # ===========================================================================
 # PHASE 1 + PHASE 2 — Run test scripts
 # ===========================================================================
-export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK CAMERA_APK BOTTOM_SHEET_APK HTTP_APK PACKAGE ACTIVITY WORK_DIR
+export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK CAMERA_APK BOTTOM_SHEET_APK HTTP_APK NETWORK_STATUS_APK PACKAGE ACTIVITY WORK_DIR
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0
@@ -539,6 +552,8 @@ echo "--- bottomsheet ---"
 run_with_retry "bottomsheet" bash "$TEST_SCRIPTS/android/bottomsheet.sh" || PHASE11_EXIT=1
 echo "--- http ---"
 run_with_retry "http" bash "$TEST_SCRIPTS/android/http.sh" || PHASE12_EXIT=1
+echo "--- networkstatus ---"
+run_with_retry "networkstatus" bash "$TEST_SCRIPTS/android/network_status.sh" || PHASE7_EXIT=1
 
 # --- Phase results ---
 if [ $PHASE1_EXIT -eq 0 ]; then
