@@ -86,12 +86,20 @@ in {
     , extraLinkObjects ? []
     , extraGhcIncludeDirs ? []
     , crossDeps ? null          # output of cross-deps.nix (lib/, hi/, pkgdb/)
+    , extraGhcFlags ? []        # additional flags passed to cross-GHC
     , maxNodes ? 256            # static pool size (ignored when dynamicNodePool=true)
     , dynamicNodePool ? false   # use malloc/realloc instead of fixed array
     , soMaxSizeMB ? 200         # fail build if .so exceeds this (MB), catches whole-archive bloat
     }:
     let
       jniPackageMacro = builtins.replaceStrings ["."] ["_"] javaPackageName;
+
+      # Template Haskell support for consumer code: when crossDeps includes
+      # the iserv wrapper, add -fexternal-interpreter so GHC delegates TH
+      # splices to the QEMU-emulated iserv-proxy-interpreter.
+      thFlags = if crossDeps != null
+        then "-fexternal-interpreter -pgmi ${crossDeps}/bin/iserv-proxy-wrapper"
+        else "";
     in
     pkgs.stdenv.mkDerivation {
       inherit pname;
@@ -269,8 +277,11 @@ in {
         # Copy user entry point (plain main :: IO (), no foreign export needed)
         cp ${mainModule} Main.hs
 
-        # Step 3: Copy C sources that GHC compiles into writable build dir.
-        # GHC writes .o.tmp files next to C sources; nix store is read-only.
+        # Step 3: Copy C sources into writable build dir and compile them
+        # separately with cross-GHC.  This keeps them out of GHC's
+        # compilation graph so iserv-proxy-interpreter doesn't try to
+        # load them during Template Haskell evaluation (the C bridge
+        # files reference Haskell FFI exports that iserv can't resolve).
         mkdir -p cbits
         cp ${haskellMobileSrc}/cbits/android_stubs.c cbits/
         cp ${haskellMobileSrc}/cbits/platform_log.c cbits/
@@ -289,6 +300,12 @@ in {
         cp ${haskellMobileSrc}/cbits/http_bridge.c cbits/
         cp ${haskellMobileSrc}/cbits/network_status_bridge.c cbits/
         cp ${haskellMobileSrc}/cbits/animation_bridge.c cbits/
+
+        echo "=== Compiling C bridge files with cross-GHC ==="
+        for cfile in cbits/*.c; do
+          echo "  $cfile"
+          ${ghcCmd} -c -I${haskellMobileSrc}/include "$cfile"
+        done
 
         # Step 4: Compile Haskell to shared library with cross-GHC.
         # Discover library paths dynamically — hash suffixes vary across nixpkgs.
@@ -332,25 +349,10 @@ in {
           -I${haskellMobileSrc}/include \
           ${builtins.concatStringsSep " " (map (d: "-I${d}") extraGhcIncludeDirs)} \
           ${if crossDeps != null then "-package-db ${crossDeps}/pkgdb -i${crossDeps}/hi" else ""} \
+          ${thFlags} \
+          ${builtins.concatStringsSep " " extraGhcFlags} \
           Main.hs \
           HaskellMobile.hs \
-          cbits/android_stubs.c \
-          cbits/platform_log.c \
-          cbits/numa_stubs.c \
-          cbits/ui_bridge.c \
-          cbits/run_main.c \
-          cbits/locale.c \
-          cbits/permission_bridge.c \
-          cbits/secure_storage_bridge.c \
-          cbits/ble_bridge.c \
-          cbits/dialog_bridge.c \
-          cbits/location_bridge.c \
-          cbits/auth_session_bridge.c \
-          cbits/camera_bridge.c \
-          cbits/bottom_sheet_bridge.c \
-          cbits/http_bridge.c \
-          cbits/network_status_bridge.c \
-          cbits/animation_bridge.c \
           -optl-L${androidPkgs.gmp}/lib \
           -optl-L${androidPkgs.libffi}/lib \
           -optl-lffi \
@@ -369,6 +371,23 @@ in {
           -optl$(pwd)/http_bridge_android.o \
           -optl$(pwd)/network_status_android.o \
           -optl$(pwd)/animation_bridge_android.o \
+          -optl$(pwd)/cbits/android_stubs.o \
+          -optl$(pwd)/cbits/platform_log.o \
+          -optl$(pwd)/cbits/numa_stubs.o \
+          -optl$(pwd)/cbits/ui_bridge.o \
+          -optl$(pwd)/cbits/run_main.o \
+          -optl$(pwd)/cbits/locale.o \
+          -optl$(pwd)/cbits/permission_bridge.o \
+          -optl$(pwd)/cbits/secure_storage_bridge.o \
+          -optl$(pwd)/cbits/ble_bridge.o \
+          -optl$(pwd)/cbits/dialog_bridge.o \
+          -optl$(pwd)/cbits/location_bridge.o \
+          -optl$(pwd)/cbits/auth_session_bridge.o \
+          -optl$(pwd)/cbits/camera_bridge.o \
+          -optl$(pwd)/cbits/bottom_sheet_bridge.o \
+          -optl$(pwd)/cbits/http_bridge.o \
+          -optl$(pwd)/cbits/network_status_bridge.o \
+          -optl$(pwd)/cbits/animation_bridge.o \
           ${builtins.concatStringsSep " " (builtins.genList (i: "-optl$(pwd)/extra_jni_${toString i}.o") (builtins.length extraJniBridge))} \
           ${builtins.concatStringsSep " " (map (o: "-optl${o}") extraLinkObjects)} \
           -optl-Wl,-u,haskellRunMain \

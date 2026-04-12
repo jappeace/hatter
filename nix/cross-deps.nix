@@ -236,7 +236,27 @@ WRAPPER
     haskellPkgs = crossHaskellPkgs;
   };
 
+  # --- iserv wrapper for consumer-side TH ---
+  # Replicates the wrapper pattern from nixpkgs generic-builder.nix so
+  # mkAndroidLib can pass -fexternal-interpreter -pgmi <wrapper> to GHC.
+  iservHost = crossHaskellPkgs.iserv-proxy;   # target binary (statically linked)
+  iservBuild = pkgs.haskellPackages.iserv-proxy; # native build-host binary
+  emulatorCmd = if androidArch == "aarch64"
+    then "${pkgs.qemu-user}/bin/qemu-aarch64"   # overlay adds -B 0x4000000000
+    else "${pkgs.qemu-user}/bin/qemu-arm";
+
+  iservWrapper = pkgs.writeShellScript "iserv-wrapper" ''
+    set -euo pipefail
+    PORT=$((5000 + RANDOM % 5000))
+    (>&2 echo "---> Starting remote interpreter on port $PORT")
+    ${emulatorCmd} ${iservHost}/bin/iserv-proxy-interpreter tmp $PORT &
+    RISERV_PID="$!"
+    trap "kill $RISERV_PID" EXIT
+    ${iservBuild}/bin/iserv-proxy "$@" 127.0.0.1 "$PORT"
+  '';
+
 in import ./collect-deps.nix {
   inherit pkgs ghc ghcPkgCmd;
   deps = resolvedDeps;
+  iservProxy = iservWrapper;
 }
