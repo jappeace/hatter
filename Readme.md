@@ -76,8 +76,8 @@ main = do
     , maView        = \_userState -> do
         n <- readIORef counter
         pure $ Column
-          [ text "Count: " <> Text.pack (show n)
-          , button "+" increment
+          [ text $ "Count: " <> Text.pack (show n)
+          , button $ "+" increment
           ]
     , maActionState = actionState
     }
