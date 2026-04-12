@@ -136,6 +136,12 @@ applyStyle nodeId style = do
   case wsBackgroundColor style of
     Just color -> Bridge.setStrProp nodeId Bridge.PropBgColor (colorToHex color)
     Nothing    -> pure ()
+  case wsTranslateX style of
+    Just tx -> Bridge.setNumProp nodeId Bridge.PropTranslateX tx
+    Nothing -> pure ()
+  case wsTranslateY style of
+    Just ty -> Bridge.setNumProp nodeId Bridge.PropTranslateY ty
+    Nothing -> pure ()
 
 -- ---------------------------------------------------------------------------
 -- Creating rendered nodes from scratch

@@ -220,6 +220,24 @@ interpolateStyle nodeId fromStyle toStyle progress = do
       Bridge.setStrProp nodeId Bridge.PropBgColor (colorToHex toColor)
     (Just _fromColor, Nothing) -> pure ()
     (Nothing, Nothing) -> pure ()
+  -- TranslateX
+  case (wsTranslateX fromStyle, wsTranslateX toStyle) of
+    (Just fromTx, Just toTx) ->
+      Bridge.setNumProp nodeId Bridge.PropTranslateX
+        (interpolateDouble fromTx toTx progress)
+    (Nothing, Just toTx) ->
+      Bridge.setNumProp nodeId Bridge.PropTranslateX toTx
+    (Just _fromTx, Nothing) -> pure ()
+    (Nothing, Nothing) -> pure ()
+  -- TranslateY
+  case (wsTranslateY fromStyle, wsTranslateY toStyle) of
+    (Just fromTy, Just toTy) ->
+      Bridge.setNumProp nodeId Bridge.PropTranslateY
+        (interpolateDouble fromTy toTy progress)
+    (Nothing, Just toTy) ->
+      Bridge.setNumProp nodeId Bridge.PropTranslateY toTy
+    (Just _fromTy, Nothing) -> pure ()
+    (Nothing, Nothing) -> pure ()
 
 -- | Interpolate font size between two optional 'FontConfig' values.
 interpolateFontSize :: Int32 -> Maybe FontConfig -> Maybe FontConfig -> Double -> IO ()

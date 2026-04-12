@@ -696,6 +696,20 @@ static void android_set_num_prop(int32_t nodeId, int32_t propId, double value)
         /* No-op for placeholder — real map would toggle location layer */
         LOGI("setNumProp(node=%d, showUserLoc=%.0f)", nodeId, value);
         break;
+    case UI_PROP_TRANSLATE_X: {
+        jmethodID setTranslationX = (*env)->GetMethodID(env,
+            g_class_View, "setTranslationX", "(F)V");
+        (*env)->CallVoidMethod(env, view, setTranslationX, (jfloat)value);
+        LOGI("setNumProp(node=%d, translateX=%.1f)", nodeId, value);
+        break;
+    }
+    case UI_PROP_TRANSLATE_Y: {
+        jmethodID setTranslationY = (*env)->GetMethodID(env,
+            g_class_View, "setTranslationY", "(F)V");
+        (*env)->CallVoidMethod(env, view, setTranslationY, (jfloat)value);
+        LOGI("setNumProp(node=%d, translateY=%.1f)", nodeId, value);
+        break;
+    }
     default:
         LOGI("setNumProp: unknown propId %d", propId);
         break;

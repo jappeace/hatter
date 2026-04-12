@@ -591,6 +591,18 @@ static void ios_set_num_prop(int32_t nodeId, int32_t propId, double value)
         LOGI("setNumProp(node=%d, showUserLoc=%.0f)", nodeId, value);
         break;
     }
+    case UI_PROP_TRANSLATE_X: {
+        CGAffineTransform t = view.transform;
+        view.transform = CGAffineTransformMake(t.a, t.b, t.c, t.d, (CGFloat)value, t.ty);
+        LOGI("setNumProp(node=%d, translateX=%.1f)", nodeId, value);
+        break;
+    }
+    case UI_PROP_TRANSLATE_Y: {
+        CGAffineTransform t = view.transform;
+        view.transform = CGAffineTransformMake(t.a, t.b, t.c, t.d, t.tx, (CGFloat)value);
+        LOGI("setNumProp(node=%d, translateY=%.1f)", nodeId, value);
+        break;
+    }
     default:
         LOGI("setNumProp: unknown propId %d", propId);
         break;

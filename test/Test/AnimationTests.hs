@@ -44,6 +44,7 @@ animationTests = testGroup "Animation"
   , tweenRegistryTests
   , animatedWidgetRenderTests
   , normalizeAnimatedTests
+  , translateAnimationTests
   ]
 
 -- ---------------------------------------------------------------------------
@@ -346,4 +347,40 @@ normalizeAnimatedTests = testGroup "normalizeAnimated"
       let nodeId2 = renderedNodeIdSafe tree2
       -- Container node ID should be the same (diff, not destroy+create)
       nodeId1 @?= nodeId2
+  ]
+
+-- ---------------------------------------------------------------------------
+-- Translate animation
+-- ---------------------------------------------------------------------------
+
+translateAnimationTests :: TestTree
+translateAnimationTests = testGroup "Translate animation"
+  [ testCase "Animated translate change keeps same native node" $ do
+      animState <- newAnimationState
+      writeIORef (ansContextPtr animState) nullPtr
+      writeIORef (ansLoopActive animState) True
+      actionState <- newActionState
+      rs <- newRenderState actionState animState
+      let child1 = Styled (defaultStyle { wsTranslateX = Just 0, wsTranslateY = Just 0 })
+                     (Text TextConfig { tcLabel = "t", tcFontConfig = Nothing })
+          child2 = Styled (defaultStyle { wsTranslateX = Just 100, wsTranslateY = Just 50 })
+                     (Text TextConfig { tcLabel = "t", tcFontConfig = Nothing })
+          widget1 = Animated (AnimatedConfig 300 EaseOut) child1
+          widget2 = Animated (AnimatedConfig 300 EaseOut) child2
+      renderWidget rs widget1
+      Just firstTree <- readIORef (rsRenderedTree rs)
+      let firstNodeId = renderedNodeIdSafe firstTree
+      renderWidget rs widget2
+      Just secondTree <- readIORef (rsRenderedTree rs)
+      let secondNodeId = renderedNodeIdSafe secondTree
+      firstNodeId @?= secondNodeId
+  , testCase "defaultStyle has no translate offsets" $ do
+      wsTranslateX defaultStyle @?= Nothing
+      wsTranslateY defaultStyle @?= Nothing
+  , testCase "Styled with translate renders without error" $ do
+      actionState <- newActionState
+      animState <- newAnimationState
+      rs <- newRenderState actionState animState
+      renderWidget rs $ Styled (defaultStyle { wsTranslateX = Just 10.5, wsTranslateY = Just (-20.0) })
+        (Text TextConfig { tcLabel = "offset", tcFontConfig = Nothing })
   ]

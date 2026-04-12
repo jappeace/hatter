@@ -33,6 +33,8 @@
 #define UI_PROP_MAP_LON             6
 #define UI_PROP_MAP_ZOOM            7
 #define UI_PROP_MAP_SHOW_USER_LOC   8
+#define UI_PROP_TRANSLATE_X         9
+#define UI_PROP_TRANSLATE_Y         10
 
 /* Event types */
 #define UI_EVENT_CLICK       0
