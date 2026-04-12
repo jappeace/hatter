@@ -62,6 +62,14 @@ void setSystemLocale(const char *locale);
  * or falls back to LANG env var (desktop) or "en" (default). */
 const char* getSystemLocale(void);
 
+/* Set the app files directory path. Called by platform bridges during init,
+ * before haskellRunMain(). The caller owns the memory (must be strdup'd). */
+void setAppFilesDir(const char *path);
+
+/* Get the app files directory path. Returns the value set by setAppFilesDir(),
+ * or falls back to "." (current directory) on desktop. */
+const char* getAppFilesDir(void);
+
 /* Dispatch a permission result from native code back to Haskell.
  * requestId: opaque ID from the original permission_request() call.
  * statusCode: PERMISSION_GRANTED (0) or PERMISSION_DENIED (1).

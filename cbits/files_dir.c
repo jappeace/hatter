@@ -4,10 +4,10 @@
  * Uses a set/get pattern: platform bridges call setAppFilesDir() during
  * initialization, and Haskell code reads it via getAppFilesDir().
  *
- * Android: jni_bridge.c calls setAppFilesDir() in JNI_OnLoad after
- *          querying Activity.getFilesDir().getAbsolutePath() via JNI.
- * iOS:     UIBridgeIOS.m calls setAppFilesDir() in setup_ios_ui_bridge
- *          after querying NSSearchPathForDirectoriesInDomains.
+ * Android: jni_bridge.c calls setAppFilesDir() in JNI_OnLoad
+ *          (before haskellRunMain) via ActivityThread.currentApplication().
+ * iOS:     UIBridgeIOS.m calls setAppFilesDir() in setup_ios_platform_globals
+ *          (before haskellRunMain) via NSSearchPathForDirectoriesInDomains.
  * Desktop: falls back to "." (current working directory).
  */
 

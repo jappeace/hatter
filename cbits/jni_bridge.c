@@ -119,13 +119,14 @@ JNIEXPORT jint JNICALL
 JNI_OnLoad(JavaVM *vm, void *reserved)
 {
     hs_init(NULL, NULL);
-    g_haskell_ctx = haskellRunMain();
 
-    /* Cache the system locale from Android's Locale.getDefault().toLanguageTag() */
+    /* Pre-haskellRunMain platform init: set globals that Haskell code may
+       read immediately (e.g. in startMobileApp callbacks). */
     {
         JNIEnv *env;
         (*vm)->GetEnv(vm, (void**)&env, JNI_VERSION_1_6);
 
+        /* Locale: Locale.getDefault().toLanguageTag() (static, no context needed) */
         jclass localeClass = (*env)->FindClass(env, "java/util/Locale");
         jmethodID getDefault = (*env)->GetStaticMethodID(env, localeClass,
             "getDefault", "()Ljava/util/Locale;");
@@ -133,13 +134,36 @@ JNI_OnLoad(JavaVM *vm, void *reserved)
         jmethodID toLanguageTag = (*env)->GetMethodID(env, localeClass,
             "toLanguageTag", "()Ljava/lang/String;");
         jstring jtag = (*env)->CallObjectMethod(env, locale, toLanguageTag);
-
         const char *ctag = (*env)->GetStringUTFChars(env, jtag, NULL);
         setSystemLocale(strdup(ctag));
         (*env)->ReleaseStringUTFChars(env, jtag, ctag);
 
-        haskellLogLocale();
+        /* Files dir: ActivityThread.currentApplication().getFilesDir().
+           The Application exists before any Activity, so this is available
+           during JNI_OnLoad (called from System.loadLibrary). */
+        jclass atClass = (*env)->FindClass(env, "android/app/ActivityThread");
+        jmethodID currentApp = (*env)->GetStaticMethodID(env, atClass,
+            "currentApplication", "()Landroid/app/Application;");
+        jobject app = (*env)->CallStaticObjectMethod(env, atClass, currentApp);
+        if (app) {
+            jclass ctxClass = (*env)->FindClass(env, "android/content/Context");
+            jmethodID getFilesDir = (*env)->GetMethodID(env, ctxClass,
+                "getFilesDir", "()Ljava/io/File;");
+            jobject filesDir = (*env)->CallObjectMethod(env, app, getFilesDir);
+            if (filesDir) {
+                jclass fileClass = (*env)->FindClass(env, "java/io/File");
+                jmethodID getAbsPath = (*env)->GetMethodID(env, fileClass,
+                    "getAbsolutePath", "()Ljava/lang/String;");
+                jstring jpath = (*env)->CallObjectMethod(env, filesDir, getAbsPath);
+                const char *cpath = (*env)->GetStringUTFChars(env, jpath, NULL);
+                setAppFilesDir(strdup(cpath));
+                (*env)->ReleaseStringUTFChars(env, jpath, cpath);
+            }
+        }
     }
+
+    g_haskell_ctx = haskellRunMain();
+    haskellLogLocale();
 
     return JNI_VERSION_1_6;
 }
@@ -172,24 +196,6 @@ JNI_METHOD(greet)(JNIEnv *env, jobject thiz, jstring jname)
 JNIEXPORT void JNICALL
 JNI_METHOD(renderUI)(JNIEnv *env, jobject thiz)
 {
-    /* Cache the app files directory from Activity.getFilesDir() (once) */
-    {
-        static int files_dir_cached = 0;
-        if (!files_dir_cached) {
-            files_dir_cached = 1;
-            jclass contextClass = (*env)->FindClass(env, "android/content/Context");
-            jmethodID getFilesDir = (*env)->GetMethodID(env, contextClass,
-                "getFilesDir", "()Ljava/io/File;");
-            jobject filesDir = (*env)->CallObjectMethod(env, thiz, getFilesDir);
-            jclass fileClass = (*env)->FindClass(env, "java/io/File");
-            jmethodID getAbsolutePath = (*env)->GetMethodID(env, fileClass,
-                "getAbsolutePath", "()Ljava/lang/String;");
-            jstring jpath = (*env)->CallObjectMethod(env, filesDir, getAbsolutePath);
-            const char *cpath = (*env)->GetStringUTFChars(env, jpath, NULL);
-            setAppFilesDir(strdup(cpath));
-            (*env)->ReleaseStringUTFChars(env, jpath, cpath);
-        }
-    }
     setup_android_ui_bridge(env, thiz, g_haskell_ctx);
     setup_android_permission_bridge(env, thiz, g_haskell_ctx);
     setup_android_secure_storage_bridge(env, thiz, g_haskell_ctx);
