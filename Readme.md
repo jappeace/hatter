@@ -9,7 +9,7 @@ It's like flutter but instead of dart, haskell!
 
 Write native mobile apps in Haskell.
 This works similar to react native where we have
-thight bindings on the existing UI frameworks
+tight bindings on the existing UI frameworks
 provided android and IOS.
 
 This project cross-compiles a Haskell library to Android (APK) and iOS (static library / IPA),
@@ -17,6 +17,14 @@ with a thin platform-native UI layer (Kotlin for Android, Swift for iOS).
 There is support for android wear and wearOS as well,
 because I personally want to build apps for those. 
 IOS and Android support was just a side effect.
+
+Supports native:
+
++ android
++ android wearable
++ IOS
++ WearOS (IOS on wearables)
+
 
 The library fully controls the UI.
 This is different from say Simplex chat where they call into the library to do Haskell from dirty java/swift code.
@@ -26,10 +34,16 @@ so you can focus on your sweet Haskell.
 Haskell is a fantastic language for UI.
 Having strong type safety around callbacks and widget's 
 makes it a lot easier to write them.
-I've been many times annoyed at the garbage languages
+I basically copied flutters' approach to encoding UI,
+but in flutter it's a fair bit of guess work, 
+it becomes /very/ nice in Haskell however.
+I've been many times annoyed at the ~~garbage~~ languages
 they keep shoving into our face for UI.
 With [vibes](https://jappie.me/haskell-vibes.html) in hand I put my malice
 into crafting something good.
+Flutter is already pretty good, but the syntax is complex,
+and it has many inherited footguns from Java.
+I think I made here what flutter wanted to be.
 
 # How to use
 
@@ -81,35 +95,21 @@ main = do
 Button taps (and other events) fire `Action` handles created via `runActionM`,
 then the framework re-renders automatically.
 
-### Available widgets
 
-| Widget | Description |
-|--------|-------------|
-| `Text` | Read-only label |
-| `Button` | Tappable button with `Action` callback |
-| `TextInput` | Controlled text field with `OnChange` callback |
-| `Column` | Vertical layout |
-| `Row` | Horizontal layout |
-| `ScrollView` | Vertically scrollable container |
-| `Image` | Image from resource, file path, or raw bytes |
-| `WebView` | Embedded web browser |
-| `Styled` | Wraps a widget with padding, colors, text alignment |
 
 ### Platform bridges
 
 The `UserState` passed to `maView` provides access to platform APIs:
 
-| Bridge | Functions |
-|--------|-----------|
-| Permissions | `requestPermission`, `checkPermission` |
-| Secure storage | `secureStorageWrite`, `secureStorageRead`, `secureStorageDelete` |
-| BLE scanning | `startBleScan`, `stopBleScan`, `checkBleAdapter` |
-| Dialogs | `showDialog` |
-| Location | `startLocationUpdates`, `stopLocationUpdates` |
-| Auth sessions | `startAuthSession` (OAuth/ASWebAuthenticationSession) |
-| Camera | `startCameraSession`, `capturePhoto`, `startVideoCapture` |
-| Bottom sheets | `showBottomSheet` |
-| HTTP | `performRequest` |
+| Bridge         | Functions                                                        | Comments                    |
+|----------------|------------------------------------------------------------------|-----------------------------|
+| Secure storage | `secureStorageWrite`, `secureStorageRead`, `secureStorageDelete` |                             |
+| BLE scanning   | `startBleScan`, `stopBleScan`, `checkBleAdapter`                 | still need to do connecting |
+| Location       | `startLocationUpdates`, `stopLocationUpdates`                    | gps for example             |
+| Auth sessions  | `startAuthSession` (OAuth/ASWebAuthenticationSession)            |                             |
+| Camera         | `startCameraSession`, `capturePhoto`, `startVideoCapture`        |                             |
+| HTTP           | `performRequest`                                                 | http-client also works but this results in much smaller apks which is good for wearables                            |
+| Permissions    | `requestPermission`, `checkPermission`                           |                             |
 
 ## Building for Android
 
