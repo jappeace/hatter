@@ -86,12 +86,20 @@ in {
     , extraLinkObjects ? []
     , extraGhcIncludeDirs ? []
     , crossDeps ? null          # output of cross-deps.nix (lib/, hi/, pkgdb/)
+    , extraGhcFlags ? []        # additional flags passed to cross-GHC
     , maxNodes ? 256            # static pool size (ignored when dynamicNodePool=true)
     , dynamicNodePool ? false   # use malloc/realloc instead of fixed array
     , soMaxSizeMB ? 200         # fail build if .so exceeds this (MB), catches whole-archive bloat
     }:
     let
       jniPackageMacro = builtins.replaceStrings ["."] ["_"] javaPackageName;
+
+      # Template Haskell support for consumer code: when crossDeps includes
+      # the iserv wrapper, add -fexternal-interpreter so GHC delegates TH
+      # splices to the QEMU-emulated iserv-proxy-interpreter.
+      thFlags = if crossDeps != null
+        then "-fexternal-interpreter -pgmi ${crossDeps}/bin/iserv-proxy-wrapper"
+        else "";
     in
     pkgs.stdenv.mkDerivation {
       inherit pname;
@@ -332,6 +340,8 @@ in {
           -I${haskellMobileSrc}/include \
           ${builtins.concatStringsSep " " (map (d: "-I${d}") extraGhcIncludeDirs)} \
           ${if crossDeps != null then "-package-db ${crossDeps}/pkgdb -i${crossDeps}/hi" else ""} \
+          ${thFlags} \
+          ${builtins.concatStringsSep " " extraGhcFlags} \
           Main.hs \
           HaskellMobile.hs \
           cbits/android_stubs.c \

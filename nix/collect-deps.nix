@@ -12,6 +12,7 @@
 , ghc               # GHC derivation (for boot package .a files)
 , ghcPkgCmd         # full path to ghc-pkg (or cross ghc-pkg)
 , deps              # list of haskellPackages derivations (from resolve-deps.nix)
+, iservProxy ? null # optional iserv wrapper script for consumer-side TH
 }:
 let
   depsList = builtins.concatStringsSep " " (map toString deps);
@@ -66,6 +67,15 @@ in pkgs.runCommand "haskell-mobile-collected-deps" {
   done
 
   ${ghcPkgCmd} --package-db=$out/pkgdb recache
+
+  # Copy iserv wrapper for consumer-side Template Haskell support.
+  ${if iservProxy != null then ''
+    mkdir -p $out/bin
+    cp ${iservProxy} $out/bin/iserv-proxy-wrapper
+    chmod +x $out/bin/iserv-proxy-wrapper
+    echo "=== iserv wrapper ==="
+    echo "Installed: $out/bin/iserv-proxy-wrapper"
+  '' else ""}
 
   echo "=== Package database ==="
   ${ghcPkgCmd} --package-db=$out/pkgdb list
