@@ -32,13 +32,18 @@ let
     inherit androidArch;
   };
 
-  # QEMU overlay for aarch64 TH cross-compilation.
+  # QEMU overlay for TH cross-compilation (both architectures).
   # Without -B, QEMU uses guest_base=0: guest addresses map directly to
   # host addresses.  The guest binary loads at ~0x200000 where QEMU's own
   # code resides, so mmap hints from GHC's RTS linker are ignored.
-  # Loaded .o code lands far from the binary's symbols, exceeding the
-  # +-4 GiB range of aarch64 ADRP relocations.
-  # -B 0x4000000000 shifts the guest address space by 256 GiB.
+  #
+  # aarch64: -B 0x4000000000 (256 GiB) shifts guest address space to
+  # keep loaded .o code within +-4 GiB ADRP relocation range.
+  #
+  # armv7a: -B 0x10000000 (256 MiB) shifts guest address space away from
+  # QEMU's host mappings.  Without this, the static iserv-proxy binary
+  # (loaded at 0x10000) overlaps QEMU's JIT code cache, causing segfaults
+  # when dlsym iterates the .dynsym table (issue #147).
   qemuOverlay = final: prev: {
     qemu-user = prev.symlinkJoin {
       name = "qemu-user-with-guest-base";
@@ -50,6 +55,13 @@ let
 exec ${prev.qemu-user}/bin/qemu-aarch64 -B 0x4000000000 "$@"
 WRAPPER
         chmod +x $out/bin/qemu-aarch64
+
+        rm $out/bin/qemu-arm
+        cat > $out/bin/qemu-arm <<'WRAPPER'
+#!/bin/sh
+exec ${prev.qemu-user}/bin/qemu-arm -B 0x10000000 "$@"
+WRAPPER
+        chmod +x $out/bin/qemu-arm
       '';
     };
   };
@@ -57,9 +69,8 @@ WRAPPER
   pkgs = import nixpkgsSrc ({
     config.allowUnfree = true;
     config.android_sdk.accept_license = true;
-  } // (if androidArch == "aarch64"
-        then { overlays = [ qemuOverlay ]; }
-        else {}));
+    overlays = [ qemuOverlay ];
+  });
 
   # Cross-compilation toolchain
   androidPkgs = pkgs.pkgsCross.${archConfig.crossAttr};

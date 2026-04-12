@@ -16,6 +16,7 @@ let
     th-test = import ./test-th.nix { inherit sources; };
     readme-example = import ./test-readme-example.nix { inherit sources; };
     th-direct-test = import ./test-th-direct.nix { inherit sources; };
+    th-direct-test-armv7a = import ./test-th-direct.nix { inherit sources; androidArch = "armv7a"; };
   } // (if isDarwin then {
     ios-lib = import ./ios.nix { inherit sources; };
     watchos-lib = import ./watchos.nix { inherit sources; };
@@ -35,17 +36,10 @@ let
     };
   } else {});
 
-  # Known-failing targets — kept out of all-builds so CI stays green,
-  # but available for individual `nix-build -A` to track progress.
-  knownFailing = {
-    # armv7a TH segfaults in dl_impl.c under QEMU arm (issue #147)
-    th-direct-test-armv7a = import ./test-th-direct.nix { inherit sources; androidArch = "armv7a"; };
-  };
-
   testScripts = builtins.path { path = ../test; name = "test-scripts"; };
 
 in
-  buildTargets // testRunners // knownFailing // {
+  buildTargets // testRunners // {
     # Meta-target: builds every compilation/link-test target.
     # Excludes emulator/simulator runners (they have dedicated CI jobs).
     # Adding a new attr to buildTargets automatically includes it here.
