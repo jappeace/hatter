@@ -11,7 +11,7 @@
 -- in the render diff.
 module HaskellMobile.Widget
   (
-  , Widget(..)
+    Widget(..)
   -- ** configs
   , WidgetStyle(..)
   , defaultStyle
