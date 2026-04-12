@@ -57,6 +57,7 @@ static jclass   g_class_ImageView;
 static jclass   g_class_WebView;
 static jclass   g_class_FrameLayout;
 static jclass   g_class_BitmapFactory;
+static jclass   g_class_View;
 static jclass   g_class_ViewGroup;
 static jclass   g_class_ViewGroup_LayoutParams;
 static jclass   g_class_Integer;
@@ -171,6 +172,10 @@ static int resolve_jni_ids(JNIEnv *env, jobject activity)
     cls = (*env)->FindClass(env, "android/graphics/BitmapFactory");
     if (!cls) return -1;
     g_class_BitmapFactory = (*env)->NewGlobalRef(env, cls);
+
+    cls = (*env)->FindClass(env, "android/view/View");
+    if (!cls) return -1;
+    g_class_View = (*env)->NewGlobalRef(env, cls);
 
     cls = (*env)->FindClass(env, "android/view/ViewGroup");
     if (!cls) return -1;
@@ -696,6 +701,20 @@ static void android_set_num_prop(int32_t nodeId, int32_t propId, double value)
         /* No-op for placeholder — real map would toggle location layer */
         LOGI("setNumProp(node=%d, showUserLoc=%.0f)", nodeId, value);
         break;
+    case UI_PROP_TRANSLATE_X: {
+        jmethodID setTranslationX = (*env)->GetMethodID(env,
+            g_class_View, "setTranslationX", "(F)V");
+        (*env)->CallVoidMethod(env, view, setTranslationX, (jfloat)value);
+        LOGI("setNumProp(node=%d, translateX=%.1f)", nodeId, value);
+        break;
+    }
+    case UI_PROP_TRANSLATE_Y: {
+        jmethodID setTranslationY = (*env)->GetMethodID(env,
+            g_class_View, "setTranslationY", "(F)V");
+        (*env)->CallVoidMethod(env, view, setTranslationY, (jfloat)value);
+        LOGI("setNumProp(node=%d, translateY=%.1f)", nodeId, value);
+        break;
+    }
     default:
         LOGI("setNumProp: unknown propId %d", propId);
         break;

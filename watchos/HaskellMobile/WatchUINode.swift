@@ -22,6 +22,8 @@ class WatchUINode: ObservableObject, Identifiable {
     @Published var mapLatitude: Double?
     @Published var mapLongitude: Double?
     @Published var mapZoom: Double?
+    @Published var translateX: CGFloat = 0
+    @Published var translateY: CGFloat = 0
     @Published var children: [WatchUINode] = []
 
     init(id: Int32, nodeType: Int32) {

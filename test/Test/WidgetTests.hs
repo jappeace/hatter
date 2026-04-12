@@ -442,14 +442,14 @@ styledTests :: TestTree
 styledTests = testGroup "Styled"
   [ testCase "Styled Text renders without error" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs $ Styled (WidgetStyle (Just 8.0) Nothing Nothing Nothing)
+      renderWidget rs $ Styled (WidgetStyle (Just 8.0) Nothing Nothing Nothing Nothing Nothing)
         (Text TextConfig { tcLabel = "styled", tcFontConfig = Just (FontConfig 20.0) })
 
   , testCase "Styled Button fires callback" $ do
       ref <- newIORef (0 :: Int)
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
-      renderWidget rs $ Styled (WidgetStyle Nothing Nothing Nothing Nothing)
+      renderWidget rs $ Styled (WidgetStyle Nothing Nothing Nothing Nothing Nothing Nothing)
         (Button ButtonConfig
           { bcLabel = "tap", bcAction = clickHandle
           , bcFontConfig = Just (FontConfig 16.0) })
@@ -473,8 +473,8 @@ styledTests = testGroup "Styled"
   , testCase "nested Styled applies both styles" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs $
-        Styled (WidgetStyle (Just 12.0) Nothing Nothing Nothing)
-          (Styled (WidgetStyle Nothing Nothing Nothing Nothing)
+        Styled (WidgetStyle (Just 12.0) Nothing Nothing Nothing Nothing Nothing)
+          (Styled (WidgetStyle Nothing Nothing Nothing Nothing Nothing Nothing)
             (Text TextConfig { tcLabel = "double styled", tcFontConfig = Just (FontConfig 18.0) }))
 
   , testCase "defaultStyle is a no-op" $ do
@@ -502,14 +502,14 @@ textAlignTests :: TestTree
 textAlignTests = testGroup "TextAlignment"
   [ testCase "Styled with AlignCenter renders without error" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignCenter) Nothing Nothing)
+      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignCenter) Nothing Nothing Nothing Nothing)
         (Text TextConfig { tcLabel = "centered", tcFontConfig = Nothing })
 
   , testCase "Styled with AlignCenter on Button fires callback" $ do
       ref <- newIORef (0 :: Int)
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
-      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignCenter) Nothing Nothing)
+      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignCenter) Nothing Nothing Nothing Nothing)
         (Button ButtonConfig
           { bcLabel = "tap", bcAction = clickHandle, bcFontConfig = Nothing })
       dispatchEvent rs (actionId clickHandle)
@@ -521,7 +521,7 @@ textAlignTests = testGroup "TextAlignment"
 
   , testCase "Styled with AlignEnd renders without error" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignEnd) Nothing Nothing)
+      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignEnd) Nothing Nothing Nothing Nothing)
         (Text TextConfig { tcLabel = "end aligned", tcFontConfig = Nothing })
   ]
 
@@ -532,7 +532,7 @@ colorTests = testGroup "Colors"
       ref <- newIORef (0 :: Int)
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
-      renderWidget rs $ Styled (WidgetStyle Nothing Nothing (Just (Color 255 0 0 255)) Nothing)
+      renderWidget rs $ Styled (WidgetStyle Nothing Nothing (Just (Color 255 0 0 255)) Nothing Nothing Nothing)
         (Button ButtonConfig
           { bcLabel = "red", bcAction = clickHandle, bcFontConfig = Nothing })
       dispatchEvent rs (actionId clickHandle)
@@ -541,14 +541,14 @@ colorTests = testGroup "Colors"
 
   , testCase "Styled with backgroundColor renders without error" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs $ Styled (WidgetStyle Nothing Nothing Nothing (Just (Color 0 255 0 255)))
+      renderWidget rs $ Styled (WidgetStyle Nothing Nothing Nothing (Just (Color 0 255 0 255)) Nothing Nothing)
         (Text TextConfig { tcLabel = "green bg", tcFontConfig = Nothing })
 
   , testCase "both textColor and backgroundColor together" $ do
       ref <- newIORef (0 :: Int)
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
-      renderWidget rs $ Styled (WidgetStyle Nothing Nothing (Just (Color 255 0 0 255)) (Just (Color 0 255 0 255)))
+      renderWidget rs $ Styled (WidgetStyle Nothing Nothing (Just (Color 255 0 0 255)) (Just (Color 0 255 0 255)) Nothing Nothing)
         (Button ButtonConfig
           { bcLabel = "colored", bcAction = clickHandle, bcFontConfig = Nothing })
       dispatchEvent rs (actionId clickHandle)
@@ -562,8 +562,8 @@ colorTests = testGroup "Colors"
   , testCase "nested Styled with different colors renders" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs $
-        Styled (WidgetStyle Nothing Nothing (Just (Color 255 0 0 255)) Nothing)
-          (Styled (WidgetStyle Nothing Nothing Nothing (Just (Color 0 0 255 255)))
+        Styled (WidgetStyle Nothing Nothing (Just (Color 255 0 0 255)) Nothing Nothing Nothing)
+          (Styled (WidgetStyle Nothing Nothing Nothing (Just (Color 0 0 255 255)) Nothing Nothing)
             (Text TextConfig { tcLabel = "nested colors", tcFontConfig = Nothing }))
 
   , testCase "colorFromText parses #RRGGBB" $

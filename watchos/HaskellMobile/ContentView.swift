@@ -18,6 +18,7 @@ struct NodeView: View {
             .ifLet(node.backgroundColor.flatMap { Color(hex: $0) }) { view, color in
                 view.background(color)
             }
+            .offset(x: node.translateX, y: node.translateY)
         return content
     }
 

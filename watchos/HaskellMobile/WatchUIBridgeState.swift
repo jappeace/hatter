@@ -79,6 +79,12 @@ class WatchUIBridgeState: ObservableObject {
             node.mapZoom = value
         case 8: // UI_PROP_MAP_SHOW_USER_LOC (no-op on watchOS)
             os_log("setNumProp(node=%d, showUserLoc=%.0f)", log: bridgeLog, type: .info, nodeId, value)
+        case 9: // UI_PROP_TRANSLATE_X
+            os_log("setNumProp(node=%d, translateX=%.1f)", log: bridgeLog, type: .info, nodeId, value)
+            node.translateX = CGFloat(value)
+        case 10: // UI_PROP_TRANSLATE_Y
+            os_log("setNumProp(node=%d, translateY=%.1f)", log: bridgeLog, type: .info, nodeId, value)
+            node.translateY = CGFloat(value)
         default:
             os_log("setNumProp: unknown propId %d", log: bridgeLog, type: .info, propId)
         }

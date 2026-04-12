@@ -145,6 +145,14 @@ data WidgetStyle = WidgetStyle
     -- ^ Text color.
   , wsBackgroundColor :: Maybe Color
     -- ^ Background color.
+  , wsTranslateX      :: Maybe Double
+    -- ^ Horizontal translation offset in platform-native units.
+    -- Moves the widget without affecting sibling layout
+    -- (Android: @translationX@, iOS: @CGAffineTransform@,
+    -- watchOS: @.offset(x:y:)@).
+  , wsTranslateY      :: Maybe Double
+    -- ^ Vertical translation offset in platform-native units.
+    -- Moves the widget without affecting sibling layout.
   } deriving (Show, Eq)
 
 -- | No style overrides — all fields are 'Nothing'.
@@ -154,6 +162,8 @@ defaultStyle = WidgetStyle
   , wsTextAlign       = Nothing
   , wsTextColor       = Nothing
   , wsBackgroundColor = Nothing
+  , wsTranslateX      = Nothing
+  , wsTranslateY      = Nothing
   }
 
 -- | Easing function for animations.
