@@ -1,23 +1,21 @@
 #!/usr/bin/env bash
-# iOS network status test: install network-status app, launch with
-# --autotest, verify the network status bridge initialises and app
-# doesn't crash.
-#
-# On simulator the NWPathMonitor should report satisfied status.
+# iOS files directory test: install files-dir app, launch with
+# --autotest, verify the app files directory path is retrieved and
+# file I/O works.
 #
 # Required env vars (set by simulator-all.nix harness):
-#   SIM_UDID, BUNDLE_ID, NETWORK_STATUS_APP, WORK_DIR
+#   SIM_UDID, BUNDLE_ID, FILES_DIR_APP, WORK_DIR
 set -euo pipefail
 source "$(dirname "$0")/helpers.sh"
 
 EXIT_CODE=0
 
-xcrun simctl install "$SIM_UDID" "$NETWORK_STATUS_APP"
-echo "Network status app installed."
+xcrun simctl install "$SIM_UDID" "$FILES_DIR_APP"
+echo "FilesDir app installed."
 
-NS_START=$(date "+%Y-%m-%d %H:%M:%S")
+FD_START=$(date "+%Y-%m-%d %H:%M:%S")
 
-STREAM_LOG="$WORK_DIR/networkstatus_stream.txt"
+STREAM_LOG="$WORK_DIR/filesdir_stream.txt"
 true > "$STREAM_LOG"
 xcrun simctl spawn "$SIM_UDID" log stream \
     --level info \
@@ -46,16 +44,17 @@ sleep 10
 kill "$LOG_STREAM_PID" 2>/dev/null || true
 sleep 1
 
-FULL_LOG="$WORK_DIR/networkstatus_full.txt"
-get_full_log "$NS_START" "$FULL_LOG"
+FULL_LOG="$WORK_DIR/filesdir_full.txt"
+get_full_log "$FD_START" "$FULL_LOG"
 
 if ! grep -q "setRoot" "$FULL_LOG" 2>/dev/null; then
     echo "  'log show' empty/incomplete, using stream log"
     FULL_LOG="$STREAM_LOG"
 fi
 
-assert_log "$FULL_LOG" "Network status demo app registered" "Network status demo app started"
-assert_log "$FULL_LOG" "createNode" "createNode called (app renders)"
+assert_log "$FULL_LOG" "FilesDir demo app registered" "FilesDir demo app started"
+assert_log "$FULL_LOG" "FilesDir: " "FilesDir path retrieved"
+assert_log "$FULL_LOG" "FilesDir write-read OK" "FilesDir write-read succeeded"
 assert_log "$FULL_LOG" "setRoot" "setRoot"
 
 xcrun simctl uninstall "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true

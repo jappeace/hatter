@@ -51,8 +51,8 @@ extern void haskellOnUITextChange(void *ctx, int callbackId, const char *text);
 /* Locale detection (cbits/locale.c) */
 extern void setSystemLocale(const char *locale);
 
-/* Log detected locale from Haskell (HaskellMobile.Locale) */
-extern void haskellLogLocale(void);
+/* App files directory (cbits/files_dir.c) */
+extern void setAppFilesDir(const char *path);
 
 /* ---- Global state (valid only on the main thread) ---- */
 static UIViewController *g_viewController = nil;
@@ -762,6 +762,37 @@ static void ios_clear(void)
 /* ---- Public API ---- */
 
 /*
+ * Set platform globals (locale, files dir) that Haskell code may read
+ * immediately during startMobileApp.  Called from Swift's
+ * HaskellBridge.initialize() BEFORE haskellRunMain().
+ */
+void setup_ios_platform_globals(void)
+{
+    /* Cache the system locale from NSLocale.currentLocale */
+    {
+        NSString *lang = [[NSLocale currentLocale] languageCode];
+        NSString *region = [[NSLocale currentLocale] countryCode];
+        NSString *tag = region
+            ? [NSString stringWithFormat:@"%@-%@", lang, region]
+            : lang;
+        setSystemLocale(strdup([tag UTF8String]));
+    }
+
+    /* Cache the app files directory (Application Support) */
+    {
+        NSArray *paths = NSSearchPathForDirectoriesInDomains(
+            NSApplicationSupportDirectory, NSUserDomainMask, YES);
+        NSString *appSupport = [paths firstObject];
+        if (appSupport) {
+            /* Ensure the directory exists */
+            [[NSFileManager defaultManager] createDirectoryAtPath:appSupport
+                withIntermediateDirectories:YES attributes:nil error:nil];
+            setAppFilesDir(strdup([appSupport UTF8String]));
+        }
+    }
+}
+
+/*
  * Set up the iOS UI bridge. Called from Swift before haskellRenderUI.
  * Registers callbacks with the platform-agnostic dispatcher.
  *
@@ -794,15 +825,4 @@ void setup_ios_ui_bridge(void *viewController, void *haskellCtx)
 
     ui_register_callbacks(&g_ios_callbacks);
     LOGI("iOS UI bridge initialized");
-
-    /* Cache the system locale from NSLocale.currentLocale */
-    {
-        NSString *lang = [[NSLocale currentLocale] languageCode];
-        NSString *region = [[NSLocale currentLocale] countryCode];
-        NSString *tag = region
-            ? [NSString stringWithFormat:@"%@-%@", lang, region]
-            : lang;
-        setSystemLocale(strdup([tag UTF8String]));
-        haskellLogLocale();
-    }
 }

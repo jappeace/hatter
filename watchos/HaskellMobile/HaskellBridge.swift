@@ -19,7 +19,9 @@ class HaskellBridge {
     /// Initialize the Haskell RTS. Must be called before any other Haskell function.
     static func initialize() {
         hs_init(nil, nil)
+        setSystemLocale("en")  // watchOS default locale, before Haskell main
         context = haskellRunMain()
+        haskellLogLocale()
     }
 
     /// Call Haskell's haskellGreet and return the result as a Swift String.

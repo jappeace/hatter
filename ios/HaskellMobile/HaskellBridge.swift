@@ -19,7 +19,9 @@ class HaskellBridge {
     /// Initialize the Haskell RTS. Must be called before any other Haskell function.
     static func initialize() {
         hs_init(nil, nil)
+        setup_ios_platform_globals()  // locale + files dir before Haskell main
         context = haskellRunMain()
+        haskellLogLocale()
         setup_ios_permission_bridge(context)
         setup_ios_secure_storage_bridge(context)
         setup_ios_ble_bridge(context)

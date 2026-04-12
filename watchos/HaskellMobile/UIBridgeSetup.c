@@ -17,9 +17,6 @@
 /* Locale detection (cbits/locale.c) */
 extern void setSystemLocale(const char *locale);
 
-/* Log detected locale from Haskell (HaskellMobile.Locale) */
-extern void haskellLogLocale(void);
-
 /* Forward declarations of Swift @_cdecl functions */
 extern int32_t watchos_create_node(int32_t nodeType);
 extern void    watchos_set_str_prop(int32_t nodeId, int32_t propId, const char *value);
@@ -80,12 +77,6 @@ void setup_watchos_ui_bridge(void *haskellCtx)
 
     os_log_t log = os_log_create("me.jappie.haskellmobile", "UIBridge");
     os_log_info(log, "watchOS UI bridge initialized");
-
-    /* Cache the system locale from NSLocale via Foundation.
-     * On watchOS we default to "en" — the locale query is done
-     * in Swift (HaskellBridge) if needed. */
-    setSystemLocale("en");
-    haskellLogLocale();
 
     /* Register Swift secure storage callbacks with platform-agnostic dispatcher */
     secure_storage_register_impl(watchos_secure_storage_write,
