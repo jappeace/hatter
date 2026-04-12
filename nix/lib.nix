@@ -391,6 +391,7 @@ in {
           -optl$(pwd)/cbits/http_bridge.o \
           -optl$(pwd)/cbits/network_status_bridge.o \
           -optl$(pwd)/cbits/animation_bridge.o \
+          -optl$(pwd)/cbits/files_dir.o \
           ${builtins.concatStringsSep " " (builtins.genList (i: "-optl$(pwd)/extra_jni_${toString i}.o") (builtins.length extraJniBridge))} \
           ${builtins.concatStringsSep " " (map (o: "-optl${o}") extraLinkObjects)} \
           -optl-Wl,-u,haskellRunMain \
