@@ -25,7 +25,7 @@ import Data.Int (Int32)
 import Data.Text (Text, pack)
 import HaskellMobile.Action (Action(..), ActionState, OnChange(..), lookupAction, lookupTextAction)
 import HaskellMobile.Animation (AnimationState, registerTween)
-import HaskellMobile.Widget (AnimatedConfig(..), ButtonConfig(..), FontConfig(..), ImageConfig(..), ImageSource(..), InputType(..), MapViewConfig(..), ResourceName(..), ScaleType(..), TextAlignment(..), TextConfig(..), TextInputConfig(..), WebViewConfig(..), Widget(..), WidgetStyle(..), colorToHex)
+import HaskellMobile.Widget (AnimatedConfig(..), ButtonConfig(..), FontConfig(..), ImageConfig(..), ImageSource(..), InputType(..), MapViewConfig(..), ResourceName(..), ScaleType(..), TextAlignment(..), TextConfig(..), TextInputConfig(..), WebViewConfig(..), Widget(..), WidgetStyle(..), colorToHex, normalizeAnimated)
 import HaskellMobile.UIBridge qualified as Bridge
 import System.IO (hPutStrLn, stderr)
 
@@ -218,9 +218,19 @@ createRenderedNode animState widget@(Styled style child) = do
   childNode <- createRenderedNode animState child
   applyStyle (renderedNodeId childNode) style
   pure (RenderedStyled widget style childNode)
-createRenderedNode animState widget@(Animated _config child) = do
-  childNode <- createRenderedNode animState child
-  pure (RenderedAnimated widget childNode)
+createRenderedNode animState (Animated config child) = do
+  let normalized = normalizeAnimated config child
+  case normalized of
+    -- normalizeAnimated distributed into a container — render the container directly
+    -- (each child is now individually wrapped in Animated).
+    Column _     -> createRenderedNode animState normalized
+    Row _        -> createRenderedNode animState normalized
+    ScrollView _ -> createRenderedNode animState normalized
+    -- Everything else (Styled, leaves): wrap in RenderedAnimated for tween interpolation.
+    _            -> do
+      let finalWidget = Animated config normalized
+      childNode <- createRenderedNode animState normalized
+      pure (RenderedAnimated finalWidget childNode)
 
 -- ---------------------------------------------------------------------------
 -- Destroying rendered subtrees
@@ -278,7 +288,18 @@ diffRenderNode _animState (Just oldNode) newWidget
   | newWidget == renderedWidget oldNode =
     pure oldNode
 
--- Case: Both are Animated — diff the child, possibly registering a tween.
+-- Case: Animated wrapping a container — normalize (distribute to children) and recurse.
+diffRenderNode animState maybeOld (Animated config child@(Column _)) =
+  diffRenderNode animState maybeOld (normalizeAnimated config child)
+diffRenderNode animState maybeOld (Animated config child@(Row _)) =
+  diffRenderNode animState maybeOld (normalizeAnimated config child)
+diffRenderNode animState maybeOld (Animated config child@(ScrollView _)) =
+  diffRenderNode animState maybeOld (normalizeAnimated config child)
+-- Case: Nested Animated — inner config wins.
+diffRenderNode animState maybeOld (Animated _outerConfig child@(Animated _ _)) =
+  diffRenderNode animState maybeOld child
+
+-- Case: Both are Animated (leaf) — diff the child, possibly registering a tween.
 diffRenderNode animState (Just (RenderedAnimated _ oldChildNode)) (Animated newConfig newChild) = do
   let oldChildWidget = renderedWidget oldChildNode
   if sameNodeType oldChildWidget newChild

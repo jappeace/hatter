@@ -33,6 +33,7 @@ import HaskellMobile.Widget
   , defaultStyle
   , interpolateColor
   , lerpWord8
+  , normalizeAnimated
   )
 
 animationTests :: TestTree
@@ -42,6 +43,7 @@ animationTests = testGroup "Animation"
   , colorInterpolationTests
   , tweenRegistryTests
   , animatedWidgetRenderTests
+  , normalizeAnimatedTests
   ]
 
 -- ---------------------------------------------------------------------------
@@ -247,3 +249,101 @@ renderedNodeSummary (RenderedLeaf _ nodeId)        = "RenderedLeaf " ++ show nod
 renderedNodeSummary (RenderedContainer _ nodeId _) = "RenderedContainer " ++ show nodeId
 renderedNodeSummary (RenderedStyled _ _ child)     = "RenderedStyled -> " ++ renderedNodeSummary child
 renderedNodeSummary (RenderedAnimated _ child)     = "RenderedAnimated -> " ++ renderedNodeSummary child
+
+-- ---------------------------------------------------------------------------
+-- normalizeAnimated
+-- ---------------------------------------------------------------------------
+
+normalizeAnimatedTests :: TestTree
+normalizeAnimatedTests = testGroup "normalizeAnimated"
+  [ testCase "Distributes over Column children" $ do
+      let cfg = AnimatedConfig 300 EaseOut
+          childA = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+          childB = Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
+          result = normalizeAnimated cfg (Column [childA, childB])
+      result @?= Column [Animated cfg childA, Animated cfg childB]
+  , testCase "Distributes over Row children" $ do
+      let cfg = AnimatedConfig 300 EaseOut
+          childA = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+          result = normalizeAnimated cfg (Row [childA])
+      result @?= Row [Animated cfg childA]
+  , testCase "Distributes over ScrollView children" $ do
+      let cfg = AnimatedConfig 300 EaseOut
+          childA = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+          result = normalizeAnimated cfg (ScrollView [childA])
+      result @?= ScrollView [Animated cfg childA]
+  , testCase "Inner Animated wins over outer" $ do
+      let outerCfg = AnimatedConfig 500 EaseOut
+          innerCfg = AnimatedConfig 100 EaseIn
+          leaf = Text TextConfig { tcLabel = "x", tcFontConfig = Nothing }
+          result = normalizeAnimated outerCfg (Animated innerCfg leaf)
+      -- Inner config is preserved, leaf is normalized under inner config
+      result @?= Animated innerCfg leaf
+  , testCase "Inner wins when distributed over Column" $ do
+      let outerCfg = AnimatedConfig 500 EaseOut
+          innerCfg = AnimatedConfig 100 EaseIn
+          leaf = Text TextConfig { tcLabel = "x", tcFontConfig = Nothing }
+          explicitChild = Animated innerCfg leaf
+          plainChild = Text TextConfig { tcLabel = "y", tcFontConfig = Nothing }
+          result = normalizeAnimated outerCfg (Column [explicitChild, plainChild])
+      -- Distribution wraps each child in outer Animated; the render engine
+      -- then collapses the nested Animated (inner wins) during traversal.
+      result @?= Column [ Animated outerCfg (Animated innerCfg leaf)
+                         , Animated outerCfg plainChild ]
+  , testCase "Styled returned unchanged" $ do
+      let cfg = AnimatedConfig 300 EaseOut
+          style = defaultStyle { wsPadding = Just 10 }
+          child = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+          result = normalizeAnimated cfg (Styled style child)
+      -- Styled is animatable as a unit, so normalizeAnimated doesn't modify it
+      result @?= Styled style child
+  , testCase "Leaf widget unchanged" $ do
+      let cfg = AnimatedConfig 300 EaseOut
+          leaf = Text TextConfig { tcLabel = "hi", tcFontConfig = Nothing }
+          result = normalizeAnimated cfg leaf
+      result @?= leaf
+  , testCase "Animated Column renders as RenderedContainer with RenderedAnimated children" $ do
+      animState <- newAnimationState
+      writeIORef (ansContextPtr animState) nullPtr
+      actionState <- newActionState
+      rs <- newRenderState actionState animState
+      let cfg = AnimatedConfig 300 EaseOut
+          childA = Styled (defaultStyle { wsPadding = Just 10 }) $
+                     Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+          childB = Styled (defaultStyle { wsPadding = Just 20 }) $
+                     Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
+          widget = Animated cfg (Column [childA, childB])
+      renderWidget rs widget
+      renderedTree <- readIORef (rsRenderedTree rs)
+      case renderedTree of
+        Just (RenderedContainer (Column _) _ children) -> do
+          assertEqual "Should have 2 children" 2 (length children)
+          -- Each child should be RenderedAnimated wrapping RenderedStyled
+          mapM_ (\child -> case child of
+            RenderedAnimated _ (RenderedStyled _ _ _) -> pure ()
+            other -> assertFailure ("Expected RenderedAnimated(RenderedStyled), got: "
+                                     ++ renderedNodeSummary other)
+            ) children
+        other -> assertFailure ("Expected RenderedContainer, got: "
+                                 ++ show (fmap renderedNodeSummary other))
+  , testCase "Animated Column re-render with changed child diffs correctly" $ do
+      animState <- newAnimationState
+      writeIORef (ansContextPtr animState) nullPtr
+      writeIORef (ansLoopActive animState) True
+      actionState <- newActionState
+      rs <- newRenderState actionState animState
+      let cfg = AnimatedConfig 300 EaseOut
+          style1 = defaultStyle { wsPadding = Just 10 }
+          style2 = defaultStyle { wsPadding = Just 50 }
+          child = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+          widget1 = Animated cfg (Column [Styled style1 child])
+          widget2 = Animated cfg (Column [Styled style2 child])
+      renderWidget rs widget1
+      Just tree1 <- readIORef (rsRenderedTree rs)
+      let nodeId1 = renderedNodeIdSafe tree1
+      renderWidget rs widget2
+      Just tree2 <- readIORef (rsRenderedTree rs)
+      let nodeId2 = renderedNodeIdSafe tree2
+      -- Container node ID should be the same (diff, not destroy+create)
+      nodeId1 @?= nodeId2
+  ]

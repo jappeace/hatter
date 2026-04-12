@@ -30,6 +30,7 @@ module HaskellMobile.Widget
   , defaultStyle
   , Easing(..)
   , AnimatedConfig(..)
+  , normalizeAnimated
   , interpolateColor
   , lerpWord8
   )
@@ -164,6 +165,29 @@ data Easing
   deriving (Show, Eq)
 
 -- | Configuration for an 'Animated' widget wrapper.
+--
+-- When 'Animated' wraps a container ('Column', 'Row', 'ScrollView'), the
+-- config is distributed to each child:
+--
+-- @
+-- Animated cfg (Column [a, b, c])  =  Column [Animated cfg a, Animated cfg b, Animated cfg c]
+-- @
+--
+-- When two 'Animated' wrappers are nested, the __inner config wins__ — the
+-- outer wrapper is stripped.  This lets you animate a whole container while
+-- overriding individual children:
+--
+-- @
+-- Animated (AnimatedConfig 500 EaseOut) $
+--   Column
+--     [ styledText   -- inherits 500ms EaseOut
+--     , Animated (AnimatedConfig 100 EaseIn) fastWidget  -- keeps 100ms EaseIn
+--     ]
+-- @
+--
+-- Non-animatable children (containers with no visual properties of their
+-- own) are recursively distributed until a leaf or 'Styled' node is
+-- reached.
 data AnimatedConfig = AnimatedConfig
   { anDuration :: Double
     -- ^ Animation duration in milliseconds.
@@ -184,6 +208,29 @@ interpolateColor (Color r1 g1 b1 a1) (Color r2 g2 b2 a2) progress = Color
   , colorBlue  = lerpWord8 b1 b2 progress
   , colorAlpha = lerpWord8 a1 a2 progress
   }
+
+-- | Normalize an 'Animated' wrapper before rendering.
+--
+-- * Distributes 'Animated' over container children ('Column', 'Row',
+--   'ScrollView').
+-- * Collapses nested 'Animated' — inner config wins.
+-- * All other widgets ('Styled', leaves) are returned unchanged;
+--   the render engine wraps them in @RenderedAnimated@ for tween
+--   interpolation.
+normalizeAnimated :: AnimatedConfig -> Widget -> Widget
+-- Inner Animated wins: strip the outer config.
+normalizeAnimated _outerConfig (Animated innerConfig child) =
+  Animated innerConfig (normalizeAnimated innerConfig child)
+-- Distribute over containers.
+normalizeAnimated config (Column children) =
+  Column (map (Animated config) children)
+normalizeAnimated config (Row children) =
+  Row (map (Animated config) children)
+normalizeAnimated config (ScrollView children) =
+  ScrollView (map (Animated config) children)
+-- Everything else (Styled, leaves): return unchanged.
+-- The caller wraps the result in Animated for the render engine.
+normalizeAnimated _config other = other
 
 -- | How an image should be scaled within its bounds.
 data ScaleType
@@ -263,4 +310,8 @@ data Widget
     -- ^ Apply visual style overrides to a child widget.
   | Animated AnimatedConfig Widget
     -- ^ Animate property changes on the child widget over a duration.
+    -- When wrapping a container ('Column', 'Row', 'ScrollView'), the
+    -- animation is distributed to each child.  Nested 'Animated'
+    -- wrappers collapse: the innermost config wins.
+    -- See 'AnimatedConfig' for details.
   deriving (Show, Eq)
