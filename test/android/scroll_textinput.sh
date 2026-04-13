@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Android ScrollView + TextInput crash reproducer.
+# Android ScrollView + TextInput regression test.
 #
-# Reproduces DeadObjectException when ScrollView wraps TextInput widgets.
-# Installs the app, waits for render, then checks logcat for:
+# Regression test for the SIGABRT that occurred when ScrollView wrapped
+# multiple children (including TextInput) on Android. Android's ScrollView
+# only accepts one direct child; the fix adds an inner LinearLayout wrapper.
+# Installs the app, waits for render, taps TextInput, then checks logcat for:
 #   - WindowManager errors (DeadObjectException, EXITING)
 #   - App crashes / ANR
 #
