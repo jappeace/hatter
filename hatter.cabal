@@ -7,7 +7,7 @@ homepage:       https://github.com/jappeace/hatter#readme
 bug-reports:    https://github.com/jappeace/hatter/issues
 author:         Jappie Klooster
 maintainer:     hi@jappie.me
-synopsis:       Hatter: Native IOS and Android applications in haskell!
+synopsis:       Native IOS and Android applications in haskell!
 description: 
   It's like flutter but instead of dart, haskell!
 
