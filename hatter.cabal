@@ -22,13 +22,6 @@ description:
   because I personally want to build apps for those. 
   IOS and Android support was just a side effect.
 
-  Supports native:
-
-  + android
-  + android wearable
-  + IOS
-  + WearOS (IOS on wearables)
-
   The library fully controls the UI.
   This is different from say Simplex chat where they call into the library to do Haskell from dirty java/swift code.
   This library should've written all swift/java code you'll ever need,
