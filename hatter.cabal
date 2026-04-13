@@ -2,10 +2,37 @@ cabal-version:      3.0
 
 name:           hatter
 version:        0.1.0
+category:       Mobile
 homepage:       https://github.com/jappeace/hatter#readme
 bug-reports:    https://github.com/jappeace/hatter/issues
 author:         Jappie Klooster
 maintainer:     hi@jappie.me
+synopsis:       Hatter: Native IOS and Android applications in haskell!
+description: 
+  It's like flutter but instead of dart, haskell!
+
+  Write native mobile apps in Haskell.
+  This works similar to react native where we have
+  tight bindings on the existing UI frameworks
+  provided by android and IOS.
+
+  This project cross-compiles a Haskell library to Android (APK) and iOS (static library / IPA),
+  with a thin platform-native UI layer (Kotlin for Android, Swift for iOS).
+  There is support for android wear and wearOS as well,
+  because I personally want to build apps for those. 
+  IOS and Android support was just a side effect.
+
+  Supports native:
+
+  + android
+  + android wearable
+  + IOS
+  + WearOS (IOS on wearables)
+
+  The library fully controls the UI.
+  This is different from say Simplex chat where they call into the library to do Haskell from dirty java/swift code.
+  This library should've written all swift/java code you'll ever need,
+  so you can focus on your sweet Haskell.
 copyright:      2026 Jappie Klooster
 license:        MIT
 license-file:   LICENSE
@@ -45,7 +72,7 @@ common common-options
       ImportQualifiedPost
 
   ghc-options:
-    -O2 -Wall -Werror -Wincomplete-uni-patterns
+    -O2 -Wall -Wincomplete-uni-patterns
     -Wincomplete-record-updates -Widentities -Wredundant-constraints
     -Wcpp-undef -fwarn-tabs -Wpartial-fields
     -fdefer-diagnostics -Wunused-packages
@@ -53,7 +80,7 @@ common common-options
     -fno-omit-yields
 
   build-depends:
-      base >=4.9.1.0 && <4.22.0
+      base >=4.9.1.0 && <4.23
 
   default-language: Haskell2010
 
@@ -85,10 +112,10 @@ library
   hs-source-dirs:
       src
   build-depends:
-      text,
-      containers,
-      bytestring,
-      transformers
+      text < 3,
+      containers < 1,
+      bytestring < 1,
+      transformers < 0.7
   c-sources:
       cbits/android_stubs.c
       cbits/platform_log.c
