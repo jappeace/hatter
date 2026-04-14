@@ -66,8 +66,8 @@ fi
 sleep 5
 
 # Type "hello" character by character using keyevent.
-# Using individual KEYCODE_* events is more reliable than "input text"
-# which can cause the soft keyboard to deactivate on CI emulators.
+# Individual KEYCODE_* events are more reliable than "input text"
+# on CI emulators where the soft keyboard may deactivate.
 echo "Typing 'hello' via individual keyevents..."
 "$ADB" -s "$EMULATOR_SERIAL" shell input keyevent KEYCODE_H
 sleep 0.5
@@ -82,26 +82,6 @@ echo "Done typing."
 
 # Wait for all key events to be processed and render to complete
 sleep 10
-
-# Diagnostic: dump logcat to see what happened
-echo "=== Logcat stream (last 30 app lines) ==="
-grep -i "hatter\|jappie\|view rebuilt\|setRoot\|setStrProp\|createNode\|TextChange\|onUITextChange" "$LOGCAT_STREAM_FILE" 2>/dev/null | tail -30 || echo "(no app lines found)"
-echo "=== End app logcat ==="
-
-# Diagnostic: check if EditText has our text
-POST_DUMP="$WORK_DIR/textinput_rerender_post.xml"
-if "$ADB" -s "$EMULATOR_SERIAL" shell uiautomator dump /data/local/tmp/ui_post.xml 2>&1 | grep -q "dumped"; then
-    "$ADB" -s "$EMULATOR_SERIAL" pull /data/local/tmp/ui_post.xml "$POST_DUMP" 2>/dev/null
-    echo "=== Post-typing EditText ==="
-    grep -o 'class="android.widget.EditText"[^/]*' "$POST_DUMP" 2>/dev/null | head -3 || echo "(no EditText in dump)"
-    echo "=== Post-typing text values ==="
-    grep -o 'text="[^"]*"' "$POST_DUMP" 2>/dev/null | grep -v 'text=""' | head -10 || echo "(all text values empty)"
-    echo "==="
-fi
-
-# Diagnostic: check focused window — is our app still in foreground?
-echo "Focused window check:"
-"$ADB" -s "$EMULATOR_SERIAL" shell dumpsys window | grep -E "mCurrentFocus|mFocusedWindow" || true
 
 # The key assertion: after typing, the view function should have been
 # called with the updated state, producing a logcat line like:

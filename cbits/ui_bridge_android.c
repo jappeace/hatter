@@ -45,6 +45,14 @@ extern void haskellOnUITextChange(void *ctx, int callbackId, const char *text);
 static JNIEnv  *g_env      = NULL;
 static jobject  g_activity  = NULL;   /* global ref to Activity */
 
+/* Guard against re-entrant TextWatcher callbacks.
+ * When setStrProp(PropText) calls editText.setText(), the TextWatcher
+ * fires synchronously on the same thread.  Without this flag the cycle
+ * setText → TextWatcher → haskellOnUITextChange → renderView →
+ * setStrProp → setText → ... recurses until the stack overflows.
+ * Safe without atomics because all calls are on the UI thread. */
+static int g_setting_text_programmatically = 0;
+
 /* ---- Per-button callback IDs stored as view tags ---- */
 
 /* Cached JNI class/method IDs (resolved once in setup) */
@@ -520,7 +528,9 @@ static void android_set_str_prop(int32_t nodeId, int32_t propId, const char *val
     case UI_PROP_TEXT: {
         LOGI("setStrProp(node=%d, text=\"%s\")", nodeId, value);
         jstring jstr = (*env)->NewStringUTF(env, value);
+        g_setting_text_programmatically = 1;
         (*env)->CallVoidMethod(env, view, g_method_setText, jstr);
+        g_setting_text_programmatically = 0;
         (*env)->DeleteLocalRef(env, jstr);
         break;
     }
@@ -965,6 +975,12 @@ void android_handle_click(JNIEnv *env, jobject view, void *haskellCtx)
 void android_handle_text_change(JNIEnv *env, jobject view, jstring text, void *haskellCtx)
 {
     g_env = env;
+
+    /* Skip re-entrant callbacks caused by programmatic setText calls
+     * from the Haskell render engine (see g_setting_text_programmatically). */
+    if (g_setting_text_programmatically) {
+        return;
+    }
 
     jobject tagObj = (*env)->CallObjectMethod(env, view, g_method_getTag);
     if (!tagObj) {
