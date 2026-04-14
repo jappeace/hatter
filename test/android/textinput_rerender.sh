@@ -36,7 +36,7 @@ sleep 5
 # Verify initial state: "Typed: " (empty)
 assert_logcat "$LOGCAT_STREAM_FILE" 'view rebuilt: Typed:' "Initial render shows empty Typed label"
 
-# Tap the TextInput to focus it
+# Tap the TextInput to focus it — use uiautomator to find coordinates
 TAP_DUMP="$WORK_DIR/textinput_rerender_ui.xml"
 for attempt in 1 2 3; do
     if "$ADB" -s "$EMULATOR_SERIAL" shell uiautomator dump /data/local/tmp/ui.xml 2>&1 | grep -q "dumped"; then
@@ -45,11 +45,6 @@ for attempt in 1 2 3; do
     fi
     sleep 3
 done
-
-# Diagnostic: show full UI hierarchy
-echo "=== UI Hierarchy (before tap) ==="
-cat "$TAP_DUMP" 2>/dev/null | tr '><' '\n' | grep -E 'EditText|TextView|node' | head -20 || echo "(no dump)"
-echo "=== End UI Hierarchy ==="
 
 # Find and tap the EditText
 EDIT_BOUNDS=$(grep -o 'class="android.widget.EditText"[^>]*bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' "$TAP_DUMP" 2>/dev/null | head -1 || echo "")
@@ -63,40 +58,50 @@ if [ -n "$EDIT_BOUNDS" ]; then
     TAP_Y=$(( (TOP + BOTTOM) / 2 ))
     echo "Tapping EditText at ($TAP_X, $TAP_Y)"
     "$ADB" -s "$EMULATOR_SERIAL" shell input tap "$TAP_X" "$TAP_Y"
-    sleep 3
 else
     echo "WARNING: Could not find EditText, tapping center of screen"
     "$ADB" -s "$EMULATOR_SERIAL" shell input tap 540 400
-    sleep 3
 fi
-
-# Diagnostic: check focused window
-echo "Checking focused window..."
-"$ADB" -s "$EMULATOR_SERIAL" shell dumpsys window | grep -E "mCurrentFocus|mFocusedWindow" || true
-
-# Type "hello" via adb input text
-echo "Typing 'hello' via adb shell input text..."
-"$ADB" -s "$EMULATOR_SERIAL" shell input text "hello" 2>&1 || echo "WARNING: input text failed"
+# Wait for keyboard to fully settle
 sleep 5
 
-# Diagnostic: dump UI hierarchy after typing to check EditText content
-echo "=== UI Hierarchy (after typing) ==="
+# Type "hello" character by character using keyevent.
+# Using individual KEYCODE_* events is more reliable than "input text"
+# which can cause the soft keyboard to deactivate on CI emulators.
+echo "Typing 'hello' via individual keyevents..."
+"$ADB" -s "$EMULATOR_SERIAL" shell input keyevent KEYCODE_H
+sleep 0.5
+"$ADB" -s "$EMULATOR_SERIAL" shell input keyevent KEYCODE_E
+sleep 0.5
+"$ADB" -s "$EMULATOR_SERIAL" shell input keyevent KEYCODE_L
+sleep 0.5
+"$ADB" -s "$EMULATOR_SERIAL" shell input keyevent KEYCODE_L
+sleep 0.5
+"$ADB" -s "$EMULATOR_SERIAL" shell input keyevent KEYCODE_O
+echo "Done typing."
+
+# Wait for all key events to be processed and render to complete
+sleep 10
+
+# Diagnostic: dump logcat to see what happened
+echo "=== Logcat stream (last 30 app lines) ==="
+grep -i "hatter\|jappie\|view rebuilt\|setRoot\|setStrProp\|createNode\|TextChange\|onUITextChange" "$LOGCAT_STREAM_FILE" 2>/dev/null | tail -30 || echo "(no app lines found)"
+echo "=== End app logcat ==="
+
+# Diagnostic: check if EditText has our text
 POST_DUMP="$WORK_DIR/textinput_rerender_post.xml"
 if "$ADB" -s "$EMULATOR_SERIAL" shell uiautomator dump /data/local/tmp/ui_post.xml 2>&1 | grep -q "dumped"; then
     "$ADB" -s "$EMULATOR_SERIAL" pull /data/local/tmp/ui_post.xml "$POST_DUMP" 2>/dev/null
-    # Show EditText content
-    grep -o 'class="android.widget.EditText"[^/]*' "$POST_DUMP" 2>/dev/null | head -5 || echo "(no EditText found)"
-    # Show all text values
-    grep -o 'text="[^"]*"' "$POST_DUMP" 2>/dev/null | head -10 || echo "(no text found)"
-else
-    echo "(uiautomator dump failed)"
+    echo "=== Post-typing EditText ==="
+    grep -o 'class="android.widget.EditText"[^/]*' "$POST_DUMP" 2>/dev/null | head -3 || echo "(no EditText in dump)"
+    echo "=== Post-typing text values ==="
+    grep -o 'text="[^"]*"' "$POST_DUMP" 2>/dev/null | grep -v 'text=""' | head -10 || echo "(all text values empty)"
+    echo "==="
 fi
-echo "=== End UI Hierarchy ==="
 
-# Diagnostic: dump logcat stream so we can see all messages
-echo "=== Logcat stream content (last 50 lines) ==="
-tail -50 "$LOGCAT_STREAM_FILE" 2>/dev/null || echo "(empty)"
-echo "=== End logcat stream ==="
+# Diagnostic: check focused window — is our app still in foreground?
+echo "Focused window check:"
+"$ADB" -s "$EMULATOR_SERIAL" shell dumpsys window | grep -E "mCurrentFocus|mFocusedWindow" || true
 
 # The key assertion: after typing, the view function should have been
 # called with the updated state, producing a logcat line like:
