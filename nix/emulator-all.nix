@@ -297,7 +297,14 @@ let
     mainModule = ../test/ConsumerSimDemoMain.hs;
     crossDeps = consumerSimCrossDeps;
     extraJniBridge = [ ../test/dummy_jni_consumer.c ];
-    # Consumer sim intentionally produces a large .so (~130+ MB) to stress
+    # Compile storage_helper.c with NDK (same as prrrrrrrrr's extraNdkCompile)
+    extraNdkCompile = ndkCc: sysroot: ''
+      ${ndkCc} -c -fPIC -I${sysroot}/usr/include \
+        -o consumer_storage_helper.o ${../test/consumer_storage_helper.c}
+    '';
+    extraLinkObjects = [ "$(pwd)/consumer_storage_helper.o" ];
+    extraGhcIncludeDirs = [ ../test ];
+    # Consumer sim intentionally produces a large .so to stress
     # libndk_translation.  Raise the per-lib warning threshold above 120 MB.
     soMaxSizeMB = 300;
   };
