@@ -46,6 +46,11 @@ for attempt in 1 2 3; do
     sleep 3
 done
 
+# Diagnostic: show full UI hierarchy
+echo "=== UI Hierarchy (before tap) ==="
+cat "$TAP_DUMP" 2>/dev/null | tr '><' '\n' | grep -E 'EditText|TextView|node' | head -20 || echo "(no dump)"
+echo "=== End UI Hierarchy ==="
+
 # Find and tap the EditText
 EDIT_BOUNDS=$(grep -o 'class="android.widget.EditText"[^>]*bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' "$TAP_DUMP" 2>/dev/null | head -1 || echo "")
 if [ -n "$EDIT_BOUNDS" ]; then
@@ -58,16 +63,40 @@ if [ -n "$EDIT_BOUNDS" ]; then
     TAP_Y=$(( (TOP + BOTTOM) / 2 ))
     echo "Tapping EditText at ($TAP_X, $TAP_Y)"
     "$ADB" -s "$EMULATOR_SERIAL" shell input tap "$TAP_X" "$TAP_Y"
-    sleep 2
+    sleep 3
 else
     echo "WARNING: Could not find EditText, tapping center of screen"
     "$ADB" -s "$EMULATOR_SERIAL" shell input tap 540 400
-    sleep 2
+    sleep 3
 fi
 
-# Type "hello" via adb
-"$ADB" -s "$EMULATOR_SERIAL" shell input text "hello"
-sleep 3
+# Diagnostic: check focused window
+echo "Checking focused window..."
+"$ADB" -s "$EMULATOR_SERIAL" shell dumpsys window | grep -E "mCurrentFocus|mFocusedWindow" || true
+
+# Type "hello" via adb input text
+echo "Typing 'hello' via adb shell input text..."
+"$ADB" -s "$EMULATOR_SERIAL" shell input text "hello" 2>&1 || echo "WARNING: input text failed"
+sleep 5
+
+# Diagnostic: dump UI hierarchy after typing to check EditText content
+echo "=== UI Hierarchy (after typing) ==="
+POST_DUMP="$WORK_DIR/textinput_rerender_post.xml"
+if "$ADB" -s "$EMULATOR_SERIAL" shell uiautomator dump /data/local/tmp/ui_post.xml 2>&1 | grep -q "dumped"; then
+    "$ADB" -s "$EMULATOR_SERIAL" pull /data/local/tmp/ui_post.xml "$POST_DUMP" 2>/dev/null
+    # Show EditText content
+    grep -o 'class="android.widget.EditText"[^/]*' "$POST_DUMP" 2>/dev/null | head -5 || echo "(no EditText found)"
+    # Show all text values
+    grep -o 'text="[^"]*"' "$POST_DUMP" 2>/dev/null | head -10 || echo "(no text found)"
+else
+    echo "(uiautomator dump failed)"
+fi
+echo "=== End UI Hierarchy ==="
+
+# Diagnostic: dump logcat stream so we can see all messages
+echo "=== Logcat stream content (last 50 lines) ==="
+tail -50 "$LOGCAT_STREAM_FILE" 2>/dev/null || echo "(empty)"
+echo "=== End logcat stream ==="
 
 # The key assertion: after typing, the view function should have been
 # called with the updated state, producing a logcat line like:
