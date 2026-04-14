@@ -111,6 +111,9 @@ static jmethodID g_method_setJavaScriptEnabled;
 static jmethodID g_method_registerWebViewClient;
 static jmethodID g_method_getChildAt;
 static jmethodID g_method_requestFocusOnView;
+static jmethodID g_method_getText;
+static jclass    g_class_CharSequence;
+static jmethodID g_method_charSeqToString;
 
 /* LinearLayout orientation constants */
 static jint ORIENTATION_VERTICAL   = 1;
@@ -236,6 +239,12 @@ static int resolve_jni_ids(JNIEnv *env, jobject activity)
         "removeAllViews", "()V");
     g_method_getChildAt = (*env)->GetMethodID(env, g_class_ViewGroup,
         "getChildAt", "(I)Landroid/view/View;");
+    g_method_getText = (*env)->GetMethodID(env, g_class_TextView,
+        "getText", "()Ljava/lang/CharSequence;");
+    g_class_CharSequence = (*env)->FindClass(env, "java/lang/CharSequence");
+    g_class_CharSequence = (*env)->NewGlobalRef(env, g_class_CharSequence);
+    g_method_charSeqToString = (*env)->GetMethodID(env, g_class_CharSequence,
+        "toString", "()Ljava/lang/String;");
 
     /* Activity.setContentView(View) */
     jclass activityClass = (*env)->GetObjectClass(env, activity);
@@ -526,6 +535,27 @@ static void android_set_str_prop(int32_t nodeId, int32_t propId, const char *val
 
     switch (propId) {
     case UI_PROP_TEXT: {
+        /* Skip setText if the view already contains the same text.
+         * Calling setText on an EditText resets the IME input connection,
+         * causing the soft keyboard to hide and disrupting text entry.
+         * When the user types a character, the TextWatcher fires → Haskell
+         * re-renders → diff sees the value changed → calls setStrProp.
+         * But the EditText already has the correct text, so the call is
+         * redundant and harmful. Only call setText when the text differs
+         * (e.g. programmatic text changes like a "clear" button). */
+        jobject curCharSeq = (*env)->CallObjectMethod(env, view, g_method_getText);
+        if (curCharSeq) {
+            jstring curStr = (*env)->CallObjectMethod(env, curCharSeq, g_method_charSeqToString);
+            const char *curCStr = (*env)->GetStringUTFChars(env, curStr, NULL);
+            int same = curCStr && value && strcmp(curCStr, value) == 0;
+            (*env)->ReleaseStringUTFChars(env, curStr, curCStr);
+            (*env)->DeleteLocalRef(env, curStr);
+            (*env)->DeleteLocalRef(env, curCharSeq);
+            if (same) {
+                LOGI("setStrProp(node=%d, text=\"%s\") — skipped (same)", nodeId, value);
+                break;
+            }
+        }
         LOGI("setStrProp(node=%d, text=\"%s\")", nodeId, value);
         jstring jstr = (*env)->NewStringUTF(env, value);
         g_setting_text_programmatically = 1;
