@@ -265,18 +265,29 @@ let
   # Consumer simulation — exercises crossDeps + extraJniBridge (issue #156).
   # Real consumer apps (e.g. prrrrrrrrr) supply Hackage dependencies via
   # crossDeps.  None of hatter's own tests exercise this path, so a SIGSEGV
-  # in consumer .so files went undetected.  This test uses aeson as a heavy
-  # dependency to produce a large .so (aeson pulls in scientific, vector,
-  # attoparsec, hashable, unordered-containers, primitive, etc.) that is
-  # more likely to trigger libndk_translation bugs under ARM binary translation.
+  # in consumer .so files went undetected.
+  #
+  # This test replicates prrrrrrrrr's dependency profile: aeson + servant +
+  # servant-client-core + http-types + http-media + case-insensitive + time.
+  # Together these produce a large .so (~130+ MB stripped) that is more
+  # likely to trigger libndk_translation's HandleNoExec fault on the
+  # non-executable mmap'd pages from GHC's RTS.
   consumerSimCrossDeps = import ./cross-deps.nix {
     inherit sources androidArch;
     consumerCabal2Nix =
-      { mkDerivation, base, lib, aeson, text, bytestring }:
+      { mkDerivation, base, lib
+      , aeson, text, bytestring, time
+      , servant, servant-client-core
+      , http-types, http-media, case-insensitive
+      }:
       mkDerivation {
         pname = "consumer-sim";
         version = "0.1.0.0";
-        libraryHaskellDepends = [ base aeson text bytestring ];
+        libraryHaskellDepends = [
+          base aeson text bytestring time
+          servant servant-client-core
+          http-types http-media case-insensitive
+        ];
         license = lib.licenses.mit;
       };
   };
@@ -286,6 +297,9 @@ let
     mainModule = ../test/ConsumerSimDemoMain.hs;
     crossDeps = consumerSimCrossDeps;
     extraJniBridge = [ ../test/dummy_jni_consumer.c ];
+    # Consumer sim intentionally produces a large .so (~130+ MB) to stress
+    # libndk_translation.  Raise the per-lib warning threshold above 120 MB.
+    soMaxSizeMB = 300;
   };
 
   consumerSimApk = lib.mkApk {
@@ -363,7 +377,10 @@ TEST_SCRIPTS="${testScripts}"
 # --- .so size guard (see docs/ci-ram-regression-110.md) ---
 # Fail fast if any test .so exceeds 120 MB.  The counter app is ~80 MB;
 # anything above 120 MB indicates whole-archive bloat that will OOM the emulator.
+# Consumer sim is exempt — it intentionally produces a large .so (~130+ MB)
+# to stress libndk_translation (issue #156).
 SO_MAX_MB=120
+CONSUMER_MAX_MB=300
 SIZE_FAIL=0
 for so_path in \
     "${counterAndroid}/lib/${abiDir}/libhatter.so" \
@@ -385,8 +402,7 @@ for so_path in \
     "${networkStatusAndroid}/lib/${abiDir}/libhatter.so" \
     "${mapviewAndroid}/lib/${abiDir}/libhatter.so" \
     "${animationAndroid}/lib/${abiDir}/libhatter.so" \
-    "${filesDirAndroid}/lib/${abiDir}/libhatter.so" \
-    "${consumerSimAndroid}/lib/${abiDir}/libhatter.so"; do
+    "${filesDirAndroid}/lib/${abiDir}/libhatter.so"; do
     SO_BYTES=$(stat -c %s "$so_path")
     SO_MB=$((SO_BYTES / 1048576))
     SO_LABEL=$(echo "$so_path" | grep -oP '[^/]+(?=/lib/)')
@@ -397,6 +413,16 @@ for so_path in \
         echo "OK    $SO_LABEL .so is ''${SO_MB} MB"
     fi
 done
+# Consumer sim gets a separate, higher limit (intentionally large .so)
+CONSUMER_SO="${consumerSimAndroid}/lib/${abiDir}/libhatter.so"
+CONSUMER_BYTES=$(stat -c %s "$CONSUMER_SO")
+CONSUMER_MB=$((CONSUMER_BYTES / 1048576))
+if [ "$CONSUMER_MB" -gt "$CONSUMER_MAX_MB" ]; then
+    echo "FAIL  consumer-sim .so is ''${CONSUMER_MB} MB (limit: ''${CONSUMER_MAX_MB} MB)"
+    SIZE_FAIL=1
+else
+    echo "OK    consumer-sim .so is ''${CONSUMER_MB} MB (limit: ''${CONSUMER_MAX_MB} MB)"
+fi
 if [ "$SIZE_FAIL" -eq 1 ]; then
     echo ""
     echo "FATAL: .so size limit exceeded. This usually means boot package .a files"
