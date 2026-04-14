@@ -327,7 +327,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
             createOnChange (\_ -> pure ())
           let widget1 = TextInput TextInputConfig
                 { tiInputType = InputNumber, tiHint = "% of 1RM", tiValue = ""
-                , tiOnChange = changeHandle, tiFontConfig = Nothing }
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
           renderWidget rs widget1
           tree1 <- readIORef (rsRenderedTree rs)
           let nodeId1 = case tree1 of
@@ -336,7 +336,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
           -- Re-render with a different value (simulates user typing)
           let widget2 = TextInput TextInputConfig
                 { tiInputType = InputNumber, tiHint = "% of 1RM", tiValue = "80"
-                , tiOnChange = changeHandle, tiFontConfig = Nothing }
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
           renderWidget rs widget2
           tree2 <- readIORef (rsRenderedTree rs)
           let nodeId2 = case tree2 of
@@ -350,7 +350,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
             createOnChange (\_ -> pure ())
           let widget1 = TextInput TextInputConfig
                 { tiInputType = InputText, tiHint = "old hint", tiValue = ""
-                , tiOnChange = changeHandle, tiFontConfig = Nothing }
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
           renderWidget rs widget1
           tree1 <- readIORef (rsRenderedTree rs)
           let nodeId1 = case tree1 of
@@ -358,7 +358,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
                 Nothing   -> -1
           let widget2 = TextInput TextInputConfig
                 { tiInputType = InputText, tiHint = "new hint", tiValue = ""
-                , tiOnChange = changeHandle, tiFontConfig = Nothing }
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
           renderWidget rs widget2
           tree2 <- readIORef (rsRenderedTree rs)
           let nodeId2 = case tree2 of
@@ -372,12 +372,12 @@ incrementalRenderTests = testGroup "Incremental rendering"
             createOnChange (\t -> writeIORef ref (show t))
           let widget1 = TextInput TextInputConfig
                 { tiInputType = InputNumber, tiHint = "weight", tiValue = ""
-                , tiOnChange = changeHandle, tiFontConfig = Nothing }
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
           renderWidget rs widget1
           -- Simulate text change followed by re-render (new value)
           let widget2 = TextInput TextInputConfig
                 { tiInputType = InputNumber, tiHint = "weight", tiValue = "80"
-                , tiOnChange = changeHandle, tiFontConfig = Nothing }
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
           renderWidget rs widget2
           -- Callback should still work after in-place diff
           dispatchTextEvent rs (onChangeId changeHandle) "95"
@@ -391,7 +391,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
                 [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing }
                 , TextInput TextInputConfig
                     { tiInputType = InputNumber, tiHint = "% of 1RM", tiValue = value
-                    , tiOnChange = changeHandle, tiFontConfig = Nothing }
+                    , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
                 , Text TextConfig { tcLabel = "footer", tcFontConfig = Nothing }
                 ]
           renderWidget rs (mkWidget "")

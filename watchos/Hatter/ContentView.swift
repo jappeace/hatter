@@ -145,6 +145,15 @@ struct ContentView: View {
                 }
             }
 
+            // CI auto-test: simulate typing in a TextInput.
+            // Fires onUITextChange with callbackId 0 (the first onChange handle)
+            // to verify the re-render pipeline updates the dependent Text widget.
+            if CommandLine.arguments.contains("--autotest-textinput") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    HaskellBridge.onUITextChange(0, "hello")
+                }
+            }
+
             // CI auto-test: exercise both "+" and "-" buttons.
             if CommandLine.arguments.contains("--autotest-buttons") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
