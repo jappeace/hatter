@@ -262,31 +262,31 @@ let
     name = "hatter-filesdir-apk";
   };
 
-  # Consumer simulation — exercises crossDeps + extraJniBridge (issue #156).
-  # Real consumer apps (e.g. prrrrrrrrr) supply Hackage dependencies via
-  # crossDeps.  None of hatter's own tests exercise this path, so a SIGSEGV
-  # in consumer .so files went undetected.
+  # Consumer simulation — replicates prrrrrrrrr's exact dependency profile
+  # to reproduce the libndk_translation SIGSEGV (issue #156).
   #
-  # This test replicates prrrrrrrrr's dependency profile: aeson + servant +
-  # servant-client-core + http-types + http-media + case-insensitive + time.
-  # Together these produce a large .so (~130+ MB stripped) that is more
-  # likely to trigger libndk_translation's HandleNoExec fault on the
-  # non-executable mmap'd pages from GHC's RTS.
+  # Critical dep: sqlite-simple → direct-sqlite → sqlite3.c amalgamation
+  # (~240K lines of C code).  This native C code is what libndk_translation
+  # has to translate and is the most likely trigger for HandleNoExec.
   consumerSimCrossDeps = import ./cross-deps.nix {
     inherit sources androidArch;
     consumerCabal2Nix =
       { mkDerivation, base, lib
       , aeson, text, bytestring, time
+      , sqlite-simple
       , servant, servant-client-core
       , http-types, http-media, case-insensitive
+      , mtl, random
       }:
       mkDerivation {
         pname = "consumer-sim";
         version = "0.1.0.0";
         libraryHaskellDepends = [
           base aeson text bytestring time
+          sqlite-simple
           servant servant-client-core
           http-types http-media case-insensitive
+          mtl random
         ];
         license = lib.licenses.mit;
       };
