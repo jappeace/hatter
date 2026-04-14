@@ -22,6 +22,15 @@ struct HaskellUIView: UIViewControllerRepresentable {
             }
         }
 
+        // CI auto-test: simulate typing in a TextInput.
+        // Fires onUITextChange with callbackId 0 (the first onChange handle)
+        // to verify the re-render pipeline updates the dependent Text widget.
+        if CommandLine.arguments.contains("--autotest-textinput") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                HaskellBridge.onUITextChange(0, text: "hello")
+            }
+        }
+
         // CI auto-test: exercise both "+" and "-" buttons.
         // Sequence: +, +, -, -, - → Counter: 1, 2, 1, 0, -1
         if CommandLine.arguments.contains("--autotest-buttons") {

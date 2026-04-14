@@ -345,28 +345,94 @@ diffRenderNode animState (Just oldNode@(RenderedContainer _ containerNodeId oldC
       -- but fall through to destroy+create for safety.
       _ -> replaceNode animState oldNode newWidget
 
+-- Case: Text in-place update — keep native node, only update changed
+-- properties.  Avoids destroying and recreating sibling nodes in a
+-- Column, which would detach EditText from the view hierarchy and
+-- disconnect the IME (see TextInput case below).
+diffRenderNode _animState (Just (RenderedLeaf (Text oldConfig) nodeId)) newWidget@(Text newConfig) = do
+  if tcLabel oldConfig /= tcLabel newConfig
+    then Bridge.setStrProp nodeId Bridge.PropText (tcLabel newConfig)
+    else pure ()
+  if tcFontConfig oldConfig /= tcFontConfig newConfig
+    then applyFontConfig nodeId (tcFontConfig newConfig)
+    else pure ()
+  pure (RenderedLeaf newWidget nodeId)
+
+-- Case: Button in-place update — keep native node, only update changed
+-- properties.
+diffRenderNode _animState (Just (RenderedLeaf (Button oldConfig) nodeId)) newWidget@(Button newConfig) = do
+  if bcLabel oldConfig /= bcLabel newConfig
+    then Bridge.setStrProp nodeId Bridge.PropText (bcLabel newConfig)
+    else pure ()
+  if actionId (bcAction oldConfig) /= actionId (bcAction newConfig)
+    then Bridge.setHandler nodeId Bridge.EventClick (actionId (bcAction newConfig))
+    else pure ()
+  if bcFontConfig oldConfig /= bcFontConfig newConfig
+    then applyFontConfig nodeId (bcFontConfig newConfig)
+    else pure ()
+  pure (RenderedLeaf newWidget nodeId)
+
+-- Case: TextInput in-place update — keep native node to preserve
+-- cursor position and focus. Only sends bridge calls for properties
+-- that actually changed.
+diffRenderNode _animState (Just (RenderedLeaf (TextInput oldConfig) nodeId)) newWidget@(TextInput newConfig) = do
+  if tiValue oldConfig /= tiValue newConfig
+    then Bridge.setStrProp nodeId Bridge.PropText (tiValue newConfig)
+    else pure ()
+  if tiHint oldConfig /= tiHint newConfig
+    then Bridge.setStrProp nodeId Bridge.PropHint (tiHint newConfig)
+    else pure ()
+  if tiInputType oldConfig /= tiInputType newConfig
+    then Bridge.setNumProp nodeId Bridge.PropInputType
+           (fromIntegral (inputTypeToInt (tiInputType newConfig)))
+    else pure ()
+  if onChangeId (tiOnChange oldConfig) /= onChangeId (tiOnChange newConfig)
+    then Bridge.setHandler nodeId Bridge.EventTextChange
+           (onChangeId (tiOnChange newConfig))
+    else pure ()
+  if tiFontConfig oldConfig /= tiFontConfig newConfig
+    then applyFontConfig nodeId (tiFontConfig newConfig)
+    else pure ()
+  pure (RenderedLeaf newWidget nodeId)
+
 -- Case 5/6: Same leaf type with different properties, or completely different
 -- node types — destroy old and create new.
 diffRenderNode animState (Just oldNode) newWidget =
   replaceNode animState oldNode newWidget
 
--- | Diff container children: remove all children from parent, diff each
--- individually, then re-add all in correct order.
+-- | Diff container children incrementally.  When all children maintain
+-- their native node IDs (i.e. updated in-place), skip the remove/add
+-- cycle entirely.  This is critical for preserving IME state on
+-- EditText siblings — detaching an EditText from its parent via
+-- removeChild disconnects the input method and hides the keyboard.
 diffContainer :: AnimationState -> Int32 -> [RenderedNode] -> [Widget]
               -> Widget -> IO RenderedNode
 diffContainer animState containerNodeId oldChildren newChildren newWidget = do
-  -- Remove all children from the container (order may change).
-  mapM_ (\oldChild -> Bridge.removeChild containerNodeId (renderedNodeId oldChild)) oldChildren
   -- Diff each child position, pairing old children with new where available.
   let paired = zipPadded oldChildren newChildren
   diffedChildren <- mapM (\(maybeOld, newChild) ->
     diffRenderNode animState maybeOld newChild
     ) paired
-  -- Destroy any excess old children that weren't paired.
+  -- Excess old children that weren't paired with any new child.
   let excessOld = drop (length newChildren) oldChildren
-  mapM_ destroyRenderedSubtree excessOld
-  -- Re-add all children in the correct order.
-  mapM_ (\child -> Bridge.addChild containerNodeId (renderedNodeId child)) diffedChildren
+  -- Check whether all paired children kept their native node IDs.
+  -- If so, the native view hierarchy is already correct and we can
+  -- skip the expensive (and IME-disruptive) remove/add cycle.
+  let oldIds = map renderedNodeId (take (length newChildren) oldChildren)
+  let newIds = map renderedNodeId diffedChildren
+  let childrenStable = oldIds == newIds
+  if childrenStable
+    then do
+      -- Only remove excess children; stable children stay attached.
+      mapM_ (\excessChild -> do
+        Bridge.removeChild containerNodeId (renderedNodeId excessChild)
+        destroyRenderedSubtree excessChild
+        ) excessOld
+    else do
+      -- Children changed — full remove-all + re-add-all.
+      mapM_ (\oldChild -> Bridge.removeChild containerNodeId (renderedNodeId oldChild)) oldChildren
+      mapM_ destroyRenderedSubtree excessOld
+      mapM_ (\child -> Bridge.addChild containerNodeId (renderedNodeId child)) diffedChildren
   pure (RenderedContainer newWidget containerNodeId diffedChildren)
 
 -- | Zip two lists, padding the shorter one with 'Nothing'.
@@ -419,7 +485,9 @@ dispatchEvent rs callbackId = do
       "dispatchEvent: unknown callback ID " ++ show callbackId
 
 -- | Dispatch a native text-change event to the registered Haskell callback.
--- Does NOT trigger a re-render (avoids EditText flicker on Android).
+-- The caller ('Hatter.haskellOnUITextChange') triggers a re-render
+-- after dispatch; the diff algorithm updates TextInput nodes in-place
+-- so the native widget is preserved (no cursor reset or flicker).
 -- Logs an error to stderr if the callbackId is not found.
 dispatchTextEvent :: RenderState -> Int32 -> Text -> IO ()
 dispatchTextEvent rs callbackId newText = do

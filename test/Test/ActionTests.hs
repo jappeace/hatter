@@ -20,7 +20,9 @@ import Hatter
   )
 import Hatter.Widget
   ( ButtonConfig(..)
+  , InputType(..)
   , TextConfig(..)
+  , TextInputConfig(..)
   , Widget(..)
   , WidgetStyle(..)
   )
@@ -29,6 +31,7 @@ import Hatter.Render
   , RenderedNode(..)
   , renderWidget
   , dispatchEvent
+  , dispatchTextEvent
   )
 import Test.Helpers (withActions)
 
@@ -140,7 +143,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
                 Nothing   -> -2
           nodeId1 @?= nodeId2
 
-      , testCase "single child change only changes that child's node ID" $ do
+      , testCase "single child change updates in-place, preserving node IDs" $ do
           ((), rs) <- withActions (pure ())
           let widget1 = Column
                 [ Text TextConfig { tcLabel = "stable", tcFontConfig = Nothing }
@@ -164,13 +167,11 @@ incrementalRenderTests = testGroup "Incremental rendering"
               [c0, c1] -> pure (nodeIdOf c0, nodeIdOf c1)
               _        -> assertFailure "expected 2 children" >> pure (-1, -1)
             Nothing -> assertFailure "expected rendered tree" >> pure (-1, -1)
-          -- First child (unchanged) keeps same node ID
+          -- Both children keep same node IDs (in-place diff via setStrProp)
           child0Id1 @?= child0Id2
-          -- Second child (changed) gets a different node ID
-          assertBool "changed child should get new node ID"
-            (child1Id1 /= child1Id2)
+          child1Id1 @?= child1Id2
 
-      , testCase "callback-only handle change triggers new node" $ do
+      , testCase "callback-only handle change updates in-place" $ do
           ref <- newIORef ("none" :: String)
           ((handle1, handle2), rs) <- withActions $ do
             h1 <- createAction (writeIORef ref "action1")
@@ -192,9 +193,8 @@ incrementalRenderTests = testGroup "Incremental rendering"
           let nodeId2 = case tree2 of
                 Just node -> nodeIdOf node
                 Nothing   -> -2
-          -- Different handle means different Widget (Eq), so new node
-          assertBool "different handle should produce new node ID"
-            (nodeId1 /= nodeId2)
+          -- In-place diff: same native node, handler updated via setHandler
+          nodeId1 @?= nodeId2
           -- Dispatch handle2 — should fire action2
           dispatchEvent rs (actionId handle2)
           result <- readIORef ref
@@ -302,7 +302,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
                 Nothing   -> -2
           nodeId1 @?= nodeId2
 
-      , testCase "styled child change updates child" $ do
+      , testCase "styled child change updates in-place" $ do
           ((), rs) <- withActions (pure ())
           let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing
               widget1 = Styled style (Text TextConfig { tcLabel = "before", tcFontConfig = Nothing })
@@ -317,8 +317,98 @@ incrementalRenderTests = testGroup "Incremental rendering"
           let nodeId2 = case tree2 of
                 Just node -> nodeIdOf node
                 Nothing   -> -2
-          -- Child changed, so node should be different
-          assertBool "changed styled child should get new node"
-            (nodeId1 /= nodeId2)
+          -- In-place Text diff: same node, label updated via setStrProp
+          nodeId1 @?= nodeId2
+      ]
+
+  , testGroup "TextInput in-place update"
+      [ testCase "TextInput value change preserves native node" $ do
+          (changeHandle, rs) <- withActions $
+            createOnChange (\_ -> pure ())
+          let widget1 = TextInput TextInputConfig
+                { tiInputType = InputNumber, tiHint = "% of 1RM", tiValue = ""
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+          renderWidget rs widget1
+          tree1 <- readIORef (rsRenderedTree rs)
+          let nodeId1 = case tree1 of
+                Just node -> nodeIdOf node
+                Nothing   -> -1
+          -- Re-render with a different value (simulates user typing)
+          let widget2 = TextInput TextInputConfig
+                { tiInputType = InputNumber, tiHint = "% of 1RM", tiValue = "80"
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+          renderWidget rs widget2
+          tree2 <- readIORef (rsRenderedTree rs)
+          let nodeId2 = case tree2 of
+                Just node -> nodeIdOf node
+                Nothing   -> -2
+          -- Same native node — in-place update, not destroy+create
+          nodeId1 @?= nodeId2
+
+      , testCase "TextInput hint change preserves native node" $ do
+          (changeHandle, rs) <- withActions $
+            createOnChange (\_ -> pure ())
+          let widget1 = TextInput TextInputConfig
+                { tiInputType = InputText, tiHint = "old hint", tiValue = ""
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+          renderWidget rs widget1
+          tree1 <- readIORef (rsRenderedTree rs)
+          let nodeId1 = case tree1 of
+                Just node -> nodeIdOf node
+                Nothing   -> -1
+          let widget2 = TextInput TextInputConfig
+                { tiInputType = InputText, tiHint = "new hint", tiValue = ""
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+          renderWidget rs widget2
+          tree2 <- readIORef (rsRenderedTree rs)
+          let nodeId2 = case tree2 of
+                Just node -> nodeIdOf node
+                Nothing   -> -2
+          nodeId1 @?= nodeId2
+
+      , testCase "TextInput callback survives in-place update" $ do
+          ref <- newIORef ("" :: String)
+          (changeHandle, rs) <- withActions $
+            createOnChange (\t -> writeIORef ref (show t))
+          let widget1 = TextInput TextInputConfig
+                { tiInputType = InputNumber, tiHint = "weight", tiValue = ""
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+          renderWidget rs widget1
+          -- Simulate text change followed by re-render (new value)
+          let widget2 = TextInput TextInputConfig
+                { tiInputType = InputNumber, tiHint = "weight", tiValue = "80"
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+          renderWidget rs widget2
+          -- Callback should still work after in-place diff
+          dispatchTextEvent rs (onChangeId changeHandle) "95"
+          val <- readIORef ref
+          val @?= show ("95" :: String)
+
+      , testCase "TextInput inside Column preserves node on value change" $ do
+          (changeHandle, rs) <- withActions $
+            createOnChange (\_ -> pure ())
+          let mkWidget value = Column
+                [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing }
+                , TextInput TextInputConfig
+                    { tiInputType = InputNumber, tiHint = "% of 1RM", tiValue = value
+                    , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+                , Text TextConfig { tcLabel = "footer", tcFontConfig = Nothing }
+                ]
+          renderWidget rs (mkWidget "")
+          tree1 <- readIORef (rsRenderedTree rs)
+          let inputNodeId1 = case tree1 of
+                Just node -> case childrenOf node of
+                  [_, inputNode, _] -> nodeIdOf inputNode
+                  _                 -> -1
+                Nothing -> -1
+          renderWidget rs (mkWidget "80")
+          tree2 <- readIORef (rsRenderedTree rs)
+          let inputNodeId2 = case tree2 of
+                Just node -> case childrenOf node of
+                  [_, inputNode, _] -> nodeIdOf inputNode
+                  _                 -> -2
+                Nothing -> -2
+          -- TextInput node is preserved (not destroyed+recreated)
+          inputNodeId1 @?= inputNodeId2
       ]
   ]
