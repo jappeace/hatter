@@ -143,7 +143,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
                 Nothing   -> -2
           nodeId1 @?= nodeId2
 
-      , testCase "single child change only changes that child's node ID" $ do
+      , testCase "single child change updates in-place, preserving node IDs" $ do
           ((), rs) <- withActions (pure ())
           let widget1 = Column
                 [ Text TextConfig { tcLabel = "stable", tcFontConfig = Nothing }
@@ -167,13 +167,11 @@ incrementalRenderTests = testGroup "Incremental rendering"
               [c0, c1] -> pure (nodeIdOf c0, nodeIdOf c1)
               _        -> assertFailure "expected 2 children" >> pure (-1, -1)
             Nothing -> assertFailure "expected rendered tree" >> pure (-1, -1)
-          -- First child (unchanged) keeps same node ID
+          -- Both children keep same node IDs (in-place diff via setStrProp)
           child0Id1 @?= child0Id2
-          -- Second child (changed) gets a different node ID
-          assertBool "changed child should get new node ID"
-            (child1Id1 /= child1Id2)
+          child1Id1 @?= child1Id2
 
-      , testCase "callback-only handle change triggers new node" $ do
+      , testCase "callback-only handle change updates in-place" $ do
           ref <- newIORef ("none" :: String)
           ((handle1, handle2), rs) <- withActions $ do
             h1 <- createAction (writeIORef ref "action1")
@@ -195,9 +193,8 @@ incrementalRenderTests = testGroup "Incremental rendering"
           let nodeId2 = case tree2 of
                 Just node -> nodeIdOf node
                 Nothing   -> -2
-          -- Different handle means different Widget (Eq), so new node
-          assertBool "different handle should produce new node ID"
-            (nodeId1 /= nodeId2)
+          -- In-place diff: same native node, handler updated via setHandler
+          nodeId1 @?= nodeId2
           -- Dispatch handle2 — should fire action2
           dispatchEvent rs (actionId handle2)
           result <- readIORef ref
@@ -305,7 +302,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
                 Nothing   -> -2
           nodeId1 @?= nodeId2
 
-      , testCase "styled child change updates child" $ do
+      , testCase "styled child change updates in-place" $ do
           ((), rs) <- withActions (pure ())
           let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing
               widget1 = Styled style (Text TextConfig { tcLabel = "before", tcFontConfig = Nothing })
@@ -320,9 +317,8 @@ incrementalRenderTests = testGroup "Incremental rendering"
           let nodeId2 = case tree2 of
                 Just node -> nodeIdOf node
                 Nothing   -> -2
-          -- Child changed, so node should be different
-          assertBool "changed styled child should get new node"
-            (nodeId1 /= nodeId2)
+          -- In-place Text diff: same node, label updated via setStrProp
+          nodeId1 @?= nodeId2
       ]
 
   , testGroup "TextInput in-place update"
