@@ -1367,8 +1367,7 @@ echo "=== Building Stack app ==="
 cp -r "$STACK_SHARE_DIR" "$WORK_DIR/stack-proj"
 chmod -R u+w "$WORK_DIR/stack-proj"
 cd "$WORK_DIR/stack-proj"
-YMLFILE=$(ls *.yml 2>/dev/null | head -1)
-xcodegen generate --spec "$YMLFILE"
+${xcodegen}/bin/xcodegen generate
 xcodebuild build \
     -project Hatter.xcodeproj \
     -scheme "$SCHEME" \
