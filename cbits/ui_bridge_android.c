@@ -509,6 +509,12 @@ static int32_t android_create_node(int32_t nodeType)
         }
         break;
     }
+    case UI_NODE_STACK: {
+        /* Stack: children overlap in z-order (first at bottom, last on top).
+         * FrameLayout is already cached from MapView placeholder. */
+        view = (*env)->NewObject(env, g_class_FrameLayout, g_ctor_FrameLayout, g_activity);
+        break;
+    }
     default:
         LOGE("Unknown node type: %d", nodeType);
         return 0;
@@ -784,6 +790,19 @@ static void android_set_num_prop(int32_t nodeId, int32_t propId, double value)
         } else {
             LOGE("setNumProp: requestFocusOnView unavailable, skipping node=%d", nodeId);
         }
+        break;
+    }
+    case UI_PROP_TOUCH_PASSTHROUGH: {
+        /* When enabled (1.0), disable click and focus so touches pass through
+         * to sibling views underneath in a FrameLayout (Stack). */
+        jmethodID setClickable = (*env)->GetMethodID(env,
+            g_class_View, "setClickable", "(Z)V");
+        jmethodID setFocusable = (*env)->GetMethodID(env,
+            g_class_View, "setFocusable", "(Z)V");
+        jboolean enabled = (int)value == 1 ? JNI_FALSE : JNI_TRUE;
+        (*env)->CallVoidMethod(env, view, setClickable, enabled);
+        (*env)->CallVoidMethod(env, view, setFocusable, enabled);
+        LOGI("setNumProp(node=%d, touchPassthrough=%.0f)", nodeId, value);
         break;
     }
     default:

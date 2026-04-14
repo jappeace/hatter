@@ -69,6 +69,12 @@ struct NodeView: View {
         case 8: // UI_NODE_WEBVIEW
             Text("WebView not available")
                 .foregroundColor(.secondary)
+        case 9: // UI_NODE_STACK
+            ZStack(alignment: .topLeading) {
+                ForEach(node.children) { child in
+                    NodeView(node: child)
+                }
+            }
         default:
             EmptyView()
         }

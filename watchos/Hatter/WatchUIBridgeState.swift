@@ -87,6 +87,8 @@ class WatchUIBridgeState: ObservableObject {
             node.translateY = CGFloat(value)
         case 11: // UI_PROP_AUTO_FOCUS (no-op on watchOS — no keyboard focus)
             os_log("setNumProp(node=%d, autoFocus=%.0f) — no-op on watchOS", log: bridgeLog, type: .info, nodeId, value)
+        case 12: // UI_PROP_TOUCH_PASSTHROUGH (no-op on watchOS — ZStack hit testing is automatic)
+            os_log("setNumProp(node=%d, touchPassthrough=%.0f) — no-op on watchOS", log: bridgeLog, type: .info, nodeId, value)
         default:
             os_log("setNumProp: unknown propId %d", log: bridgeLog, type: .info, propId)
         }

@@ -32,7 +32,7 @@ counterView :: IORef Int -> Action -> Action -> IO Widget
 counterView counterState onIncrement onDecrement = do
   n <- readIORef counterState
   pure $ Column
-    [ Styled (WidgetStyle (Just 16.0) (Just AlignCenter) (Just (Color 255 0 0 255)) (Just (Color 0 255 0 255)) Nothing Nothing)
+    [ Styled (WidgetStyle (Just 16.0) (Just AlignCenter) (Just (Color 255 0 0 255)) (Just (Color 0 255 0 255)) Nothing Nothing Nothing)
         (Text TextConfig
           { tcLabel      = "Counter: " <> Text.pack (show n)
           , tcFontConfig = Just (FontConfig 24.0)

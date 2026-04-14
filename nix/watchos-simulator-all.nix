@@ -231,6 +231,17 @@ let
     name = "hatter-watchos-textinput-rerender-simulator-app";
   };
 
+  stackWatchos = import ./watchos.nix {
+    inherit sources;
+    mainModule = ../test/StackDemoMain.hs;
+    simulator = true;
+  };
+  stackSimApp = lib.mkWatchOSSimulatorApp {
+    watchosLib = stackWatchos;
+    watchosSrc = ../watchos;
+    name = "hatter-watchos-stack-simulator-app";
+  };
+
   xcodegen = pkgs.xcodegen;
 
   testScripts = builtins.path { path = ../test; name = "test-scripts"; };
@@ -270,6 +281,7 @@ MAPVIEW_SHARE_DIR="${mapviewSimApp}/share/watchos"
 ANIMATION_SHARE_DIR="${animationSimApp}/share/watchos"
 FILES_DIR_SHARE_DIR="${filesDirSimApp}/share/watchos"
 TEXTINPUT_RERENDER_SHARE_DIR="${textinputRerenderSimApp}/share/watchos"
+STACK_SHARE_DIR="${stackSimApp}/share/watchos"
 TEST_SCRIPTS="${testScripts}"
 
 # --- Temp working directory ---
@@ -331,7 +343,8 @@ for share_dir in \
     "$BOTTOM_SHEET_SHARE_DIR" \
     "$NETWORK_STATUS_SHARE_DIR" \
     "$MAPVIEW_SHARE_DIR" \
-    "$TEXTINPUT_RERENDER_SHARE_DIR"; do
+    "$TEXTINPUT_RERENDER_SHARE_DIR" \
+    "$STACK_SHARE_DIR"; do
     a_path="$share_dir/lib/libHatter.a"
     A_BYTES=$(stat -f %z "$a_path" 2>/dev/null || stat -c %s "$a_path" 2>/dev/null || echo 0)
     A_MB=$((A_BYTES / 1048576))
@@ -1212,6 +1225,32 @@ if [ -z "$TEXTINPUT_RERENDER_APP" ]; then
 fi
 echo "TextInputReRender app: $TEXTINPUT_RERENDER_APP"
 
+# --- Stage and build stack demo app ---
+echo "=== Building Stack app ==="
+cp -r "$STACK_SHARE_DIR" "$WORK_DIR/stack-proj"
+chmod -R u+w "$WORK_DIR/stack-proj"
+cd "$WORK_DIR/stack-proj"
+YMLFILE=$(ls *.yml 2>/dev/null | head -1)
+xcodegen generate --spec "$YMLFILE"
+xcodebuild build \
+    -project Hatter.xcodeproj \
+    -scheme "$SCHEME" \
+    -sdk watchsimulator \
+    -configuration Release \
+    -derivedDataPath "$WORK_DIR/stack-build" \
+    CODE_SIGN_IDENTITY=- \
+    CODE_SIGNING_ALLOWED=NO \
+    ARCHS=arm64 \
+    ONLY_ACTIVE_ARCH=NO \
+    | tail -20
+
+STACK_APP=$(find "$WORK_DIR/stack-build" -name "*.app" -type d | head -1)
+if [ -z "$STACK_APP" ]; then
+    echo "ERROR: Could not find stack .app bundle"
+    exit 1
+fi
+echo "Stack app: $STACK_APP"
+
 # --- Discover latest watchOS runtime ---
 echo "=== Discovering watchOS runtime ==="
 RUNTIME=$(xcrun simctl list runtimes -j \
@@ -1275,7 +1314,7 @@ sleep 5
 # ===========================================================================
 # Log subsystem differs from bundle ID for watchOS (bundle ID has .watchkitapp suffix)
 LOG_SUBSYSTEM="me.jappie.hatter"
-export SIM_UDID BUNDLE_ID LOG_SUBSYSTEM COUNTER_APP SCROLL_APP TEXTINPUT_APP SECURE_STORAGE_APP IMAGE_APP NODEPOOL_APP BLE_APP DIALOG_APP LOCATION_APP WEBVIEW_APP AUTH_SESSION_APP PLATFORM_SIGN_IN_APP CAMERA_APP BOTTOM_SHEET_APP NETWORK_STATUS_APP MAPVIEW_APP ANIMATION_APP FILES_DIR_APP TEXTINPUT_RERENDER_APP WORK_DIR
+export SIM_UDID BUNDLE_ID LOG_SUBSYSTEM COUNTER_APP SCROLL_APP TEXTINPUT_APP SECURE_STORAGE_APP IMAGE_APP NODEPOOL_APP BLE_APP DIALOG_APP LOCATION_APP WEBVIEW_APP AUTH_SESSION_APP PLATFORM_SIGN_IN_APP CAMERA_APP BOTTOM_SHEET_APP NETWORK_STATUS_APP MAPVIEW_APP ANIMATION_APP FILES_DIR_APP TEXTINPUT_RERENDER_APP STACK_APP WORK_DIR
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0
@@ -1293,6 +1332,7 @@ PHASE13_EXIT=0
 PHASE14_EXIT=0
 PHASE15_EXIT=0
 PHASE16_EXIT=0
+PHASE17_EXIT=0
 
 # run_with_retry LABEL COMMAND [ARGS...]
 # Runs the command up to 10 times. Succeeds on first pass, fails only if all 10 fail.
@@ -1364,6 +1404,8 @@ echo "--- filesdir ---"
 run_with_retry "filesdir" bash "$TEST_SCRIPTS/watchos/filesdir.sh" || PHASE15_EXIT=1
 echo "--- textinput_rerender ---"
 run_with_retry "textinput_rerender" bash "$TEST_SCRIPTS/watchos/textinput_rerender.sh" || PHASE16_EXIT=1
+echo "--- stack ---"
+run_with_retry "stack" bash "$TEST_SCRIPTS/watchos/stack.sh" || PHASE17_EXIT=1
 
 # --- Phase results ---
 if [ $PHASE1_EXIT -eq 0 ]; then
@@ -1524,6 +1566,16 @@ else
     echo "PHASE 16 FAILED"
 fi
 
+if [ $PHASE17_EXIT -eq 0 ]; then
+    PHASE17_OK=1
+    echo ""
+    echo "PHASE 17 PASSED"
+else
+    PHASE17_OK=0
+    echo ""
+    echo "PHASE 17 FAILED"
+fi
+
 # ===========================================================================
 # Final report
 # ===========================================================================
@@ -1643,6 +1695,13 @@ if [ $PHASE16_OK -eq 1 ]; then
     echo "PASS  Phase 16 — TextInput re-render demo app"
 else
     echo "FAIL  Phase 16 — TextInput re-render demo app"
+    FINAL_EXIT=1
+fi
+
+if [ $PHASE17_OK -eq 1 ]; then
+    echo "PASS  Phase 17 — Stack demo app"
+else
+    echo "FAIL  Phase 17 — Stack demo app"
     FINAL_EXIT=1
 fi
 

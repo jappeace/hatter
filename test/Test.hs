@@ -13,7 +13,7 @@ import Hatter.Http (HttpState)
 import Hatter.PlatformSignIn (PlatformSignInState)
 import Test.Helpers (testApp)
 import Test.CoreTests (qcProps, unitTests, lifecycleTests, localeTests, i18nTests)
-import Test.WidgetTests (uiTests, scrollViewTests, textInputTests, imageTests, webViewTests, mapViewTests, styledTests, textAlignTests, colorTests)
+import Test.WidgetTests (uiTests, scrollViewTests, stackTests, textInputTests, imageTests, webViewTests, mapViewTests, styledTests, textAlignTests, colorTests)
 import Test.PlatformTests (permissionTests, secureStorageTests, bleTests, dialogTests, authSessionTests, platformSignInTests, locationTests, bottomSheetTests, cameraTests, httpTests, networkStatusTests)
 import Test.AppContextTests (registrationTests, appContextTests, exceptionHandlerTests)
 import Test.ActionTests (actionTests, widgetEqTests, incrementalRenderTests)
@@ -44,6 +44,7 @@ tests ffiPermState ffiSecureStorageState ffiDialogState ffiAuthSessionState ffiP
     , lifecycleTests
     , uiTests
     , scrollViewTests
+    , stackTests
     , textInputTests
     , imageTests
     , webViewTests

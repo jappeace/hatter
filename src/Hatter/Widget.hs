@@ -165,17 +165,24 @@ data WidgetStyle = WidgetStyle
   , wsTranslateY      :: Maybe Double
     -- ^ Vertical translation offset in platform-native units.
     -- Moves the widget without affecting sibling layout.
+  , wsTouchPassthrough :: Maybe Bool
+    -- ^ When 'True', the widget does not intercept touches, allowing
+    -- sibling views underneath (in a 'Stack') to receive them.
+    -- Android: @setClickable(false)@/@setFocusable(false)@.
+    -- iOS: @userInteractionEnabled = NO@.
+    -- watchOS: no-op (hit testing is automatic with ZStack).
   } deriving (Show, Eq)
 
 -- | No style overrides — all fields are 'Nothing'.
 defaultStyle :: WidgetStyle
 defaultStyle = WidgetStyle
-  { wsPadding         = Nothing
-  , wsTextAlign       = Nothing
-  , wsTextColor       = Nothing
-  , wsBackgroundColor = Nothing
-  , wsTranslateX      = Nothing
-  , wsTranslateY      = Nothing
+  { wsPadding          = Nothing
+  , wsTextAlign        = Nothing
+  , wsTextColor        = Nothing
+  , wsBackgroundColor  = Nothing
+  , wsTranslateX       = Nothing
+  , wsTranslateY       = Nothing
+  , wsTouchPassthrough = Nothing
   }
 
 -- | Easing function for animations.
@@ -250,6 +257,8 @@ normalizeAnimated config (Row children) =
   Row (map (Animated config) children)
 normalizeAnimated config (ScrollView children) =
   ScrollView (map (Animated config) children)
+normalizeAnimated config (Stack children) =
+  Stack (map (Animated config) children)
 -- Everything else (Styled, leaves): return unchanged.
 -- The caller wraps the result in Animated for the render engine.
 normalizeAnimated _config other = other
@@ -335,6 +344,9 @@ data Widget
     -- ^ A horizontal container laying out children left-to-right.
   | ScrollView [Widget]
     -- ^ A vertically scrollable container.
+  | Stack [Widget]
+    -- ^ A z-order container: children overlap, first at bottom, last on top.
+    -- Maps to FrameLayout (Android), plain UIView (iOS), ZStack (watchOS).
   | Image ImageConfig
     -- ^ An image widget displaying resource, file, or raw data.
   | WebView WebViewConfig
