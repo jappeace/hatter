@@ -273,6 +273,17 @@ let
     name = "hatter-textinput-rerender-apk";
   };
 
+  stackAndroid = import ./android.nix {
+    inherit sources androidArch;
+    mainModule = ../test/StackDemoMain.hs;
+  };
+  stackApk = lib.mkApk {
+    sharedLibs = [{ lib = stackAndroid; inherit abiDir; }];
+    androidSrc = ../android;
+    apkName = "hatter-stack.apk";
+    name = "hatter-stack-apk";
+  };
+
   androidComposition = pkgs.androidenv.composeAndroidPackages {
     platformVersions = [ emulatorApiLevel ];
     includeEmulator = true;
@@ -333,6 +344,7 @@ MAPVIEW_APK="${mapviewApk}/hatter-mapview.apk"
 ANIMATION_APK="${animationApk}/hatter-animation.apk"
 FILES_DIR_APK="${filesDirApk}/hatter-filesdir.apk"
 TEXTINPUT_RERENDER_APK="${textinputRerenderApk}/hatter-textinput-rerender.apk"
+STACK_APK="${stackApk}/hatter-stack.apk"
 PACKAGE="me.jappie.hatter"
 ACTIVITY=".MainActivity"
 DEVICE_NAME="test_all"
@@ -364,7 +376,8 @@ for so_path in \
     "${mapviewAndroid}/lib/${abiDir}/libhatter.so" \
     "${animationAndroid}/lib/${abiDir}/libhatter.so" \
     "${filesDirAndroid}/lib/${abiDir}/libhatter.so" \
-    "${textinputRerenderAndroid}/lib/${abiDir}/libhatter.so"; do
+    "${textinputRerenderAndroid}/lib/${abiDir}/libhatter.so" \
+    "${stackAndroid}/lib/${abiDir}/libhatter.so"; do
     SO_BYTES=$(stat -c %s "$so_path")
     SO_MB=$((SO_BYTES / 1048576))
     SO_LABEL=$(echo "$so_path" | grep -oP '[^/]+(?=/lib/)')
@@ -433,6 +446,7 @@ PHASE12_OK=0
 PHASE13_OK=0
 PHASE14_OK=0
 PHASE15_OK=0
+PHASE16_OK=0
 
 cleanup() {
     echo ""
@@ -549,7 +563,7 @@ sleep 30
 # ===========================================================================
 # PHASE 1 + PHASE 2 — Run test scripts
 # ===========================================================================
-export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK SCROLL_TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK PLATFORM_SIGN_IN_APK CAMERA_APK BOTTOM_SHEET_APK HTTP_APK NETWORK_STATUS_APK MAPVIEW_APK ANIMATION_APK FILES_DIR_APK TEXTINPUT_RERENDER_APK PACKAGE ACTIVITY WORK_DIR
+export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK SCROLL_TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK PLATFORM_SIGN_IN_APK CAMERA_APK BOTTOM_SHEET_APK HTTP_APK NETWORK_STATUS_APK MAPVIEW_APK ANIMATION_APK FILES_DIR_APK TEXTINPUT_RERENDER_APK STACK_APK PACKAGE ACTIVITY WORK_DIR
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0
@@ -566,6 +580,7 @@ PHASE12_EXIT=0
 PHASE13_EXIT=0
 PHASE14_EXIT=0
 PHASE15_EXIT=0
+PHASE16_EXIT=0
 
 # run_with_retry LABEL COMMAND [ARGS...]
 # Runs the command up to 10 times. Succeeds on first pass, fails only if all 10 fail.
@@ -650,6 +665,8 @@ echo "--- filesdir ---"
 run_with_retry "filesdir" bash "$TEST_SCRIPTS/android/filesdir.sh" || PHASE14_EXIT=1
 echo "--- textinput_rerender ---"
 run_with_retry "textinput_rerender" bash "$TEST_SCRIPTS/android/textinput_rerender.sh" || PHASE15_EXIT=1
+echo "--- stack ---"
+run_with_retry "stack" bash "$TEST_SCRIPTS/android/stack.sh" || PHASE16_EXIT=1
 
 # --- Phase results ---
 if [ $PHASE1_EXIT -eq 0 ]; then
@@ -800,6 +817,16 @@ else
     echo "PHASE 15 FAILED"
 fi
 
+if [ $PHASE16_EXIT -eq 0 ]; then
+    PHASE16_OK=1
+    echo ""
+    echo "PHASE 16 PASSED"
+else
+    PHASE16_OK=0
+    echo ""
+    echo "PHASE 16 FAILED"
+fi
+
 # ===========================================================================
 # Final report
 # ===========================================================================
@@ -912,6 +939,13 @@ if [ $PHASE15_OK -eq 1 ]; then
     echo "PASS  Phase 15 — TextInput re-render demo app"
 else
     echo "FAIL  Phase 15 — TextInput re-render demo app"
+    FINAL_EXIT=1
+fi
+
+if [ $PHASE16_OK -eq 1 ]; then
+    echo "PASS  Phase 16 — Stack demo app"
+else
+    echo "FAIL  Phase 16 — Stack demo app"
     FINAL_EXIT=1
 fi
 

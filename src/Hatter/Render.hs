@@ -143,6 +143,10 @@ applyStyle nodeId style = do
   case wsTranslateY style of
     Just ty -> Bridge.setNumProp nodeId Bridge.PropTranslateY ty
     Nothing -> pure ()
+  case wsTouchPassthrough style of
+    Just enabled -> Bridge.setNumProp nodeId Bridge.PropTouchPassthrough
+                      (if enabled then 1.0 else 0.0)
+    Nothing      -> pure ()
 
 -- ---------------------------------------------------------------------------
 -- Creating rendered nodes from scratch
@@ -196,6 +200,14 @@ createRenderedNode animState widget@(ScrollView children) = do
     pure childNode
     ) children
   pure (RenderedContainer widget nodeId childNodes)
+createRenderedNode animState widget@(Stack children) = do
+  nodeId <- Bridge.createNode Bridge.NodeStack
+  childNodes <- mapM (\child -> do
+    childNode <- createRenderedNode animState child
+    Bridge.addChild nodeId (renderedNodeId childNode)
+    pure childNode
+    ) children
+  pure (RenderedContainer widget nodeId childNodes)
 createRenderedNode _animState widget@(Image config) = do
   nodeId <- Bridge.createNode Bridge.NodeImage
   case icSource config of
@@ -235,6 +247,7 @@ createRenderedNode animState (Animated config child) = do
     Column _     -> createRenderedNode animState normalized
     Row _        -> createRenderedNode animState normalized
     ScrollView _ -> createRenderedNode animState normalized
+    Stack _      -> createRenderedNode animState normalized
     -- Everything else (Styled, leaves): wrap in RenderedAnimated for tween interpolation.
     _            -> do
       let finalWidget = Animated config normalized
@@ -270,6 +283,7 @@ sameNodeType (TextInput _)   (TextInput _)   = True
 sameNodeType (Column _)      (Column _)      = True
 sameNodeType (Row _)         (Row _)         = True
 sameNodeType (ScrollView _)  (ScrollView _)  = True
+sameNodeType (Stack _)       (Stack _)       = True
 sameNodeType (Image _)       (Image _)       = True
 sameNodeType (WebView _)     (WebView _)     = True
 sameNodeType (MapView _)     (MapView _)     = True
@@ -303,6 +317,8 @@ diffRenderNode animState maybeOld (Animated config child@(Column _)) =
 diffRenderNode animState maybeOld (Animated config child@(Row _)) =
   diffRenderNode animState maybeOld (normalizeAnimated config child)
 diffRenderNode animState maybeOld (Animated config child@(ScrollView _)) =
+  diffRenderNode animState maybeOld (normalizeAnimated config child)
+diffRenderNode animState maybeOld (Animated config child@(Stack _)) =
   diffRenderNode animState maybeOld (normalizeAnimated config child)
 -- Case: Nested Animated — inner config wins.
 diffRenderNode animState maybeOld (Animated _outerConfig child@(Animated _ _)) =
@@ -341,6 +357,7 @@ diffRenderNode animState (Just oldNode@(RenderedContainer _ containerNodeId oldC
       Column newChildren     -> diffContainer animState containerNodeId oldChildren newChildren newWidget
       Row newChildren        -> diffContainer animState containerNodeId oldChildren newChildren newWidget
       ScrollView newChildren -> diffContainer animState containerNodeId oldChildren newChildren newWidget
+      Stack newChildren      -> diffContainer animState containerNodeId oldChildren newChildren newWidget
       -- Non-container but same type at container level shouldn't happen,
       -- but fall through to destroy+create for safety.
       _ -> replaceNode animState oldNode newWidget

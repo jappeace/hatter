@@ -288,7 +288,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
 
       , testCase "styled unchanged keeps same node ID" $ do
           ((), rs) <- withActions (pure ())
-          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing
+          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing Nothing
               widget = Styled style (Text TextConfig { tcLabel = "styled", tcFontConfig = Nothing })
           renderWidget rs widget
           tree1 <- readIORef (rsRenderedTree rs)
@@ -304,7 +304,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
 
       , testCase "styled child change updates in-place" $ do
           ((), rs) <- withActions (pure ())
-          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing
+          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing Nothing
               widget1 = Styled style (Text TextConfig { tcLabel = "before", tcFontConfig = Nothing })
           renderWidget rs widget1
           tree1 <- readIORef (rsRenderedTree rs)

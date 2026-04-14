@@ -43,6 +43,7 @@ data NodeType
   | NodeImage
   | NodeMapView
   | NodeWebView
+  | NodeStack
   deriving (Show, Eq, Enum, Bounded)
 
 -- | Map a 'NodeType' to its C integer code.
@@ -56,6 +57,7 @@ nodeTypeToInt NodeScrollView = 5
 nodeTypeToInt NodeImage      = 6
 nodeTypeToInt NodeMapView    = 7
 nodeTypeToInt NodeWebView    = 8
+nodeTypeToInt NodeStack      = 9
 
 -- | Property identifiers for 'setStrProp' and 'setNumProp'.
 data PropId
@@ -78,6 +80,7 @@ data PropId
   | PropTranslateX
   | PropTranslateY
   | PropAutoFocus
+  | PropTouchPassthrough
   deriving (Show, Eq, Enum, Bounded)
 
 -- | Map a 'PropId' to its C integer code.
@@ -100,7 +103,8 @@ propIdToInt PropMapZoom       = 7
 propIdToInt PropMapShowUserLoc = 8
 propIdToInt PropTranslateX    = 9
 propIdToInt PropTranslateY    = 10
-propIdToInt PropAutoFocus     = 11
+propIdToInt PropAutoFocus          = 11
+propIdToInt PropTouchPassthrough  = 12
 
 -- | Event types corresponding to @UI_EVENT_*@ in @UIBridge.h@.
 data EventType

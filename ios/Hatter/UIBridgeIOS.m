@@ -326,6 +326,14 @@ static int32_t ios_create_node(int32_t nodeType)
         view = webView;
         break;
     }
+    case UI_NODE_STACK: {
+        /* Stack: plain UIView — children overlap via addSubview z-ordering.
+         * NOT UIStackView, which forces linear layout. */
+        UIView *stackView = [[UIView alloc] init];
+        stackView.translatesAutoresizingMaskIntoConstraints = NO;
+        view = stackView;
+        break;
+    }
     case UI_NODE_SCROLL_VIEW: {
         UIScrollView *scrollView = [[UIScrollView alloc] init];
         scrollView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -610,6 +618,13 @@ static void ios_set_num_prop(int32_t nodeId, int32_t propId, double value)
         } else {
             LOGI("setNumProp: autoFocus ignored on non-UITextField node=%d", nodeId);
         }
+        break;
+    }
+    case UI_PROP_TOUCH_PASSTHROUGH: {
+        /* When enabled (1.0), disable user interaction so touches pass through
+         * to sibling views underneath in a Stack (plain UIView). */
+        view.userInteractionEnabled = ((int)value != 1);
+        LOGI("setNumProp(node=%d, touchPassthrough=%.0f)", nodeId, value);
         break;
     }
     default:

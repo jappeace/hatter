@@ -13,6 +13,7 @@
 #define UI_NODE_IMAGE       6
 #define UI_NODE_MAP_VIEW    7
 #define UI_NODE_WEBVIEW     8
+#define UI_NODE_STACK       9
 
 /* Property IDs for string properties */
 #define UI_PROP_TEXT            0
@@ -36,6 +37,7 @@
 #define UI_PROP_TRANSLATE_X         9
 #define UI_PROP_TRANSLATE_Y         10
 #define UI_PROP_AUTO_FOCUS          11
+#define UI_PROP_TOUCH_PASSTHROUGH   12
 
 /* Event types */
 #define UI_EVENT_CLICK       0

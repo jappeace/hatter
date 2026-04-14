@@ -238,6 +238,13 @@ interpolateStyle nodeId fromStyle toStyle progress = do
       Bridge.setNumProp nodeId Bridge.PropTranslateY toTy
     (Just _fromTy, Nothing) -> pure ()
     (Nothing, Nothing) -> pure ()
+  -- TouchPassthrough (boolean — snaps to target, no interpolation)
+  case (wsTouchPassthrough fromStyle, wsTouchPassthrough toStyle) of
+    (_, Just enabled) ->
+      Bridge.setNumProp nodeId Bridge.PropTouchPassthrough
+        (if enabled then 1.0 else 0.0)
+    (Just _fromEnabled, Nothing) -> pure ()
+    (Nothing, Nothing) -> pure ()
 
 -- | Interpolate font size between two optional 'FontConfig' values.
 interpolateFontSize :: Int32 -> Maybe FontConfig -> Maybe FontConfig -> Double -> IO ()

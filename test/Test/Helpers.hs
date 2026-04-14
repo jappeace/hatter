@@ -120,6 +120,7 @@ viewIsErrorWidget ctxPtr = do
     WebView _                -> pure False
     MapView _                -> pure False
     Row _                    -> pure False
+    Stack _                  -> pure False
     ScrollView _             -> pure False
     Styled _ _               -> pure False
     Animated _ _             -> pure False
