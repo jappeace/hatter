@@ -345,7 +345,8 @@ diffRenderNode animState (Just (RenderedAnimated _ oldChildNode)) (Animated newC
 -- Case 4: Both are Styled — diff child recursively.
 diffRenderNode animState (Just (RenderedStyled _ oldStyle oldChild)) (Styled newStyle newChild) = do
   diffedChild <- diffRenderNode animState (Just oldChild) newChild
-  if newStyle /= oldStyle
+  let nodeChanged = renderedNodeId diffedChild /= renderedNodeId oldChild
+  if newStyle /= oldStyle || nodeChanged
     then applyStyle (renderedNodeId diffedChild) newStyle
     else pure ()
   pure (RenderedStyled (Styled newStyle newChild) newStyle diffedChild)

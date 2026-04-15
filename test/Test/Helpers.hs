@@ -8,10 +8,14 @@ module Test.Helpers
   , testApp
   , viewIsErrorWidget
   , oneTwoThree
+  , captureStderr
   ) where
 
 import Data.IORef (readIORef)
 import Foreign.Ptr (Ptr)
+import GHC.IO.Handle (hDuplicate, hDuplicateTo)
+import System.IO (stderr, hFlush, openTempFile, hClose)
+import System.Directory (removeFile)
 import Hatter
   ( MobileApp(..)
   , UserState(..)
@@ -124,3 +128,24 @@ viewIsErrorWidget ctxPtr = do
     ScrollView _             -> pure False
     Styled _ _               -> pure False
     Animated _ _             -> pure False
+
+-- | Capture stderr output produced during an IO action.
+captureStderr :: IO a -> IO (a, String)
+captureStderr action = do
+  hFlush stderr
+  oldStderr <- hDuplicate stderr
+  (tmpPath, tmpHandle) <- openTempFile "/tmp" "stderr-capture.txt"
+  hDuplicateTo tmpHandle stderr
+  result <- action
+  hFlush stderr
+  hDuplicateTo oldStderr stderr
+  hClose oldStderr
+  hClose tmpHandle
+  captured <- readFile tmpPath
+  -- Force the lazy read before removing
+  _ <- evaluate (length captured)
+  removeFile tmpPath
+  pure (result, captured)
+  where
+    evaluate :: a -> IO a
+    evaluate x = x `seq` pure x
