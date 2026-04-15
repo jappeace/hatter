@@ -40,6 +40,7 @@ import android.view.View;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.view.Choreographer;
+import android.util.Log;
 import android.widget.EditText;
 
 /**
@@ -55,7 +56,9 @@ import android.widget.EditText;
 public class HatterActivity extends Activity implements View.OnClickListener {
 
     static {
+        Log.i("HatterOOM", "loadLibrary start");
         System.loadLibrary("hatter");
+        Log.i("HatterOOM", "loadLibrary done");
     }
 
     private native void renderUI();

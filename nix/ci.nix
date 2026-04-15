@@ -47,6 +47,24 @@ let
   # Regular armv7a cross-compilation (without TH) works fine.
   knownFailing = {
     th-direct-test-armv7a = import ./test-th-direct.nix { inherit sources; androidArch = "armv7a"; };
+
+    # async-oom-test: Adding the async package as a cross-compilation
+    # dependency causes the Android app to OOM-kill during .so loading
+    # (~5.3 GB RSS before any Haskell code executes).  forkIO from base
+    # works fine; async from Hackage triggers the bloat.  See issue #163.
+    async-oom-test = import ./android.nix {
+      inherit sources;
+      mainModule = ../test/AsyncOomDemoMain.hs;
+      debugOom = true;
+      consumerCabal2Nix =
+        { mkDerivation, base, lib, async, text }:
+        mkDerivation {
+          pname = "async-oom-test";
+          version = "0.1.0.0";
+          libraryHaskellDepends = [ base async text ];
+          license = lib.licenses.mit;
+        };
+    };
   };
 
   testScripts = builtins.path { path = ../test; name = "test-scripts"; };

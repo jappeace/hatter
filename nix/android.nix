@@ -7,6 +7,7 @@
 , hpkgs ? (_: _: {})       # consumer haskellPackages overrides
 , maxNodes ? 256            # static pool size (ignored when dynamicNodePool=true)
 , dynamicNodePool ? false   # use malloc/realloc instead of fixed array
+, debugOom ? false          # when true, passes -DDEBUG_OOM to NDK clang for memory checkpoints
 }:
 let
   lib = import ./lib.nix { inherit sources androidArch; };
@@ -16,5 +17,5 @@ let
 in
 lib.mkAndroidLib {
   hatterSrc = ../.;
-  inherit mainModule crossDeps maxNodes dynamicNodePool;
+  inherit mainModule crossDeps maxNodes dynamicNodePool debugOom;
 }

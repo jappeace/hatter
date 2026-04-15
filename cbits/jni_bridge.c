@@ -11,6 +11,7 @@
 #include <jni.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include "HsFFI.h"
 #include "JniBridge.h"
 #include "PermissionBridge.h"
@@ -25,6 +26,33 @@
 #include "NetworkStatusBridge.h"
 #include "AnimationBridge.h"
 #include "PlatformSignInBridge.h"
+
+#ifdef DEBUG_OOM
+#include <android/log.h>
+
+static void log_memory_status(const char *label) {
+    FILE *f = fopen("/proc/self/status", "r");
+    if (!f) return;
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "VmSize:", 7) == 0 ||
+            strncmp(line, "VmRSS:",  6) == 0 ||
+            strncmp(line, "VmPeak:", 7) == 0) {
+            /* trim newline */
+            size_t len = strlen(line);
+            if (len > 0 && line[len-1] == '\n') line[len-1] = '\0';
+            __android_log_print(ANDROID_LOG_INFO, "HatterOOM",
+                "%s: %s", label, line);
+        }
+    }
+    fclose(f);
+}
+
+__attribute__((constructor(101)))
+static void oom_debug_constructor(void) {
+    log_memory_status("init_array");
+}
+#endif /* DEBUG_OOM */
 
 /* Runs the user's Haskell main via RTS API (cbits/run_main.c).
  * Returns the opaque AppContext pointer. */
@@ -128,7 +156,13 @@ static void *g_haskell_ctx = NULL;
 JNIEXPORT jint JNICALL
 JNI_OnLoad(JavaVM *vm, void *reserved)
 {
+#ifdef DEBUG_OOM
+    log_memory_status("jni_onload_entry");
+#endif
     hs_init(NULL, NULL);
+#ifdef DEBUG_OOM
+    log_memory_status("after_hs_init");
+#endif
 
     /* Pre-haskellRunMain platform init: set globals that Haskell code may
        read immediately (e.g. in startMobileApp callbacks). */
@@ -172,7 +206,13 @@ JNI_OnLoad(JavaVM *vm, void *reserved)
         }
     }
 
+#ifdef DEBUG_OOM
+    log_memory_status("after_platform_init");
+#endif
     g_haskell_ctx = haskellRunMain();
+#ifdef DEBUG_OOM
+    log_memory_status("after_haskell_run_main");
+#endif
     haskellLogLocale();
 
     return JNI_VERSION_1_6;

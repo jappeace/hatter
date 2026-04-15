@@ -89,6 +89,7 @@ in {
     , maxNodes ? 256            # static pool size (ignored when dynamicNodePool=true)
     , dynamicNodePool ? false   # use malloc/realloc instead of fixed array
     , soMaxSizeMB ? 200         # fail build if .so exceeds this (MB), catches whole-archive bloat
+    , debugOom ? false          # when true, passes -DDEBUG_OOM for memory checkpoints in jni_bridge.c
     }:
     let
       # Must match HatterActivity.java's System.loadLibrary("hatter").
@@ -128,6 +129,7 @@ in {
         # own class), not the consumer's subclass.
         ${ndkCc} -c -fPIC \
           -DJNI_PACKAGE=me_jappie_hatter \
+          ${if debugOom then "-DDEBUG_OOM" else ""} \
           -I${sysroot}/usr/include \
           -I$RTS_INCLUDE \
           -I${hatterSrc}/include \
