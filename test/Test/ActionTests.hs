@@ -10,6 +10,7 @@ import Test.Tasty.HUnit
 
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Int (Int32)
+import Data.List (isInfixOf)
 import Hatter
   ( Action(..)
   , OnChange(..)
@@ -33,7 +34,7 @@ import Hatter.Render
   , dispatchEvent
   , dispatchTextEvent
   )
-import Test.Helpers (withActions)
+import Test.Helpers (withActions, captureStderr)
 
 -- | Tests for Action/OnChange handle equality and creation.
 actionTests :: TestTree
@@ -319,6 +320,20 @@ incrementalRenderTests = testGroup "Incremental rendering"
                 Nothing   -> -2
           -- In-place Text diff: same node, label updated via setStrProp
           nodeId1 @?= nodeId2
+
+      , testCase "styled child type change reapplies style" $ do
+          (clickAction, rs) <- withActions $
+            createAction (pure ())
+          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing Nothing
+              widget1 = Styled style (Text TextConfig { tcLabel = "txt", tcFontConfig = Nothing })
+          renderWidget rs widget1
+          -- Re-render with different child type but same style
+          let widget2 = Styled style (Button (ButtonConfig "btn" clickAction Nothing))
+          ((), stderrOutput) <- captureStderr $ renderWidget rs widget2
+          -- applyStyle must fire setNumProp for padding on the new node
+          assertBool
+            ("setNumProp for padding should appear in stderr, got: " ++ stderrOutput)
+            ("setNumProp" `isInfixOf` stderrOutput && "10.00" `isInfixOf` stderrOutput)
       ]
 
   , testGroup "TextInput in-place update"
