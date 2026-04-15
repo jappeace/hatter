@@ -32,6 +32,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <dlfcn.h>
+#include <unwind.h>
 
 static void log_memory_status(const char *label) {
     FILE *f = fopen("/proc/self/status", "r");
@@ -56,26 +57,65 @@ static void oom_debug_constructor(void) {
     log_memory_status("init_array");
 }
 
+/* Stack unwinding for backtrace on ARM Android.
+ * _Unwind_Backtrace is reliable on ARM (unlike __builtin_return_address(N>0))
+ * because it uses .ARM.exidx unwind tables rather than frame pointers. */
+struct BacktraceState {
+    void **frames;
+    int frame_count;
+    int max_frames;
+};
+
+static _Unwind_Reason_Code unwind_callback(struct _Unwind_Context *context,
+                                            void *arg) {
+    struct BacktraceState *state = (struct BacktraceState *)arg;
+    uintptr_t pc = _Unwind_GetIP(context);
+    if (pc == 0) return _URC_END_OF_STACK;
+    if (state->frame_count < state->max_frames) {
+        state->frames[state->frame_count++] = (void *)pc;
+    }
+    return (state->frame_count >= state->max_frames)
+        ? _URC_END_OF_STACK : _URC_NO_REASON;
+}
+
+static void log_backtrace(const char *label) {
+    void *frames[16];
+    struct BacktraceState state = { frames, 0, 16 };
+    _Unwind_Backtrace(unwind_callback, &state);
+
+    __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
+        "%s backtrace (%d frames):", label, state.frame_count);
+    for (int i = 0; i < state.frame_count; i++) {
+        Dl_info info;
+        if (dladdr(frames[i], &info) && info.dli_sname) {
+            __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
+                "  #%d: %s+0x%lx (%s)",
+                i, info.dli_sname,
+                (unsigned long)((char*)frames[i] - (char*)info.dli_saddr),
+                info.dli_fname ? info.dli_fname : "???");
+        } else if (dladdr(frames[i], &info)) {
+            __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
+                "  #%d: %p (offset 0x%lx in %s)",
+                i, frames[i],
+                (unsigned long)((char*)frames[i] - (char*)info.dli_fbase),
+                info.dli_fname ? info.dli_fname : "???");
+        } else {
+            __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
+                "  #%d: %p (unknown)", i, frames[i]);
+        }
+    }
+}
+
 /* malloc wrapper: intercept large allocations.
  * Linked via -Wl,--wrap=malloc */
 extern void *__real_malloc(size_t size);
 
 void *__wrap_malloc(size_t size) {
     if (size >= 512 * 1024 * 1024) {
-        void *caller = __builtin_return_address(0);
         __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
-            "LARGE malloc(%zu) = %zu MB, caller: %p",
-            size, size / (1024*1024), caller);
-        /* Resolve caller to symbol name via dynamic linker */
-        Dl_info info;
-        if (dladdr(caller, &info)) {
-            __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
-                "  -> %s+0x%lx in %s (base %p)",
-                info.dli_sname ? info.dli_sname : "???",
-                (unsigned long)((char*)caller - (char*)info.dli_saddr),
-                info.dli_fname ? info.dli_fname : "???",
-                info.dli_fbase);
-        }
+            "LARGE malloc(%zu) = %zu MB",
+            size, size / (1024*1024));
+        log_backtrace("large_malloc");
         log_memory_status("large_malloc");
     }
     return __real_malloc(size);
