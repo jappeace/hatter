@@ -70,11 +70,21 @@ void *__wrap_malloc(size_t size) {
     return __real_malloc(size);
 }
 
-/* mmap wrapper: intercept large/failed mmaps during hs_init.
- * Linked via -Wl,--wrap=mmap — same rename trick as malloc.
- * This is where GHC RTS allocates MBlocks on 32-bit. */
+/* mmap/mmap64 wrapper: intercept large/failed mmaps during hs_init.
+ *
+ * On 32-bit Android, GHC RTS is compiled with _FILE_OFFSET_BITS=64
+ * (via AC_SYS_LARGEFILE in configure.ac).  Bionic's <sys/mman.h>
+ * then renames mmap() → mmap64 via __asm__ symbol renaming.
+ * So the actual linker symbol in the RTS .a is "mmap64", not "mmap".
+ *
+ * We wrap BOTH to catch all callers:
+ *   -Wl,--wrap=mmap   catches code compiled without LFS
+ *   -Wl,--wrap=mmap64 catches GHC RTS and LFS-enabled code
+ */
 extern void *__real_mmap(void *addr, size_t length, int prot,
                          int flags, int fd, off_t offset);
+extern void *__real_mmap64(void *addr, size_t length, int prot,
+                           int flags, int fd, off64_t offset);
 
 /* Track mmap activity during hs_init */
 static volatile int g_tracking_hs_init = 0;
@@ -82,51 +92,66 @@ static volatile size_t g_mmap_total_bytes = 0;
 static volatile int g_mmap_call_count = 0;
 static volatile int g_mmap_fail_count = 0;
 
+static void track_mmap(const char *variant, size_t length, int prot,
+                       int flags, void *result, void *caller) {
+    int mmap_errno = errno;
+
+    g_mmap_call_count++;
+    if (result != MAP_FAILED) {
+        g_mmap_total_bytes += length;
+    }
+
+    /* Log any mmap >= 16 MB (suspicious on 32-bit) */
+    if (length >= 16 * 1024 * 1024) {
+        __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
+            "LARGE %s(%zu) = %zu MB, prot=%d flags=0x%x "
+            "caller=%p result=%p",
+            variant, length, length / (1024*1024), prot, flags,
+            caller, result);
+    }
+
+    /* Log any mmap failure */
+    if (result == MAP_FAILED) {
+        g_mmap_fail_count++;
+        __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
+            "FAILED %s(%zu) = %zu MB, prot=%d flags=0x%x "
+            "caller=%p errno=%d (%s)",
+            variant, length, length / (1024*1024), prot, flags,
+            caller, mmap_errno, strerror(mmap_errno));
+        log_memory_status("mmap_failed");
+    }
+
+    /* Periodic summary every 100 calls */
+    if (g_mmap_call_count % 100 == 0) {
+        __android_log_print(ANDROID_LOG_INFO, "HatterOOM",
+            "mmap progress: %d calls, %zu MB mapped, %d failures",
+            g_mmap_call_count,
+            g_mmap_total_bytes / (1024*1024),
+            g_mmap_fail_count);
+    }
+}
+
 void *__wrap_mmap(void *addr, size_t length, int prot,
                   int flags, int fd, off_t offset) {
     int saved_errno = errno;
     void *result = __real_mmap(addr, length, prot, flags, fd, offset);
-    int mmap_errno = errno;
-
     if (g_tracking_hs_init) {
-        g_mmap_call_count++;
-        if (result != MAP_FAILED) {
-            g_mmap_total_bytes += length;
-        }
-
-        /* Log any mmap >= 16 MB (suspicious on 32-bit) */
-        if (length >= 16 * 1024 * 1024) {
-            void *caller = __builtin_return_address(0);
-            __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
-                "LARGE mmap(%zu) = %zu MB, prot=%d flags=0x%x "
-                "caller=%p result=%p",
-                length, length / (1024*1024), prot, flags,
-                caller, result);
-        }
-
-        /* Log any mmap failure */
-        if (result == MAP_FAILED) {
-            g_mmap_fail_count++;
-            void *caller = __builtin_return_address(0);
-            __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
-                "FAILED mmap(%zu) = %zu MB, prot=%d flags=0x%x "
-                "caller=%p errno=%d (%s)",
-                length, length / (1024*1024), prot, flags,
-                caller, mmap_errno, strerror(mmap_errno));
-            log_memory_status("mmap_failed");
-        }
-
-        /* Periodic summary every 100 calls */
-        if (g_mmap_call_count % 100 == 0) {
-            __android_log_print(ANDROID_LOG_INFO, "HatterOOM",
-                "mmap progress: %d calls, %zu MB mapped, %d failures",
-                g_mmap_call_count,
-                g_mmap_total_bytes / (1024*1024),
-                g_mmap_fail_count);
-        }
+        track_mmap("mmap", length, prot, flags, result,
+                   __builtin_return_address(0));
     }
+    if (result != MAP_FAILED) errno = saved_errno;
+    return result;
+}
 
-    errno = (result == MAP_FAILED) ? mmap_errno : saved_errno;
+void *__wrap_mmap64(void *addr, size_t length, int prot,
+                    int flags, int fd, off64_t offset) {
+    int saved_errno = errno;
+    void *result = __real_mmap64(addr, length, prot, flags, fd, offset);
+    if (g_tracking_hs_init) {
+        track_mmap("mmap64", length, prot, flags, result,
+                   __builtin_return_address(0));
+    }
+    if (result != MAP_FAILED) errno = saved_errno;
     return result;
 }
 #endif /* DEBUG_OOM */
