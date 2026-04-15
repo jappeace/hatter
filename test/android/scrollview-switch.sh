@@ -4,7 +4,11 @@
 # Installs the ScrollView switch demo APK, verifies ScreenA renders,
 # taps "Switch screen" to go to ScreenB, then asserts:
 #   1. ScreenB items are present in the view hierarchy
-#   2. ScreenA items are ABSENT (the bug: leftover views from old screen)
+#   2. ScreenA items are ABSENT (the bug: orphaned views from old screen)
+#
+# The two screens use different widget types at each position (Button vs Text)
+# so that the diff engine calls replaceNode. On Android, destroy_node frees
+# the JNI ref without removing the View from its parent, leaving orphans.
 #
 # Required env vars (set by emulator-all.nix harness):
 #   ADB, EMULATOR_SERIAL, SCROLLVIEW_SWITCH_APK, PACKAGE, ACTIVITY, WORK_DIR
@@ -34,7 +38,7 @@ for attempt in 1 2 3; do
 done
 
 if [ $dump_ok -eq 1 ]; then
-    if grep -q 'SCREENA_ITEM1' "$DUMP_A" 2>/dev/null; then
+    if grep -q 'SCREENA_BTN' "$DUMP_A" 2>/dev/null; then
         echo "PASS: ScreenA items visible before switch"
     else
         echo "FAIL: ScreenA items not visible before switch"
@@ -79,15 +83,17 @@ if [ $dump_ok_b -eq 1 ]; then
     echo "=== End hierarchy ==="
 
     # ScreenB items must be present
-    if grep -q 'SCREENB_ITEM1' "$DUMP_B" 2>/dev/null; then
+    if grep -q 'SCREENB_TXT1' "$DUMP_B" 2>/dev/null; then
         echo "PASS: ScreenB items visible after switch"
     else
         echo "FAIL: ScreenB items not visible after switch"
         EXIT_CODE=1
     fi
 
-    # ScreenA items must be GONE — this is the bug check
-    if grep -q 'SCREENA_ITEM' "$DUMP_B" 2>/dev/null; then
+    # ScreenA items must be GONE — this is the bug check.
+    # On a buggy bridge, orphaned SCREENA_BTN / SCREENA_TXT views
+    # remain in the native ScrollView's inner LinearLayout.
+    if grep -q 'SCREENA_' "$DUMP_B" 2>/dev/null; then
         echo "FAIL: ScreenA items still visible after switch (BUG #168)"
         EXIT_CODE=1
     else

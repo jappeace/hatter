@@ -2,10 +2,12 @@
 -- | Reproducer for issue #168: switching between two ScrollViews
 -- via state causes the diff algorithm to "mix" their content.
 --
--- The app alternates between two screens, each a ScrollView with
--- distinct children. After switching, only the new screen's
--- content should be visible — any leftover from the old screen
--- is the bug.
+-- The two screens use DIFFERENT widget types at the same child
+-- positions (Text vs Button) so that the diff engine calls
+-- replaceNode (destroy old + create new) instead of in-place update.
+-- This triggers the bug: android_destroy_node frees the JNI ref
+-- but doesn't remove the native View from its parent, so orphaned
+-- views linger in the ScrollView after switching.
 module Main where
 
 import Data.IORef (IORef, newIORef, readIORef, modifyIORef')
@@ -25,9 +27,12 @@ main = do
   screenState <- newIORef ScreenA
   switchAction <- runActionM actionState $
     createAction (modifyIORef' screenState toggle)
+  -- A no-op action for buttons that exist only to change widget types
+  noopAction <- runActionM actionState $
+    createAction (pure ())
   startMobileApp MobileApp
     { maContext     = loggingMobileContext
-    , maView        = \_userState -> switchDemoView screenState switchAction
+    , maView        = \_userState -> switchDemoView screenState switchAction noopAction
     , maActionState = actionState
     }
 
@@ -38,23 +43,32 @@ toggle ScreenB = ScreenA
 -- | The view function: a Column with a switch button and a ScrollView
 -- whose content depends on the current screen.
 --
--- When switching from ScreenA to ScreenB, the diff sees two ScrollViews
--- of the same type and tries to reuse the container. If the diff or
--- native bridge has a bug, children from ScreenA may linger alongside
--- ScreenB's children ("mixing").
-switchDemoView :: IORef Screen -> Action -> IO Widget
-switchDemoView screenState switchAction = do
+-- ScreenA has [Button, Text, Text] and ScreenB has [Text, Button].
+-- The type mismatch at position 0 (Button→Text) and position 1
+-- (Text→Button) forces replaceNode, which on Android leaves orphaned
+-- views in the native hierarchy because android_destroy_node doesn't
+-- call removeView on the parent.
+switchDemoView :: IORef Screen -> Action -> Action -> IO Widget
+switchDemoView screenState switchAction noopAction = do
   screen <- readIORef screenState
   platformLog ("Current screen: " <> Text.pack (show screen))
   let inner = case screen of
         ScreenA -> ScrollView
-          [ text "SCREENA_ITEM1"
-          , text "SCREENA_ITEM2"
-          , text "SCREENA_ITEM3"
+          [ Button ButtonConfig
+              { bcLabel = "SCREENA_BTN"
+              , bcAction = noopAction
+              , bcFontConfig = Nothing
+              }
+          , text "SCREENA_TXT1"
+          , text "SCREENA_TXT2"
           ]
         ScreenB -> ScrollView
-          [ text "SCREENB_ITEM1"
-          , text "SCREENB_ITEM2"
+          [ text "SCREENB_TXT1"
+          , Button ButtonConfig
+              { bcLabel = "SCREENB_BTN"
+              , bcAction = noopAction
+              , bcFontConfig = Nothing
+              }
           ]
   pure $ Column
     [ Button ButtonConfig
