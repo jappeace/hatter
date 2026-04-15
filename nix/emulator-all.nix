@@ -33,6 +33,7 @@ let
   counterAndroid = import ./android.nix {
     inherit sources androidArch;
     mainModule = ../test/CounterDemoMain.hs;
+    debugOom = true;  # temporary: baseline comparison for async OOM investigation
   };
   counterApk = lib.mkApk {
     sharedLibs = [{ lib = counterAndroid; inherit abiDir; }];
