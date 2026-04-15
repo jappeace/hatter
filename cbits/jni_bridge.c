@@ -79,8 +79,29 @@ extern void __real_registerForeignExports(struct ForeignExportsList *exports);
 static int g_fexport_list_count = 0;
 static int g_fexport_total_entries = 0;
 
+/* Track registered structs to detect duplicates.
+ * A duplicate registration of the same struct creates a self-referencing
+ * linked list (struct->next = &struct), causing processForeignExports
+ * to loop infinitely and OOM via enlargeStablePtrTable. */
+static struct ForeignExportsList *g_seen_fexports[64];
+static int g_seen_fexports_count = 0;
+
 void __wrap_registerForeignExports(struct ForeignExportsList *exports) {
     g_fexport_list_count++;
+
+    /* Check for duplicate registration */
+    for (int i = 0; i < g_seen_fexports_count; i++) {
+        if (g_seen_fexports[i] == exports) {
+            __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
+                "registerForeignExports #%d: DUPLICATE struct_at=%p — skipping!",
+                g_fexport_list_count, (void*)exports);
+            return;  /* Skip duplicate to prevent linked-list cycle */
+        }
+    }
+    if (g_seen_fexports_count < 64) {
+        g_seen_fexports[g_seen_fexports_count++] = exports;
+    }
+
     int n = exports ? exports->n_entries : -1;
     __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
         "registerForeignExports #%d: n_entries=%d next=%p struct_at=%p",
@@ -89,13 +110,6 @@ void __wrap_registerForeignExports(struct ForeignExportsList *exports) {
         (void*)exports);
     if (exports && n > 0 && n < 10000) {
         g_fexport_total_entries += n;
-        for (int i = 0; i < n && i < 5; i++) {
-            __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
-                "  export[%d] = %p", i, exports->exports[i]);
-        }
-    } else if (exports && n >= 10000) {
-        __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
-            "  SUSPICIOUS n_entries=%d (>= 10000)! Likely corrupted.", n);
     }
     __real_registerForeignExports(exports);
 }
