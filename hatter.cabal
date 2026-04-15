@@ -159,6 +159,16 @@ executable styled-type-change-demo
       hatter,
       text
 
+executable stack-zorder-demo
+  import: common-options
+  main-is: StackZOrderDemoMain.hs
+  ghc-options: -Wno-unused-packages -threaded
+  hs-source-dirs:
+      test
+  build-depends:
+      hatter,
+      text
+
 executable stack-demo
   import: common-options
   main-is: StackDemoMain.hs
