@@ -57,6 +57,50 @@ static void oom_debug_constructor(void) {
     log_memory_status("init_array");
 }
 
+/* registerForeignExports wrapper: log each ForeignExportsList registration.
+ * This runs during .init_array processing (before hs_init) and reveals
+ * whether any module has a corrupted n_entries field.
+ * Linked via -Wl,--wrap=registerForeignExports
+ *
+ * ForeignExportsList is defined in rts/include/rts/ForeignExports.h:
+ *   struct ForeignExportsList {
+ *     struct ForeignExportsList *next;
+ *     StgClosure **exports;
+ *     int n_entries;
+ *   };
+ */
+struct ForeignExportsList {
+    struct ForeignExportsList *next;
+    void **exports;
+    int n_entries;
+};
+
+extern void __real_registerForeignExports(struct ForeignExportsList *exports);
+static int g_fexport_list_count = 0;
+static int g_fexport_total_entries = 0;
+
+void __wrap_registerForeignExports(struct ForeignExportsList *exports) {
+    g_fexport_list_count++;
+    __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
+        "registerForeignExports #%d: n_entries=%d exports=%p next=%p",
+        g_fexport_list_count,
+        exports ? exports->n_entries : -1,
+        exports ? (void*)exports->exports : NULL,
+        exports ? (void*)exports->next : NULL);
+    if (exports && exports->n_entries > 0 && exports->n_entries < 10000) {
+        g_fexport_total_entries += exports->n_entries;
+        for (int i = 0; i < exports->n_entries && i < 5; i++) {
+            __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
+                "  export[%d] = %p", i, exports->exports[i]);
+        }
+    } else if (exports && exports->n_entries >= 10000) {
+        __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
+            "  SUSPICIOUS n_entries=%d (>= 10000)! Likely corrupted.",
+            exports->n_entries);
+    }
+    __real_registerForeignExports(exports);
+}
+
 /* Stack unwinding for backtrace on ARM Android.
  * _Unwind_Backtrace is reliable on ARM (unlike __builtin_return_address(N>0))
  * because it uses .ARM.exidx unwind tables rather than frame pointers. */
@@ -356,6 +400,9 @@ JNI_OnLoad(JavaVM *vm, void *reserved)
 {
 #ifdef DEBUG_OOM
     log_memory_status("jni_onload_entry");
+    __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
+        "Before hs_init: %d ForeignExportsList registered, %d total entries",
+        g_fexport_list_count, g_fexport_total_entries);
     g_tracking_hs_init = 1;
     g_mmap_total_bytes = 0;
     g_mmap_call_count = 0;
