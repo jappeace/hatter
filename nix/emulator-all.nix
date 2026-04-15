@@ -284,6 +284,17 @@ let
     name = "hatter-stack-apk";
   };
 
+  scrollviewSwitchAndroid = import ./android.nix {
+    inherit sources androidArch;
+    mainModule = ../test/ScrollViewSwitchDemoMain.hs;
+  };
+  scrollviewSwitchApk = lib.mkApk {
+    sharedLibs = [{ lib = scrollviewSwitchAndroid; inherit abiDir; }];
+    androidSrc = ../android;
+    apkName = "hatter-scrollview-switch.apk";
+    name = "hatter-scrollview-switch-apk";
+  };
+
   androidComposition = pkgs.androidenv.composeAndroidPackages {
     platformVersions = [ emulatorApiLevel ];
     includeEmulator = true;
@@ -345,6 +356,7 @@ ANIMATION_APK="${animationApk}/hatter-animation.apk"
 FILES_DIR_APK="${filesDirApk}/hatter-filesdir.apk"
 TEXTINPUT_RERENDER_APK="${textinputRerenderApk}/hatter-textinput-rerender.apk"
 STACK_APK="${stackApk}/hatter-stack.apk"
+SCROLLVIEW_SWITCH_APK="${scrollviewSwitchApk}/hatter-scrollview-switch.apk"
 PACKAGE="me.jappie.hatter"
 ACTIVITY=".MainActivity"
 DEVICE_NAME="test_all"
@@ -563,7 +575,7 @@ sleep 30
 # ===========================================================================
 # PHASE 1 + PHASE 2 — Run test scripts
 # ===========================================================================
-export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK SCROLL_TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK PLATFORM_SIGN_IN_APK CAMERA_APK BOTTOM_SHEET_APK HTTP_APK NETWORK_STATUS_APK MAPVIEW_APK ANIMATION_APK FILES_DIR_APK TEXTINPUT_RERENDER_APK STACK_APK PACKAGE ACTIVITY WORK_DIR
+export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK SCROLL_TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK PLATFORM_SIGN_IN_APK CAMERA_APK BOTTOM_SHEET_APK HTTP_APK NETWORK_STATUS_APK MAPVIEW_APK ANIMATION_APK FILES_DIR_APK TEXTINPUT_RERENDER_APK STACK_APK SCROLLVIEW_SWITCH_APK PACKAGE ACTIVITY WORK_DIR
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0
@@ -581,6 +593,7 @@ PHASE13_EXIT=0
 PHASE14_EXIT=0
 PHASE15_EXIT=0
 PHASE16_EXIT=0
+PHASE17_EXIT=0
 
 # run_with_retry LABEL COMMAND [ARGS...]
 # Runs the command up to 10 times. Succeeds on first pass, fails only if all 10 fail.
@@ -667,6 +680,8 @@ echo "--- textinput_rerender ---"
 run_with_retry "textinput_rerender" bash "$TEST_SCRIPTS/android/textinput_rerender.sh" || PHASE15_EXIT=1
 echo "--- stack ---"
 run_with_retry "stack" bash "$TEST_SCRIPTS/android/stack.sh" || PHASE16_EXIT=1
+echo "--- scrollview-switch ---"
+run_with_retry "scrollview-switch" bash "$TEST_SCRIPTS/android/scrollview-switch.sh" || PHASE17_EXIT=1
 
 # --- Phase results ---
 if [ $PHASE1_EXIT -eq 0 ]; then
@@ -827,6 +842,16 @@ else
     echo "PHASE 16 FAILED"
 fi
 
+if [ $PHASE17_EXIT -eq 0 ]; then
+    PHASE17_OK=1
+    echo ""
+    echo "PHASE 17 PASSED"
+else
+    PHASE17_OK=0
+    echo ""
+    echo "PHASE 17 FAILED"
+fi
+
 # ===========================================================================
 # Final report
 # ===========================================================================
@@ -946,6 +971,13 @@ if [ $PHASE16_OK -eq 1 ]; then
     echo "PASS  Phase 16 — Stack demo app"
 else
     echo "FAIL  Phase 16 — Stack demo app"
+    FINAL_EXIT=1
+fi
+
+if [ $PHASE17_OK -eq 1 ]; then
+    echo "PASS  Phase 17 — ScrollView switch (issue #168 reproducer)"
+else
+    echo "FAIL  Phase 17 — ScrollView switch (issue #168 reproducer)"
     FINAL_EXIT=1
 fi
 

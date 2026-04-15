@@ -107,6 +107,7 @@ static jmethodID g_method_decodeByteArray;
 static jmethodID g_method_decodeFile;
 static jmethodID g_method_loadUrl;
 static jmethodID g_method_getSettings;
+static jmethodID g_method_getParent;
 static jmethodID g_method_setJavaScriptEnabled;
 static jmethodID g_method_registerWebViewClient;
 static jmethodID g_method_getChildAt;
@@ -301,6 +302,10 @@ static int resolve_jni_ids(JNIEnv *env, jobject activity)
     /* TextView.setTextColor(int) — sets ARGB text color */
     g_method_setTextColor = (*env)->GetMethodID(env, g_class_TextView,
         "setTextColor", "(I)V");
+
+    /* View.getParent() — used by destroy_node to detach from parent */
+    g_method_getParent = (*env)->GetMethodID(env, viewClass,
+        "getParent", "()Landroid/view/ViewParent;");
 
     /* View.setBackgroundColor(int) — sets ARGB background color */
     g_method_setBackgroundColor = (*env)->GetMethodID(env, viewClass,
@@ -930,6 +935,15 @@ static void android_destroy_node(int32_t nodeId)
     JNIEnv *env = g_env;
     jobject view = get_node(nodeId);
     if (!view) return;
+
+    /* Remove from parent ViewGroup before freeing — prevents orphaned
+     * Views staying visible when replaceNode destroys type-changed children. */
+    jobject parent = (*env)->CallObjectMethod(env, view, g_method_getParent);
+    if (parent) {
+        if ((*env)->IsInstanceOf(env, parent, g_class_ViewGroup))
+            (*env)->CallVoidMethod(env, parent, g_method_removeView, view);
+        (*env)->DeleteLocalRef(env, parent);
+    }
 
     (*env)->DeleteGlobalRef(env, view);
     g_nodes[nodeId] = NULL;

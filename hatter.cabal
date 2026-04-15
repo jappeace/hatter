@@ -139,6 +139,16 @@ library
   include-dirs:
       include
 
+executable scrollview-switch-demo
+  import: common-options
+  main-is: ScrollViewSwitchDemoMain.hs
+  ghc-options: -Wno-unused-packages -threaded
+  hs-source-dirs:
+      test
+  build-depends:
+      hatter,
+      text
+
 executable stack-demo
   import: common-options
   main-is: StackDemoMain.hs
