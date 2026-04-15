@@ -106,13 +106,14 @@ else
     EXIT_CODE=1
 fi
 
-# Check if setBackgroundColor was called AFTER the switch.
+# Check if bgColor was applied AFTER the switch.
 # If the bug exists, the diff skips applyStyle for the new Button node,
-# so no setBackgroundColor call appears in post-switch logcat.
-if grep -q 'setBackgroundColor' "$LOGCAT_FILE" 2>/dev/null; then
-    echo "PASS: setBackgroundColor called after switch (style applied to new node)"
+# so no setStrProp bgColor call appears in post-switch logcat.
+# The JNI logs "setStrProp(node=N, bgColor="...")" when applyStyle fires.
+if grep -q 'bgColor' "$LOGCAT_FILE" 2>/dev/null; then
+    echo "PASS: bgColor applied after switch (style applied to new node)"
 else
-    echo "FAIL: setBackgroundColor NOT called after switch (style NOT applied — BUG)"
+    echo "FAIL: bgColor NOT applied after switch (style NOT applied — BUG)"
     EXIT_CODE=1
 fi
 
