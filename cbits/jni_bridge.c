@@ -31,6 +31,7 @@
 #include <android/log.h>
 #include <sys/mman.h>
 #include <errno.h>
+#include <dlfcn.h>
 
 static void log_memory_status(const char *label) {
     FILE *f = fopen("/proc/self/status", "r");
@@ -65,6 +66,16 @@ void *__wrap_malloc(size_t size) {
         __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
             "LARGE malloc(%zu) = %zu MB, caller: %p",
             size, size / (1024*1024), caller);
+        /* Resolve caller to symbol name via dynamic linker */
+        Dl_info info;
+        if (dladdr(caller, &info)) {
+            __android_log_print(ANDROID_LOG_ERROR, "HatterOOM",
+                "  -> %s+0x%lx in %s (base %p)",
+                info.dli_sname ? info.dli_sname : "???",
+                (unsigned long)((char*)caller - (char*)info.dli_saddr),
+                info.dli_fname ? info.dli_fname : "???",
+                info.dli_fbase);
+        }
         log_memory_status("large_malloc");
     }
     return __real_malloc(size);
