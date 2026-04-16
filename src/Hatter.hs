@@ -245,6 +245,7 @@ renderView ctxPtr = do
         , userPlatformSignInState   = acPlatformSignInState appCtx
         , userRequestRedraw         = c_requestRedraw (castPtr ctxPtr)
         }
+  c_redrawStoreCtx (castPtr ctxPtr)
   widget <- viewFunction userState
   renderWidget (acRenderState appCtx) widget
 
@@ -517,3 +518,4 @@ peekOptionalCString cstr
 -- On mobile, this posts to the main/UI thread; on desktop it calls
 -- haskellRenderUI directly.
 foreign import ccall "request_redraw" c_requestRedraw :: Ptr () -> IO ()
+foreign import ccall "redraw_store_ctx" c_redrawStoreCtx :: Ptr () -> IO ()
