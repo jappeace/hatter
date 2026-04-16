@@ -323,6 +323,7 @@ in {
         cp ${hatterSrc}/cbits/http_bridge.c cbits/
         cp ${hatterSrc}/cbits/network_status_bridge.c cbits/
         cp ${hatterSrc}/cbits/animation_bridge.c cbits/
+        cp ${hatterSrc}/cbits/redraw_bridge.c cbits/
         cp ${hatterSrc}/cbits/files_dir.c cbits/
 
         echo "=== Compiling C bridge files with cross-GHC ==="
@@ -669,6 +670,7 @@ in {
         cp ${hatterSrc}/cbits/http_bridge.c cbits/
         cp ${hatterSrc}/cbits/network_status_bridge.c cbits/
         cp ${hatterSrc}/cbits/animation_bridge.c cbits/
+        cp ${hatterSrc}/cbits/redraw_bridge.c cbits/
         cp ${hatterSrc}/cbits/files_dir.c cbits/
 
         ghc -staticlib \
@@ -711,6 +713,7 @@ in {
           cbits/http_bridge.c \
           cbits/network_status_bridge.c \
           cbits/animation_bridge.c \
+          cbits/redraw_bridge.c \
           cbits/files_dir.c \
           Main.hs \
           Hatter.hs
@@ -889,6 +892,7 @@ open(sys.argv[1], "w").write(yml)
         cp ${hatterSrc}/cbits/http_bridge.c cbits/
         cp ${hatterSrc}/cbits/network_status_bridge.c cbits/
         cp ${hatterSrc}/cbits/animation_bridge.c cbits/
+        cp ${hatterSrc}/cbits/redraw_bridge.c cbits/
         cp ${hatterSrc}/cbits/files_dir.c cbits/
 
         ghc -staticlib \
@@ -931,6 +935,7 @@ open(sys.argv[1], "w").write(yml)
           cbits/http_bridge.c \
           cbits/network_status_bridge.c \
           cbits/animation_bridge.c \
+          cbits/redraw_bridge.c \
           cbits/files_dir.c \
           Main.hs \
           Hatter.hs
