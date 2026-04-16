@@ -48,6 +48,8 @@ import Hatter.Widget
   , column
   , defaultStyle
   , row
+  , scrollColumn
+  , scrollRow
   )
 import Hatter.Render (RenderState(..), RenderedNode(..), renderWidget, dispatchEvent, dispatchTextEvent)
 import Hatter.Permission (newPermissionState)
@@ -258,6 +260,38 @@ scrollViewTests = testGroup "ScrollView"
             Just (RenderedAnimated _ _)      -> -2
             Nothing                          -> -2
       assertBool "node ID should change when scrollable changes" (nodeId1 /= nodeId2)
+
+  , testCase "scrollColumn creates a scrollable Column" $ do
+      let widget = scrollColumn
+            [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+            , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
+            ]
+      widget @?= Column (LayoutSettings
+        [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+        , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
+        ] True)
+
+  , testCase "scrollRow creates a scrollable Row" $ do
+      let widget = scrollRow
+            [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+            , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
+            ]
+      widget @?= Row (LayoutSettings
+        [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+        , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
+        ] True)
+
+  , testCase "scrollColumn button dispatches correctly" $ do
+      ref <- newIORef False
+      (clickHandle, rs) <- withActions $
+        createAction (modifyIORef' ref (const True))
+      renderWidget rs $ scrollColumn
+        [ Button ButtonConfig
+            { bcLabel = "click", bcAction = clickHandle, bcFontConfig = Nothing }
+        ]
+      dispatchEvent rs (actionId clickHandle)
+      fired <- readIORef ref
+      fired @?= True
   ]
 
 -- | Tests for the Stack widget (z-order overlay container).
