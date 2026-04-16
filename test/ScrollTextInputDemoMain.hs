@@ -15,7 +15,7 @@ import Hatter
 import Hatter.AppContext (AppContext)
 import Hatter.Widget
   ( ButtonConfig(..), InputType(..), LayoutSettings(..), TextConfig(..)
-  , TextInputConfig(..), Widget(..), row
+  , TextInputConfig(..), Widget(..), item, row
   )
 
 main :: IO (Ptr AppContext)
@@ -38,27 +38,27 @@ main = do
 -- prrrrrrrrr layout that triggers DeadObjectException.
 scrollTextInputView :: Action -> Action -> OnChange -> OnChange -> IO Widget
 scrollTextInputView save back onWeight onNotes = pure $ Column (LayoutSettings
-  [ Text TextConfig { tcLabel = "Enter data", tcFontConfig = Nothing }
-  , TextInput TextInputConfig
+  [ item (Text TextConfig { tcLabel = "Enter data", tcFontConfig = Nothing })
+  , item (TextInput TextInputConfig
       { tiInputType  = InputNumber
       , tiHint       = "Weight (kg)"
       , tiValue      = ""
       , tiOnChange   = onWeight
       , tiFontConfig = Nothing
       , tiAutoFocus  = False
-      }
-  , TextInput TextInputConfig
+      })
+  , item (TextInput TextInputConfig
       { tiInputType  = InputText
       , tiHint       = "Notes"
       , tiValue      = ""
       , tiOnChange   = onNotes
       , tiFontConfig = Nothing
       , tiAutoFocus  = False
-      }
-  , row
+      })
+  , item (row
     [ Button ButtonConfig
         { bcLabel = "Save", bcAction = save, bcFontConfig = Nothing }
     , Button ButtonConfig
         { bcLabel = "Back", bcAction = back, bcFontConfig = Nothing }
-    ]
+    ])
   ] True)

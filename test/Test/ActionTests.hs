@@ -22,11 +22,15 @@ import Hatter
 import Hatter.Widget
   ( ButtonConfig(..)
   , InputType(..)
+  , LayoutSettings(..)
   , TextConfig(..)
   , TextInputConfig(..)
   , Widget(..)
   , WidgetStyle(..)
   , column
+  , item
+  , keyedItem
+  , text
   )
 import Hatter.Render
   ( RenderState(..)
@@ -122,10 +126,10 @@ nodeIdOf (RenderedAnimated _ child)      = nodeIdOf child
 
 -- | Helper to extract children from a RenderedContainer.
 childrenOf :: RenderedNode -> [RenderedNode]
-childrenOf (RenderedContainer _ _ children) = children
-childrenOf (RenderedLeaf _ _)              = []
-childrenOf (RenderedStyled _ _ _)          = []
-childrenOf (RenderedAnimated _ _)          = []
+childrenOf (RenderedContainer _ _ keyedChildren) = map snd keyedChildren
+childrenOf (RenderedLeaf _ _)                    = []
+childrenOf (RenderedStyled _ _ _)                = []
+childrenOf (RenderedAnimated _ _)                = []
 
 incrementalRenderTests :: TestTree
 incrementalRenderTests = testGroup "Incremental rendering"
@@ -426,5 +430,65 @@ incrementalRenderTests = testGroup "Incremental rendering"
                 Nothing -> -2
           -- TextInput node is preserved (not destroyed+recreated)
           inputNodeId1 @?= inputNodeId2
+
+      , testCase "inserting child at position 0 preserves keyed TextInput (issue #186)" $ do
+          ((changeHandle, clickAction), rs) <- withActions $ do
+            ch <- createOnChange (\_ -> pure ())
+            ca <- createAction (pure ())
+            pure (ch, ca)
+          -- Render: [TextInput(key=10), Button(key=20)]
+          let textInput = TextInput TextInputConfig
+                { tiInputType = InputText, tiHint = "enter text", tiValue = ""
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+              toggleBtn = Button ButtonConfig
+                { bcLabel = "toggle", bcAction = clickAction, bcFontConfig = Nothing }
+              widget1 = Column LayoutSettings
+                { lsWidgets = [keyedItem 10 textInput, keyedItem 20 toggleBtn]
+                , lsScrollable = False }
+          renderWidget rs widget1
+          tree1 <- readIORef (rsRenderedTree rs)
+          let inputNodeId1 = case tree1 of
+                Just node -> case childrenOf node of
+                  (inputNode : _) -> nodeIdOf inputNode
+                  _               -> -1
+                Nothing -> -1
+          -- Re-render: [Banner(unkeyed), TextInput(key=10), Button(key=20)]
+          let banner = Text TextConfig { tcLabel = "Banner", tcFontConfig = Nothing }
+              widget2 = Column LayoutSettings
+                { lsWidgets = [item banner, keyedItem 10 textInput, keyedItem 20 toggleBtn]
+                , lsScrollable = False }
+          renderWidget rs widget2
+          tree2 <- readIORef (rsRenderedTree rs)
+          let inputNodeId2 = case tree2 of
+                Just node -> case childrenOf node of
+                  (_ : inputNode : _) -> nodeIdOf inputNode
+                  _                   -> -2
+                Nothing -> -2
+          -- TextInput keeps same native node ID via explicit key matching
+          inputNodeId1 @?= inputNodeId2
+
+      , testCase "explicit keyed children survive reordering" $ do
+          ((), rs) <- withActions (pure ())
+          let itemA = keyedItem 1 (text "A")
+              itemB = keyedItem 2 (text "B")
+          -- Render: [A, B]
+          renderWidget rs (Column LayoutSettings { lsWidgets = [itemA, itemB], lsScrollable = False })
+          tree1 <- readIORef (rsRenderedTree rs)
+          let (childA1, childB1) = case tree1 of
+                Just node -> case childrenOf node of
+                  [cA, cB] -> (nodeIdOf cA, nodeIdOf cB)
+                  _        -> (-1, -1)
+                Nothing -> (-1, -1)
+          -- Reorder: [B, A]
+          renderWidget rs (Column LayoutSettings { lsWidgets = [itemB, itemA], lsScrollable = False })
+          tree2 <- readIORef (rsRenderedTree rs)
+          let (childB2, childA2) = case tree2 of
+                Just node -> case childrenOf node of
+                  [cB, cA] -> (nodeIdOf cB, nodeIdOf cA)
+                  _        -> (-2, -2)
+                Nothing -> (-2, -2)
+          -- Each child kept its native node ID despite reordering
+          childA1 @?= childA2
+          childB1 @?= childB2
       ]
   ]

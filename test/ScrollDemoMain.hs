@@ -9,7 +9,7 @@ import Data.Text qualified as Text
 import Foreign.Ptr (Ptr)
 import Hatter (startMobileApp, platformLog, loggingMobileContext, MobileApp(..), newActionState, runActionM, createAction, Action)
 import Hatter.AppContext (AppContext)
-import Hatter.Widget (ButtonConfig(..), LayoutSettings(..), TextConfig(..), Widget(..), column)
+import Hatter.Widget (ButtonConfig(..), LayoutSettings(..), TextConfig(..), Widget(..), column, item)
 
 main :: IO (Ptr AppContext)
 main = do
@@ -26,10 +26,10 @@ main = do
 -- | Builds a scrollable Column containing 20 text items followed by a button.
 scrollDemoView :: Action -> IO Widget
 scrollDemoView onReachedBottom = pure $ Column (LayoutSettings
-  [ column
+  [ item (column
     ( map (\itemNumber -> Text TextConfig
         { tcLabel = "Item " <> Text.pack (show (itemNumber :: Int)), tcFontConfig = Nothing }) [1..20]
     ++ [Button ButtonConfig
         { bcLabel = "Reached Bottom", bcAction = onReachedBottom, bcFontConfig = Nothing }]
-    )
+    ))
   ] True)

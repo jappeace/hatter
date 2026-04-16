@@ -61,6 +61,8 @@ module Hatter
   , TextInputConfig(..)
   , InputType(..)
   , LayoutSettings(..)
+  , WidgetKey(..)
+  , LayoutItem(..)
   , ImageConfig(..)
   , ImageSource(..)
   , ResourceName(..)
@@ -74,6 +76,8 @@ module Hatter
     -- ** Smart constructors
   , button
   , column
+  , item
+  , keyedItem
   , row
   , scrollColumn
   , scrollRow
@@ -164,6 +168,7 @@ import Hatter.Widget
   , ImageConfig(..)
   , ImageSource(..)
   , InputType(..)
+  , LayoutItem(..)
   , LayoutSettings(..)
   , MapViewConfig(..)
   , ResourceName(..)
@@ -173,12 +178,15 @@ import Hatter.Widget
   , TextInputConfig(..)
   , WebViewConfig(..)
   , Widget(..)
+  , WidgetKey(..)
   , WidgetStyle(..)
   , button
   , colorFromText
   , colorToHex
   , column
   , defaultStyle
+  , item
+  , keyedItem
   , row
   , scrollColumn
   , scrollRow

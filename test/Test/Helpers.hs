@@ -31,7 +31,7 @@ import Hatter.Lifecycle
   , loggingMobileContext
   )
 import Hatter.Animation (newAnimationState)
-import Hatter.Widget (LayoutSettings(..), TextConfig(..), Widget(..))
+import Hatter.Widget (LayoutItem(..), LayoutSettings(..), TextConfig(..), Widget(..))
 import Hatter.Render (RenderState, newRenderState)
 
 -- | Helper: create an ActionState, register actions via ActionM, and
@@ -117,7 +117,7 @@ viewIsErrorWidget ctxPtr = do
         }
   widget <- viewFn userState
   case widget of
-    Column (LayoutSettings (Text config : _) _) -> pure (tcLabel config == "An error occurred")
+    Column (LayoutSettings (LayoutItem _ (Text config) : _) _) -> pure (tcLabel config == "An error occurred")
     Column _                 -> pure False
     Text _                   -> pure False
     Button _                 -> pure False
