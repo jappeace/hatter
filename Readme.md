@@ -44,6 +44,14 @@ Flutter is already pretty good, but the syntax is complex,
 and it has many inherited footguns from Java.
 I think I made here what flutter wanted to be.
 
+Please note this is /new/ software, I've encountered a fair few bugs
+while using it (and addressed them).
+I'd not throw it into production yet 
+(unless you really hate java/swift with a passion),
+you can see my confidence by the version of the release.
+If it reaches a 1.0.0 I'm confident enough that I would use it in production.
+
+
 # How to use
 
 ## Writing your app
