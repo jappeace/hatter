@@ -33,6 +33,7 @@ import Hatter.Widget
   , ImageConfig(..)
   , ImageSource(..)
   , InputType(..)
+  , LayoutItem(..)
   , LayoutSettings(..)
   , MapViewConfig(..)
   , ResourceName(..)
@@ -47,6 +48,7 @@ import Hatter.Widget
   , colorToHex
   , column
   , defaultStyle
+  , item
   , row
   , scrollColumn
   , scrollRow
@@ -196,8 +198,8 @@ scrollViewTests = testGroup "ScrollView"
   [ testCase "scrollable Column renders without error" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs (Column (LayoutSettings
-        [ Text TextConfig { tcLabel = "item 1", tcFontConfig = Nothing }
-        , Text TextConfig { tcLabel = "item 2", tcFontConfig = Nothing }
+        [ item (Text TextConfig { tcLabel = "item 1", tcFontConfig = Nothing })
+        , item (Text TextConfig { tcLabel = "item 2", tcFontConfig = Nothing })
         ] True))
 
   , testCase "button inside scrollable Column fires its callback" $ do
@@ -205,8 +207,8 @@ scrollViewTests = testGroup "ScrollView"
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
       renderWidget rs $ Column (LayoutSettings
-        [ Button ButtonConfig
-            { bcLabel = "press me", bcAction = clickHandle, bcFontConfig = Nothing } ]
+        [ item (Button ButtonConfig
+            { bcLabel = "press me", bcAction = clickHandle, bcFontConfig = Nothing }) ]
         True)
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
@@ -217,11 +219,11 @@ scrollViewTests = testGroup "ScrollView"
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (const True))
       renderWidget rs $ Column (LayoutSettings
-        [ column
+        [ item (column
           [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing }
           , Button ButtonConfig
               { bcLabel = "action", bcAction = clickHandle, bcFontConfig = Nothing }
-          ]
+          ])
         ] True)
       dispatchEvent rs (actionId clickHandle)
       fired <- readIORef ref
@@ -231,10 +233,10 @@ scrollViewTests = testGroup "ScrollView"
       ref <- newIORef (0 :: Int)
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
-      renderWidget rs $ Column (LayoutSettings [Button ButtonConfig
-        { bcLabel = "old", bcAction = clickHandle, bcFontConfig = Nothing }] True)
-      renderWidget rs $ Column (LayoutSettings [Button ButtonConfig
-        { bcLabel = "new", bcAction = clickHandle, bcFontConfig = Nothing }] True)
+      renderWidget rs $ Column (LayoutSettings [item (Button ButtonConfig
+        { bcLabel = "old", bcAction = clickHandle, bcFontConfig = Nothing })] True)
+      renderWidget rs $ Column (LayoutSettings [item (Button ButtonConfig
+        { bcLabel = "new", bcAction = clickHandle, bcFontConfig = Nothing })] True)
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
       count @?= 1
@@ -250,7 +252,7 @@ scrollViewTests = testGroup "ScrollView"
             Just (RenderedStyled _ _ _)      -> -1
             Just (RenderedAnimated _ _)      -> -1
             Nothing                          -> -1
-      let scrollable = Column (LayoutSettings [Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }] True)
+      let scrollable = Column (LayoutSettings [item (Text TextConfig { tcLabel = "a", tcFontConfig = Nothing })] True)
       renderWidget rs scrollable
       tree2 <- readIORef (rsRenderedTree rs)
       let nodeId2 = case tree2 of
@@ -267,8 +269,8 @@ scrollViewTests = testGroup "ScrollView"
             , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
             ]
       widget @?= Column (LayoutSettings
-        [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
-        , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
+        [ item (Text TextConfig { tcLabel = "a", tcFontConfig = Nothing })
+        , item (Text TextConfig { tcLabel = "b", tcFontConfig = Nothing })
         ] True)
 
   , testCase "scrollRow creates a scrollable Row" $ do
@@ -277,8 +279,8 @@ scrollViewTests = testGroup "ScrollView"
             , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
             ]
       widget @?= Row (LayoutSettings
-        [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
-        , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
+        [ item (Text TextConfig { tcLabel = "a", tcFontConfig = Nothing })
+        , item (Text TextConfig { tcLabel = "b", tcFontConfig = Nothing })
         ] True)
 
   , testCase "scrollColumn button dispatches correctly" $ do
@@ -300,8 +302,8 @@ stackTests = testGroup "Stack"
   [ testCase "Stack renders without error" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs (Stack
-        [ Text TextConfig { tcLabel = "background", tcFontConfig = Nothing }
-        , Text TextConfig { tcLabel = "foreground", tcFontConfig = Nothing }
+        [ item (Text TextConfig { tcLabel = "background", tcFontConfig = Nothing })
+        , item (Text TextConfig { tcLabel = "foreground", tcFontConfig = Nothing })
         ])
 
   , testCase "button inside Stack fires its callback" $ do
@@ -309,9 +311,9 @@ stackTests = testGroup "Stack"
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
       renderWidget rs $ Stack
-        [ Text TextConfig { tcLabel = "bg", tcFontConfig = Nothing }
-        , Button ButtonConfig
-            { bcLabel = "overlay", bcAction = clickHandle, bcFontConfig = Nothing }
+        [ item (Text TextConfig { tcLabel = "bg", tcFontConfig = Nothing })
+        , item (Button ButtonConfig
+            { bcLabel = "overlay", bcAction = clickHandle, bcFontConfig = Nothing })
         ]
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
@@ -322,12 +324,12 @@ stackTests = testGroup "Stack"
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (const True))
       renderWidget rs $ Stack
-        [ Text TextConfig { tcLabel = "bg", tcFontConfig = Nothing }
-        , column
+        [ item (Text TextConfig { tcLabel = "bg", tcFontConfig = Nothing })
+        , item (column
           [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing }
           , Button ButtonConfig
               { bcLabel = "action", bcAction = clickHandle, bcFontConfig = Nothing }
-          ]
+          ])
         ]
       dispatchEvent rs (actionId clickHandle)
       fired <- readIORef ref
@@ -337,10 +339,10 @@ stackTests = testGroup "Stack"
       ref <- newIORef (0 :: Int)
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
-      renderWidget rs $ Stack [Button ButtonConfig
-        { bcLabel = "old", bcAction = clickHandle, bcFontConfig = Nothing }]
-      renderWidget rs $ Stack [Button ButtonConfig
-        { bcLabel = "new", bcAction = clickHandle, bcFontConfig = Nothing }]
+      renderWidget rs $ Stack [item (Button ButtonConfig
+        { bcLabel = "old", bcAction = clickHandle, bcFontConfig = Nothing })]
+      renderWidget rs $ Stack [item (Button ButtonConfig
+        { bcLabel = "new", bcAction = clickHandle, bcFontConfig = Nothing })]
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
       count @?= 1

@@ -23,10 +23,14 @@ where
 import Control.Monad (when)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Int (Int32)
+import Data.IntMap.Strict (IntMap)
+import Data.IntMap.Strict qualified as IntMap
+import Data.IntSet (IntSet)
+import Data.IntSet qualified as IntSet
 import Data.Text (Text, pack)
 import Hatter.Action (Action(..), ActionState, OnChange(..), lookupAction, lookupTextAction)
 import Hatter.Animation (AnimationState, registerTween)
-import Hatter.Widget (AnimatedConfig(..), ButtonConfig(..), FontConfig(..), ImageConfig(..), ImageSource(..), InputType(..), LayoutSettings(..), MapViewConfig(..), ResourceName(..), ScaleType(..), TextAlignment(..), TextConfig(..), TextInputConfig(..), WebViewConfig(..), Widget(..), WidgetStyle(..), colorToHex, normalizeAnimated)
+import Hatter.Widget (AnimatedConfig(..), ButtonConfig(..), FontConfig(..), ImageConfig(..), ImageSource(..), InputType(..), LayoutItem(..), LayoutSettings(..), MapViewConfig(..), ResourceName(..), ScaleType(..), TextAlignment(..), TextConfig(..), TextInputConfig(..), WebViewConfig(..), Widget(..), WidgetKey(..), WidgetStyle(..), colorToHex, normalizeAnimated, resolveKey)
 import Hatter.UIBridge qualified as Bridge
 import System.IO (hPutStrLn, stderr)
 
@@ -41,9 +45,9 @@ data RenderedNode
       Widget         -- ^ Widget value for equality comparison.
       Int32          -- ^ Native node ID from the platform bridge.
   | RenderedContainer
-      Widget         -- ^ Widget value (Column/Row/Stack with children).
-      Int32          -- ^ Native node ID.
-      [RenderedNode] -- ^ Rendered children.
+      Widget              -- ^ Widget value (Column/Row/Stack with children).
+      Int32               -- ^ Native node ID.
+      [(Int, RenderedNode)] -- ^ Rendered children, keyed by resolved WidgetKey value.
   | RenderedStyled
       Widget         -- ^ Widget value (Styled wrapper).
       WidgetStyle    -- ^ Applied style (for change detection).
@@ -181,31 +185,34 @@ createRenderedNode animState widget@(Column settings) = do
         then Bridge.NodeScrollView
         else Bridge.NodeColumn
   nodeId <- Bridge.createNode nodeType
-  childNodes <- mapM (\child -> do
-    childNode <- createRenderedNode animState child
+  keyedChildren <- mapM (\layoutItem -> do
+    let WidgetKey keyVal = resolveKey layoutItem
+    childNode <- createRenderedNode animState (liWidget layoutItem)
     Bridge.addChild nodeId (renderedNodeId childNode)
-    pure childNode
+    pure (keyVal, childNode)
     ) (lsWidgets settings)
-  pure (RenderedContainer widget nodeId childNodes)
+  pure (RenderedContainer widget nodeId keyedChildren)
 createRenderedNode animState widget@(Row settings) = do
   let nodeType = if lsScrollable settings
         then Bridge.NodeHorizontalScrollView
         else Bridge.NodeRow
   nodeId <- Bridge.createNode nodeType
-  childNodes <- mapM (\child -> do
-    childNode <- createRenderedNode animState child
+  keyedChildren <- mapM (\layoutItem -> do
+    let WidgetKey keyVal = resolveKey layoutItem
+    childNode <- createRenderedNode animState (liWidget layoutItem)
     Bridge.addChild nodeId (renderedNodeId childNode)
-    pure childNode
+    pure (keyVal, childNode)
     ) (lsWidgets settings)
-  pure (RenderedContainer widget nodeId childNodes)
-createRenderedNode animState widget@(Stack children) = do
+  pure (RenderedContainer widget nodeId keyedChildren)
+createRenderedNode animState widget@(Stack items) = do
   nodeId <- Bridge.createNode Bridge.NodeStack
-  childNodes <- mapM (\child -> do
-    childNode <- createRenderedNode animState child
+  keyedChildren <- mapM (\layoutItem -> do
+    let WidgetKey keyVal = resolveKey layoutItem
+    childNode <- createRenderedNode animState (liWidget layoutItem)
     Bridge.addChild nodeId (renderedNodeId childNode)
-    pure childNode
-    ) children
-  pure (RenderedContainer widget nodeId childNodes)
+    pure (keyVal, childNode)
+    ) items
+  pure (RenderedContainer widget nodeId keyedChildren)
 createRenderedNode _animState widget@(Image config) = do
   nodeId <- Bridge.createNode Bridge.NodeImage
   case icSource config of
@@ -259,8 +266,8 @@ createRenderedNode animState (Animated config child) = do
 destroyRenderedSubtree :: RenderedNode -> IO ()
 destroyRenderedSubtree (RenderedLeaf _ nodeId) =
   Bridge.destroyNode nodeId
-destroyRenderedSubtree (RenderedContainer _ nodeId children) = do
-  mapM_ destroyRenderedSubtree children
+destroyRenderedSubtree (RenderedContainer _ nodeId keyedChildren) = do
+  mapM_ (destroyRenderedSubtree . snd) keyedChildren
   Bridge.destroyNode nodeId
 destroyRenderedSubtree (RenderedStyled _ _ child) =
   destroyRenderedSubtree child
@@ -346,12 +353,12 @@ diffRenderNode animState (Just (RenderedStyled _ oldStyle oldChild)) (Styled new
   pure (RenderedStyled (Styled newStyle newChild) newStyle diffedChild)
 
 -- Case 3: Same container type, children may differ — keep container, diff children.
-diffRenderNode animState (Just oldNode@(RenderedContainer _ containerNodeId oldChildren)) newWidget
+diffRenderNode animState (Just oldNode@(RenderedContainer _ containerNodeId oldKeyedChildren)) newWidget
   | sameNodeType (renderedWidget oldNode) newWidget =
     case newWidget of
-      Column settings        -> diffContainer animState containerNodeId oldChildren (lsWidgets settings) newWidget
-      Row settings           -> diffContainer animState containerNodeId oldChildren (lsWidgets settings) newWidget
-      Stack newChildren      -> diffContainer animState containerNodeId oldChildren newChildren newWidget
+      Column settings        -> diffContainer animState containerNodeId oldKeyedChildren (lsWidgets settings) newWidget
+      Row settings           -> diffContainer animState containerNodeId oldKeyedChildren (lsWidgets settings) newWidget
+      Stack newItems         -> diffContainer animState containerNodeId oldKeyedChildren newItems newWidget
       -- Non-container but same type at container level shouldn't happen,
       -- but fall through to destroy+create for safety.
       _ -> replaceNode animState oldNode newWidget
@@ -411,47 +418,102 @@ diffRenderNode _animState (Just (RenderedLeaf (TextInput oldConfig) nodeId)) new
 diffRenderNode animState (Just oldNode) newWidget =
   replaceNode animState oldNode newWidget
 
--- | Diff container children incrementally.  When all children maintain
--- their native node IDs (i.e. updated in-place), skip the remove/add
--- cycle entirely.  This is critical for preserving IME state on
--- EditText siblings — detaching an EditText from its parent via
--- removeChild disconnects the input method and hides the keyboard.
-diffContainer :: AnimationState -> Int32 -> [RenderedNode] -> [Widget]
+-- | Diff container children by key.  Matches new children against old
+-- by resolved 'WidgetKey', so inserting a child at position 0 no longer
+-- causes all subsequent children to mismatch.  When all children maintain
+-- their native node IDs and ordering, skip the remove/add cycle
+-- entirely — this preserves IME state on EditText siblings.
+diffContainer :: AnimationState -> Int32 -> [(Int, RenderedNode)] -> [LayoutItem]
               -> Widget -> IO RenderedNode
-diffContainer animState containerNodeId oldChildren newChildren newWidget = do
-  -- Diff each child position, pairing old children with new where available.
-  let paired = zipPadded oldChildren newChildren
-  diffedChildren <- mapM (\(maybeOld, newChild) ->
-    diffRenderNode animState maybeOld newChild
-    ) paired
-  -- Excess old children that weren't paired with any new child.
-  let excessOld = drop (length newChildren) oldChildren
-  -- Check whether all paired children kept their native node IDs.
-  -- If so, the native view hierarchy is already correct and we can
-  -- skip the expensive (and IME-disruptive) remove/add cycle.
-  let oldIds = map renderedNodeId (take (length newChildren) oldChildren)
-  let newIds = map renderedNodeId diffedChildren
-  let childrenStable = oldIds == newIds
-  if childrenStable
-    then do
-      -- Only remove excess children; stable children stay attached.
-      mapM_ (\excessChild -> do
-        Bridge.removeChild containerNodeId (renderedNodeId excessChild)
-        destroyRenderedSubtree excessChild
-        ) excessOld
+diffContainer animState containerNodeId oldKeyedChildren newLayoutItems newWidget = do
+  -- Build IntMap from old children's stored keys (first occurrence wins on dup)
+  let oldKeyMap = IntMap.fromList oldKeyedChildren
+  -- Match new children against old by key, with position fallback
+  (diffedKeyedChildren, usedKeySet) <- matchNewChildren animState oldKeyMap oldKeyedChildren newLayoutItems
+  -- Destroy unmatched old children
+  let unusedOld = IntMap.withoutKeys oldKeyMap usedKeySet
+  -- Check if native ordering is stable (same node IDs in same order)
+  let oldIds = map (renderedNodeId . snd) oldKeyedChildren
+  let newIds = map (renderedNodeId . snd) diffedKeyedChildren
+  if oldIds == newIds
+    then
+      -- Stable: only remove+destroy unused old children
+      mapM_ (\oldChild -> do
+        Bridge.removeChild containerNodeId (renderedNodeId oldChild)
+        destroyRenderedSubtree oldChild
+        ) (IntMap.elems unusedOld)
     else do
-      -- Children changed — full remove-all + re-add-all.
-      mapM_ (\oldChild -> Bridge.removeChild containerNodeId (renderedNodeId oldChild)) oldChildren
-      mapM_ destroyRenderedSubtree excessOld
-      mapM_ (\child -> Bridge.addChild containerNodeId (renderedNodeId child)) diffedChildren
-  pure (RenderedContainer newWidget containerNodeId diffedChildren)
+      -- Ordering changed: full remove-all + re-add-all
+      mapM_ (\oldChild -> Bridge.removeChild containerNodeId (renderedNodeId oldChild)) (map snd oldKeyedChildren)
+      mapM_ destroyRenderedSubtree (IntMap.elems unusedOld)
+      mapM_ (\child -> Bridge.addChild containerNodeId (renderedNodeId child)) (map snd diffedKeyedChildren)
+  pure (RenderedContainer newWidget containerNodeId diffedKeyedChildren)
 
--- | Zip two lists, padding the shorter one with 'Nothing'.
--- Returns @(Maybe old, new)@ pairs covering all new elements.
-zipPadded :: [a] -> [b] -> [(Maybe a, b)]
-zipPadded [] newItems           = map (\new -> (Nothing, new)) newItems
-zipPadded _ []                  = []
-zipPadded (old:olds) (new:news) = (Just old, new) : zipPadded olds news
+-- | Two-pass child matching:
+-- 1. Reserve all exact key matches (new→old by key).
+-- 2. For unmatched new items, fall back to position-based matching
+--    against unreserved old items (preserving in-place updates for
+--    widgets with volatile keys like Text labels).
+matchNewChildren :: AnimationState -> IntMap RenderedNode -> [(Int, RenderedNode)]
+                 -> [LayoutItem] -> IO ([(Int, RenderedNode)], IntSet)
+matchNewChildren animState oldKeyMap oldOrdered newItems = do
+    -- Pass 1: collect all exact key matches to reserve them
+    let newKeyed = map (\li -> (unWidgetKey (resolveKey li), li)) newItems
+        reservedKeys = foldl reserveKey IntSet.empty newKeyed
+    -- Pass 2: diff each new child, using key match or position fallback
+    go reservedKeys IntSet.empty (zip [0..] newItems)
+  where
+    -- | Collect the set of old keys that have exact key matches with
+    -- any new child — these are "reserved" and must not be used by
+    -- position-based fallback.
+    reserveKey :: IntSet -> (Int, LayoutItem) -> IntSet
+    reserveKey reserved (keyVal, _layoutItem) =
+      if IntMap.member keyVal oldKeyMap
+        then IntSet.insert keyVal reserved
+        else reserved
+
+    go :: IntSet -> IntSet -> [(Int, LayoutItem)]
+       -> IO ([(Int, RenderedNode)], IntSet)
+    go _reserved usedKeys [] = pure ([], usedKeys)
+    go reserved usedKeys ((position, layoutItem) : rest) = do
+      let WidgetKey keyVal = resolveKey layoutItem
+          newChild = liWidget layoutItem
+          maybeOld = findMatch reserved keyVal position usedKeys
+      diffedChild <- case maybeOld of
+        Just (_matchedKey, oldChild) ->
+          if sameNodeType (renderedWidget oldChild) newChild
+            then diffRenderNode animState (Just oldChild) newChild
+            else do
+              destroyRenderedSubtree oldChild
+              createRenderedNode animState newChild
+        Nothing ->
+          createRenderedNode animState newChild
+      let usedKeys' = case maybeOld of
+            Just (matchedKey, _) -> IntSet.insert matchedKey usedKeys
+            Nothing              -> usedKeys
+      (restNodes, finalUsed) <- go reserved usedKeys' rest
+      pure ((keyVal, diffedChild) : restNodes, finalUsed)
+
+    -- | Try to find an old child to match against.
+    -- 1. Exact key match (if not already consumed).
+    -- 2. Position fallback: old child at same index, but only if that
+    --    old child's key is NOT reserved by an exact match elsewhere.
+    findMatch :: IntSet -> Int -> Int -> IntSet -> Maybe (Int, RenderedNode)
+    findMatch reserved keyVal position usedKeys =
+      -- 1. Key-based match
+      case if IntSet.member keyVal usedKeys then Nothing
+           else IntMap.lookup keyVal oldKeyMap of
+        Just oldChild -> Just (keyVal, oldChild)
+        Nothing ->
+          -- 2. Position-based fallback
+          case drop position oldOrdered of
+            ((oldKey, _) : _)
+              | not (IntSet.member oldKey usedKeys)
+              , not (IntSet.member oldKey reserved) ->
+                  case IntMap.lookup oldKey oldKeyMap of
+                    Just oldChild -> Just (oldKey, oldChild)
+                    Nothing       -> Nothing
+            _ -> Nothing
 
 -- | Destroy an old node and create a fresh replacement.
 replaceNode :: AnimationState -> RenderedNode -> Widget -> IO RenderedNode

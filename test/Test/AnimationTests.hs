@@ -27,6 +27,7 @@ import Hatter.Animation
 import Hatter.Render (RenderState(..), RenderedNode(..), newRenderState, renderWidget)
 import Hatter.Widget
   ( Color(..)
+  , LayoutItem(..)
   , LayoutSettings(..)
   , Widget(..)
   , WidgetStyle(..)
@@ -34,6 +35,7 @@ import Hatter.Widget
   , column
   , defaultStyle
   , interpolateColor
+  , item
   , lerpWord8
   , normalizeAnimated
   )
@@ -263,18 +265,18 @@ normalizeAnimatedTests = testGroup "normalizeAnimated"
       let cfg = AnimatedConfig 300 EaseOut
           childA = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
           childB = Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
-          result = normalizeAnimated cfg (Column (LayoutSettings [childA, childB] False))
-      result @?= Column (LayoutSettings [Animated cfg childA, Animated cfg childB] False)
+          result = normalizeAnimated cfg (Column (LayoutSettings [item childA, item childB] False))
+      result @?= Column (LayoutSettings [item (Animated cfg childA), item (Animated cfg childB)] False)
   , testCase "Distributes over Row children" $ do
       let cfg = AnimatedConfig 300 EaseOut
           childA = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
-          result = normalizeAnimated cfg (Row (LayoutSettings [childA] False))
-      result @?= Row (LayoutSettings [Animated cfg childA] False)
+          result = normalizeAnimated cfg (Row (LayoutSettings [item childA] False))
+      result @?= Row (LayoutSettings [item (Animated cfg childA)] False)
   , testCase "Distributes over scrollable Column children" $ do
       let cfg = AnimatedConfig 300 EaseOut
           childA = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
-          result = normalizeAnimated cfg (Column (LayoutSettings [childA] True))
-      result @?= Column (LayoutSettings [Animated cfg childA] True)
+          result = normalizeAnimated cfg (Column (LayoutSettings [item childA] True))
+      result @?= Column (LayoutSettings [item (Animated cfg childA)] True)
   , testCase "Inner Animated wins over outer" $ do
       let outerCfg = AnimatedConfig 500 EaseOut
           innerCfg = AnimatedConfig 100 EaseIn
@@ -288,11 +290,11 @@ normalizeAnimatedTests = testGroup "normalizeAnimated"
           leaf = Text TextConfig { tcLabel = "x", tcFontConfig = Nothing }
           explicitChild = Animated innerCfg leaf
           plainChild = Text TextConfig { tcLabel = "y", tcFontConfig = Nothing }
-          result = normalizeAnimated outerCfg (Column (LayoutSettings [explicitChild, plainChild] False))
+          result = normalizeAnimated outerCfg (Column (LayoutSettings [item explicitChild, item plainChild] False))
       -- Distribution wraps each child in outer Animated; the render engine
       -- then collapses the nested Animated (inner wins) during traversal.
-      result @?= Column (LayoutSettings [ Animated outerCfg (Animated innerCfg leaf)
-                                        , Animated outerCfg plainChild ] False)
+      result @?= Column (LayoutSettings [ item (Animated outerCfg (Animated innerCfg leaf))
+                                        , item (Animated outerCfg plainChild) ] False)
   , testCase "Styled returned unchanged" $ do
       let cfg = AnimatedConfig 300 EaseOut
           style = defaultStyle { wsPadding = Just 10 }
@@ -319,14 +321,14 @@ normalizeAnimatedTests = testGroup "normalizeAnimated"
       renderWidget rs widget
       renderedTree <- readIORef (rsRenderedTree rs)
       case renderedTree of
-        Just (RenderedContainer (Column _) _ children) -> do
-          assertEqual "Should have 2 children" 2 (length children)
+        Just (RenderedContainer (Column _) _ keyedChildren) -> do
+          assertEqual "Should have 2 children" 2 (length keyedChildren)
           -- Each child should be RenderedAnimated wrapping RenderedStyled
-          mapM_ (\child -> case child of
+          mapM_ (\(_key, child) -> case child of
             RenderedAnimated _ (RenderedStyled _ _ _) -> pure ()
             other -> assertFailure ("Expected RenderedAnimated(RenderedStyled), got: "
                                      ++ renderedNodeSummary other)
-            ) children
+            ) keyedChildren
         other -> assertFailure ("Expected RenderedContainer, got: "
                                  ++ show (fmap renderedNodeSummary other))
   , testCase "Animated Column re-render with changed child diffs correctly" $ do

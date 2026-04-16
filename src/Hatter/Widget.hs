@@ -14,6 +14,8 @@ module Hatter.Widget
     Widget(..)
   -- ** configs
   , LayoutSettings(..)
+  , WidgetKey(..)
+  , LayoutItem(..)
   , WidgetStyle(..)
   , defaultStyle
   , ButtonConfig(..)
@@ -38,9 +40,14 @@ module Hatter.Widget
   , normalizeAnimated
   , interpolateColor
   , lerpWord8
+  -- ** key resolution
+  , inferKey
+  , resolveKey
   -- ** smart constructors
   , button
   , column
+  , item
+  , keyedItem
   , row
   , scrollColumn
   , scrollRow
@@ -50,10 +57,11 @@ where
 
 import Data.ByteString (ByteString)
 import Data.Char (digitToInt, isHexDigit, intToDigit)
+import Data.Hashable (Hashable(hashWithSalt), hash)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Word (Word8)
-import Hatter.Action (Action, OnChange)
+import Hatter.Action (Action(..), OnChange(..))
 
 -- | Font configuration for text-bearing widgets.
 -- Only 'Text', 'Button', and 'TextInput' can carry a 'FontConfig'.
@@ -254,16 +262,21 @@ normalizeAnimated :: AnimatedConfig -> Widget -> Widget
 -- Inner Animated wins: strip the outer config.
 normalizeAnimated _outerConfig (Animated innerConfig child) =
   Animated innerConfig (normalizeAnimated innerConfig child)
--- Distribute over containers.
+-- Distribute over containers: wrap each child's widget in Animated,
+-- preserving the LayoutItem key.
 normalizeAnimated config (Column settings) =
-  Column settings { lsWidgets = map (Animated config) (lsWidgets settings) }
+  Column settings { lsWidgets = map (wrapLayoutItemAnimated config) (lsWidgets settings) }
 normalizeAnimated config (Row settings) =
-  Row settings { lsWidgets = map (Animated config) (lsWidgets settings) }
-normalizeAnimated config (Stack children) =
-  Stack (map (Animated config) children)
+  Row settings { lsWidgets = map (wrapLayoutItemAnimated config) (lsWidgets settings) }
+normalizeAnimated config (Stack items) =
+  Stack (map (wrapLayoutItemAnimated config) items)
 -- Everything else (Styled, leaves): return unchanged.
 -- The caller wraps the result in Animated for the render engine.
 normalizeAnimated _config other = other
+
+-- | Wrap a 'LayoutItem''s widget in 'Animated', preserving the key.
+wrapLayoutItemAnimated :: AnimatedConfig -> LayoutItem -> LayoutItem
+wrapLayoutItemAnimated config li = li { liWidget = Animated config (liWidget li) }
 
 -- | How an image should be scaled within its bounds.
 data ScaleType
@@ -319,13 +332,29 @@ data MapViewConfig = MapViewConfig
     -- Receives @\"lat,lon,zoom\"@ text encoding the new center and zoom.
   } deriving (Show, Eq)
 
+-- | An opaque key used to match children across renders.
+-- Inferred from widget content via 'inferKey', or explicitly set
+-- by the user via 'keyedItem'.
+newtype WidgetKey = WidgetKey { unWidgetKey :: Int }
+  deriving stock (Show, Eq)
+
+-- | A keyed container child.  The key is used by the diff algorithm
+-- to match old and new children across renders, avoiding unnecessary
+-- destruction and recreation of native views.
+data LayoutItem = LayoutItem
+  { liKey    :: Maybe WidgetKey
+    -- ^ Explicit key, or 'Nothing' for auto-inference.
+  , liWidget :: Widget
+    -- ^ The child widget.
+  } deriving (Show, Eq)
+
 -- | Layout settings for container widgets ('Column', 'Row').
 --
 -- When 'lsScrollable' is 'True', the container renders as a native
 -- scroll view (vertical for 'Column', horizontal for 'Row').
 data LayoutSettings = LayoutSettings
-  { lsWidgets    :: [Widget]
-    -- ^ Child widgets inside the container.
+  { lsWidgets    :: [LayoutItem]
+    -- ^ Keyed child widgets inside the container.
   , lsScrollable :: Bool
     -- ^ Whether the container should be scrollable.
   } deriving (Show, Eq)
@@ -336,21 +365,32 @@ text txt = Text $ TextConfig { tcLabel =  txt, tcFontConfig = Nothing }
 button :: Text -> Action -> Widget
 button txt action = Button $ ButtonConfig { bcLabel = txt, bcAction = action, bcFontConfig = Nothing }
 
+-- | Wrap a widget in a 'LayoutItem' with no explicit key.
+-- The diff algorithm will infer a key from the widget content.
+item :: Widget -> LayoutItem
+item widget = LayoutItem { liKey = Nothing, liWidget = widget }
+
+-- | Wrap a widget in a 'LayoutItem' with an explicit key.
+-- Use this when the inferred key would collide (e.g. two identical
+-- text labels) or when you want stable identity across content changes.
+keyedItem :: Int -> Widget -> LayoutItem
+keyedItem keyValue widget = LayoutItem { liKey = Just (WidgetKey keyValue), liWidget = widget }
+
 -- | Build a non-scrollable vertical container.
 column :: [Widget] -> Widget
-column widgets = Column LayoutSettings { lsWidgets = widgets, lsScrollable = False }
+column widgets = Column LayoutSettings { lsWidgets = map item widgets, lsScrollable = False }
 
 -- | Build a non-scrollable horizontal container.
 row :: [Widget] -> Widget
-row widgets = Row LayoutSettings { lsWidgets = widgets, lsScrollable = False }
+row widgets = Row LayoutSettings { lsWidgets = map item widgets, lsScrollable = False }
 
 -- | Build a scrollable vertical container (native scroll view).
 scrollColumn :: [Widget] -> Widget
-scrollColumn widgets = Column LayoutSettings { lsWidgets = widgets, lsScrollable = True }
+scrollColumn widgets = Column LayoutSettings { lsWidgets = map item widgets, lsScrollable = True }
 
 -- | Build a scrollable horizontal container (native horizontal scroll view).
 scrollRow :: [Widget] -> Widget
-scrollRow widgets = Row LayoutSettings { lsWidgets = widgets, lsScrollable = True }
+scrollRow widgets = Row LayoutSettings { lsWidgets = map item widgets, lsScrollable = True }
 
 -- | A declarative description of a UI element.
 --
@@ -373,7 +413,7 @@ data Widget
   | Row LayoutSettings
     -- ^ A horizontal container laying out children left-to-right.
     -- When @'lsScrollable' = 'True'@, renders as a horizontally scrollable container.
-  | Stack [Widget]
+  | Stack [LayoutItem]
     -- ^ A z-order container: children overlap, first at bottom, last on top.
     -- Maps to FrameLayout (Android), plain UIView (iOS), ZStack (watchOS).
   | Image ImageConfig
@@ -390,3 +430,34 @@ data Widget
     -- distributed to each child.  Nested 'Animated' wrappers collapse:
     -- the innermost config wins.  See 'AnimatedConfig' for details.
   deriving (Show, Eq)
+
+-- ---------------------------------------------------------------------------
+-- Key inference for child matching
+-- ---------------------------------------------------------------------------
+
+instance Hashable ImageSource where
+  hashWithSalt salt (ImageResource (ResourceName name)) = hashWithSalt salt (0 :: Int, name)
+  hashWithSalt salt (ImageData bytes) = hashWithSalt salt (1 :: Int, bytes)
+  hashWithSalt salt (ImageFile path) = hashWithSalt salt (2 :: Int, path)
+
+-- | Infer a key from a widget's content.  Used when no explicit key
+-- is provided.  The key is a hash of the widget's most distinctive
+-- field (label, action ID, onChange ID, image source, etc.).
+inferKey :: Widget -> WidgetKey
+inferKey (Text config) = WidgetKey (hash (tcLabel config))
+inferKey (Button config) = WidgetKey (hash (actionId (bcAction config)))
+inferKey (TextInput config) = WidgetKey (hash (onChangeId (tiOnChange config)))
+inferKey (Column settings) = WidgetKey (hashWithSalt 1 (length (lsWidgets settings)))
+inferKey (Row settings) = WidgetKey (hashWithSalt 2 (length (lsWidgets settings)))
+inferKey (Stack items) = WidgetKey (hashWithSalt 3 (length items))
+inferKey (Image config) = WidgetKey (hash (icSource config))
+inferKey (WebView config) = WidgetKey (hash (wvUrl config))
+inferKey (MapView config) = WidgetKey (hashWithSalt (hash (mvLatitude config)) (hash (mvLongitude config)))
+inferKey (Styled _style child) = inferKey child
+inferKey (Animated _config child) = inferKey child
+
+-- | Resolve the key for a 'LayoutItem': use the explicit key if
+-- present, otherwise infer from the widget content.
+resolveKey :: LayoutItem -> WidgetKey
+resolveKey (LayoutItem (Just key) _widget) = key
+resolveKey (LayoutItem Nothing widget) = inferKey widget

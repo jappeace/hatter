@@ -10,7 +10,7 @@ import Data.Text qualified as Text
 import Foreign.Ptr (Ptr)
 import Hatter (startMobileApp, platformLog, loggingMobileContext, MobileApp(..), newActionState, runActionM, createAction, Action)
 import Hatter.AppContext (AppContext)
-import Hatter.Widget (ButtonConfig(..), LayoutSettings(..), Widget(..), button)
+import Hatter.Widget (ButtonConfig(..), LayoutSettings(..), Widget(..), button, item)
 
 main :: IO (Ptr AppContext)
 main = do
@@ -29,7 +29,7 @@ main = do
 -- | Builds a scrollable Row containing 20 buttons followed by a "Reached End" button.
 horizontalScrollDemoView :: Action -> Action -> IO Widget
 horizontalScrollDemoView noopAction onReachedEnd = pure $ Row (LayoutSettings
-  ( map (\itemNumber -> button ("Item " <> Text.pack (show (itemNumber :: Int))) noopAction) [1..20]
-  ++ [Button ButtonConfig
-      { bcLabel = "Reached End", bcAction = onReachedEnd, bcFontConfig = Nothing }]
+  ( map (\itemNumber -> item (button ("Item " <> Text.pack (show (itemNumber :: Int))) noopAction)) [1..20]
+  ++ [item (Button ButtonConfig
+      { bcLabel = "Reached End", bcAction = onReachedEnd, bcFontConfig = Nothing })]
   ) True)

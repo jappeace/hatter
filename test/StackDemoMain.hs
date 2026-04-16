@@ -11,7 +11,7 @@ import Data.Text qualified as Text
 import Foreign.Ptr (Ptr)
 import Hatter (startMobileApp, platformLog, loggingMobileContext, MobileApp(..), newActionState, runActionM, createAction, Action)
 import Hatter.AppContext (AppContext)
-import Hatter.Widget (ButtonConfig(..), Color(..), TextConfig(..), Widget(..), WidgetStyle(..), defaultStyle)
+import Hatter.Widget (ButtonConfig(..), Color(..), TextConfig(..), Widget(..), WidgetStyle(..), defaultStyle, item)
 
 main :: IO (Ptr AppContext)
 main = do
@@ -35,23 +35,23 @@ stackDemoView counterState onTap = do
   platformLog ("Stack counter: " <> Text.pack (show n))
   pure $ Stack
     [ -- Layer 0 (bottom): colored background label
-      Styled (defaultStyle { wsBackgroundColor = Just (Color 200 200 255 255) })
+      item (Styled (defaultStyle { wsBackgroundColor = Just (Color 200 200 255 255) })
         (Text TextConfig
           { tcLabel      = "Background: " <> Text.pack (show n)
           , tcFontConfig = Nothing
-          })
+          }))
     , -- Layer 1 (middle): tappable button
-      Button ButtonConfig
+      item (Button ButtonConfig
         { bcLabel = "Tap overlay"
         , bcAction = onTap
         , bcFontConfig = Nothing
-        }
+        })
     , -- Layer 2 (top): passthrough overlay — touches must pass through to button
-      Styled (defaultStyle { wsTouchPassthrough = Just True
+      item (Styled (defaultStyle { wsTouchPassthrough = Just True
                            , wsBackgroundColor = Just (Color 0 0 0 0)
                            })
         (Text TextConfig
           { tcLabel      = "Passthrough overlay"
           , tcFontConfig = Nothing
-          })
+          }))
     ]
