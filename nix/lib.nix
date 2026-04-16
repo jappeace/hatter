@@ -240,6 +240,14 @@ in {
           -o animation_bridge_android.o \
           ${hatterSrc}/cbits/animation_bridge_android.c
 
+        ${ndkCc} -c -fPIC \
+          -DJNI_PACKAGE=me_jappie_hatter \
+          -I${sysroot}/usr/include \
+          -I$RTS_INCLUDE \
+          -I${hatterSrc}/include \
+          -o redraw_bridge_android.o \
+          ${hatterSrc}/cbits/redraw_bridge_android.c
+
         # Compile extra JNI bridge sources (consumer-specific JNI methods)
         ${builtins.concatStringsSep "\n" (builtins.genList (i:
           let src = builtins.elemAt extraJniBridge i;
@@ -388,6 +396,7 @@ in {
           -optl$(pwd)/http_bridge_android.o \
           -optl$(pwd)/network_status_android.o \
           -optl$(pwd)/animation_bridge_android.o \
+          -optl$(pwd)/redraw_bridge_android.o \
           -optl$(pwd)/cbits/android_stubs.o \
           -optl$(pwd)/cbits/platform_log.o \
           -optl$(pwd)/cbits/numa_stubs.o \
@@ -406,6 +415,7 @@ in {
           -optl$(pwd)/cbits/http_bridge.o \
           -optl$(pwd)/cbits/network_status_bridge.o \
           -optl$(pwd)/cbits/animation_bridge.o \
+          -optl$(pwd)/cbits/redraw_bridge.o \
           -optl$(pwd)/cbits/files_dir.o \
           ${builtins.concatStringsSep " " (builtins.genList (i: "-optl$(pwd)/extra_jni_${toString i}.o") (builtins.length extraJniBridge))} \
           ${builtins.concatStringsSep " " (map (o: "-optl${o}") extraLinkObjects)} \
@@ -793,6 +803,7 @@ open(sys.argv[1], "w").write(yml)
         cp ${iosLib}/include/HttpBridge.h $out/share/ios/include/
         cp ${iosLib}/include/NetworkStatusBridge.h $out/share/ios/include/
         cp ${iosLib}/include/AnimationBridge.h $out/share/ios/include/
+        cp ${iosLib}/include/RedrawBridge.h $out/share/ios/include/
         ${patchProjectYml}
       '';
 
@@ -986,6 +997,7 @@ open(sys.argv[1], "w").write(yml)
         cp ${watchosLib}/include/HttpBridge.h $out/share/watchos/include/
         cp ${watchosLib}/include/NetworkStatusBridge.h $out/share/watchos/include/
         cp ${watchosLib}/include/AnimationBridge.h $out/share/watchos/include/
+        cp ${watchosLib}/include/RedrawBridge.h $out/share/watchos/include/
       '';
 
       installPhase = "true";
