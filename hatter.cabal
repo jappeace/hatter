@@ -117,7 +117,6 @@ library
       text < 3,
       containers < 1,
       bytestring < 1,
-      hashable < 2,
       transformers < 0.7
   c-sources:
       cbits/android_stubs.c

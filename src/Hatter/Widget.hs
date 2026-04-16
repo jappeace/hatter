@@ -41,8 +41,7 @@ module Hatter.Widget
   , interpolateColor
   , lerpWord8
   -- ** key resolution
-  , inferKey
-  , resolveKey
+  , resolveKeyAtIndex
   -- ** smart constructors
   , button
   , column
@@ -57,11 +56,10 @@ where
 
 import Data.ByteString (ByteString)
 import Data.Char (digitToInt, isHexDigit, intToDigit)
-import Data.Hashable (Hashable(hashWithSalt), hash)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Word (Word8)
-import Hatter.Action (Action(..), OnChange(..))
+import Hatter.Action (Action, OnChange)
 
 -- | Font configuration for text-bearing widgets.
 -- Only 'Text', 'Button', and 'TextInput' can carry a 'FontConfig'.
@@ -333,8 +331,7 @@ data MapViewConfig = MapViewConfig
   } deriving (Show, Eq)
 
 -- | An opaque key used to match children across renders.
--- Inferred from widget content via 'inferKey', or explicitly set
--- by the user via 'keyedItem'.
+-- Explicitly set by the user via 'keyedItem'.
 newtype WidgetKey = WidgetKey { unWidgetKey :: Int }
   deriving stock (Show, Eq)
 
@@ -366,7 +363,7 @@ button :: Text -> Action -> Widget
 button txt action = Button $ ButtonConfig { bcLabel = txt, bcAction = action, bcFontConfig = Nothing }
 
 -- | Wrap a widget in a 'LayoutItem' with no explicit key.
--- The diff algorithm will infer a key from the widget content.
+-- The diff algorithm will use the child's list index as its key.
 item :: Widget -> LayoutItem
 item widget = LayoutItem { liKey = Nothing, liWidget = widget }
 
@@ -432,32 +429,11 @@ data Widget
   deriving (Show, Eq)
 
 -- ---------------------------------------------------------------------------
--- Key inference for child matching
+-- Key resolution for child matching
 -- ---------------------------------------------------------------------------
 
-instance Hashable ImageSource where
-  hashWithSalt salt (ImageResource (ResourceName name)) = hashWithSalt salt (0 :: Int, name)
-  hashWithSalt salt (ImageData bytes) = hashWithSalt salt (1 :: Int, bytes)
-  hashWithSalt salt (ImageFile path) = hashWithSalt salt (2 :: Int, path)
-
--- | Infer a key from a widget's content.  Used when no explicit key
--- is provided.  The key is a hash of the widget's most distinctive
--- field (label, action ID, onChange ID, image source, etc.).
-inferKey :: Widget -> WidgetKey
-inferKey (Text config) = WidgetKey (hash (tcLabel config))
-inferKey (Button config) = WidgetKey (hash (actionId (bcAction config)))
-inferKey (TextInput config) = WidgetKey (hash (onChangeId (tiOnChange config)))
-inferKey (Column settings) = WidgetKey (hashWithSalt 1 (length (lsWidgets settings)))
-inferKey (Row settings) = WidgetKey (hashWithSalt 2 (length (lsWidgets settings)))
-inferKey (Stack items) = WidgetKey (hashWithSalt 3 (length items))
-inferKey (Image config) = WidgetKey (hash (icSource config))
-inferKey (WebView config) = WidgetKey (hash (wvUrl config))
-inferKey (MapView config) = WidgetKey (hashWithSalt (hash (mvLatitude config)) (hash (mvLongitude config)))
-inferKey (Styled _style child) = inferKey child
-inferKey (Animated _config child) = inferKey child
-
--- | Resolve the key for a 'LayoutItem': use the explicit key if
--- present, otherwise infer from the widget content.
-resolveKey :: LayoutItem -> WidgetKey
-resolveKey (LayoutItem (Just key) _widget) = key
-resolveKey (LayoutItem Nothing widget) = inferKey widget
+-- | Resolve the key for a 'LayoutItem' at a given list position:
+-- use the explicit key if present, otherwise default to the list index.
+resolveKeyAtIndex :: Int -> LayoutItem -> Int
+resolveKeyAtIndex _index (LayoutItem (Just (WidgetKey keyValue)) _widget) = keyValue
+resolveKeyAtIndex index (LayoutItem Nothing _widget) = index

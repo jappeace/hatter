@@ -30,7 +30,8 @@ import Data.IntSet qualified as IntSet
 import Data.Text (Text, pack)
 import Hatter.Action (Action(..), ActionState, OnChange(..), lookupAction, lookupTextAction)
 import Hatter.Animation (AnimationState, registerTween)
-import Hatter.Widget (AnimatedConfig(..), ButtonConfig(..), FontConfig(..), ImageConfig(..), ImageSource(..), InputType(..), LayoutItem(..), LayoutSettings(..), MapViewConfig(..), ResourceName(..), ScaleType(..), TextAlignment(..), TextConfig(..), TextInputConfig(..), WebViewConfig(..), Widget(..), WidgetKey(..), WidgetStyle(..), colorToHex, normalizeAnimated, resolveKey)
+import Hatter.Widget (AnimatedConfig(..), ButtonConfig(..), FontConfig(..), ImageConfig(..), ImageSource(..), InputType(..), LayoutItem(..), LayoutSettings(..), MapViewConfig(..), ResourceName(..), ScaleType(..), TextAlignment(..), TextConfig(..), TextInputConfig(..), WebViewConfig(..), Widget(..), WidgetStyle(..), colorToHex, normalizeAnimated, resolveKeyAtIndex)
+
 import Hatter.UIBridge qualified as Bridge
 import System.IO (hPutStrLn, stderr)
 
@@ -185,33 +186,33 @@ createRenderedNode animState widget@(Column settings) = do
         then Bridge.NodeScrollView
         else Bridge.NodeColumn
   nodeId <- Bridge.createNode nodeType
-  keyedChildren <- mapM (\layoutItem -> do
-    let WidgetKey keyVal = resolveKey layoutItem
+  keyedChildren <- mapM (\(index, layoutItem) -> do
+    let keyVal = resolveKeyAtIndex index layoutItem
     childNode <- createRenderedNode animState (liWidget layoutItem)
     Bridge.addChild nodeId (renderedNodeId childNode)
     pure (keyVal, childNode)
-    ) (lsWidgets settings)
+    ) (zip [0..] (lsWidgets settings))
   pure (RenderedContainer widget nodeId keyedChildren)
 createRenderedNode animState widget@(Row settings) = do
   let nodeType = if lsScrollable settings
         then Bridge.NodeHorizontalScrollView
         else Bridge.NodeRow
   nodeId <- Bridge.createNode nodeType
-  keyedChildren <- mapM (\layoutItem -> do
-    let WidgetKey keyVal = resolveKey layoutItem
+  keyedChildren <- mapM (\(index, layoutItem) -> do
+    let keyVal = resolveKeyAtIndex index layoutItem
     childNode <- createRenderedNode animState (liWidget layoutItem)
     Bridge.addChild nodeId (renderedNodeId childNode)
     pure (keyVal, childNode)
-    ) (lsWidgets settings)
+    ) (zip [0..] (lsWidgets settings))
   pure (RenderedContainer widget nodeId keyedChildren)
 createRenderedNode animState widget@(Stack items) = do
   nodeId <- Bridge.createNode Bridge.NodeStack
-  keyedChildren <- mapM (\layoutItem -> do
-    let WidgetKey keyVal = resolveKey layoutItem
+  keyedChildren <- mapM (\(index, layoutItem) -> do
+    let keyVal = resolveKeyAtIndex index layoutItem
     childNode <- createRenderedNode animState (liWidget layoutItem)
     Bridge.addChild nodeId (renderedNodeId childNode)
     pure (keyVal, childNode)
-    ) items
+    ) (zip [0..] items)
   pure (RenderedContainer widget nodeId keyedChildren)
 createRenderedNode _animState widget@(Image config) = do
   nodeId <- Bridge.createNode Bridge.NodeImage
@@ -428,8 +429,8 @@ diffContainer :: AnimationState -> Int32 -> [(Int, RenderedNode)] -> [LayoutItem
 diffContainer animState containerNodeId oldKeyedChildren newLayoutItems newWidget = do
   -- Build IntMap from old children's stored keys (first occurrence wins on dup)
   let oldKeyMap = IntMap.fromList oldKeyedChildren
-  -- Match new children against old by key, with position fallback
-  (diffedKeyedChildren, usedKeySet) <- matchNewChildren animState oldKeyMap oldKeyedChildren newLayoutItems
+  -- Match new children against old by key (index-based for unkeyed items)
+  (diffedKeyedChildren, usedKeySet) <- matchNewChildren animState oldKeyMap newLayoutItems
   -- Destroy unmatched old children
   let unusedOld = IntMap.withoutKeys oldKeyMap usedKeySet
   -- Check if native ordering is stable (same node IDs in same order)
@@ -449,38 +450,26 @@ diffContainer animState containerNodeId oldKeyedChildren newLayoutItems newWidge
       mapM_ (\child -> Bridge.addChild containerNodeId (renderedNodeId child)) (map snd diffedKeyedChildren)
   pure (RenderedContainer newWidget containerNodeId diffedKeyedChildren)
 
--- | Two-pass child matching:
--- 1. Reserve all exact key matches (new→old by key).
--- 2. For unmatched new items, fall back to position-based matching
---    against unreserved old items (preserving in-place updates for
---    widgets with volatile keys like Text labels).
-matchNewChildren :: AnimationState -> IntMap RenderedNode -> [(Int, RenderedNode)]
+-- | Match new children against old children by resolved key.
+-- Children without explicit keys use their list index as the key,
+-- so they match by position.  Children with explicit keys match by key
+-- regardless of position.
+matchNewChildren :: AnimationState -> IntMap RenderedNode
                  -> [LayoutItem] -> IO ([(Int, RenderedNode)], IntSet)
-matchNewChildren animState oldKeyMap oldOrdered newItems = do
-    -- Pass 1: collect all exact key matches to reserve them
-    let newKeyed = map (\li -> (unWidgetKey (resolveKey li), li)) newItems
-        reservedKeys = foldl reserveKey IntSet.empty newKeyed
-    -- Pass 2: diff each new child, using key match or position fallback
-    go reservedKeys IntSet.empty (zip [0..] newItems)
+matchNewChildren animState oldKeyMap newItems =
+    go IntSet.empty (zip [0..] newItems)
   where
-    -- | Collect the set of old keys that have exact key matches with
-    -- any new child — these are "reserved" and must not be used by
-    -- position-based fallback.
-    reserveKey :: IntSet -> (Int, LayoutItem) -> IntSet
-    reserveKey reserved (keyVal, _layoutItem) =
-      if IntMap.member keyVal oldKeyMap
-        then IntSet.insert keyVal reserved
-        else reserved
-
-    go :: IntSet -> IntSet -> [(Int, LayoutItem)]
+    go :: IntSet -> [(Int, LayoutItem)]
        -> IO ([(Int, RenderedNode)], IntSet)
-    go _reserved usedKeys [] = pure ([], usedKeys)
-    go reserved usedKeys ((position, layoutItem) : rest) = do
-      let WidgetKey keyVal = resolveKey layoutItem
+    go usedKeys [] = pure ([], usedKeys)
+    go usedKeys ((index, layoutItem) : rest) = do
+      let keyVal = resolveKeyAtIndex index layoutItem
           newChild = liWidget layoutItem
-          maybeOld = findMatch reserved keyVal position usedKeys
+          maybeOld = if IntSet.member keyVal usedKeys
+                     then Nothing
+                     else IntMap.lookup keyVal oldKeyMap
       diffedChild <- case maybeOld of
-        Just (_matchedKey, oldChild) ->
+        Just oldChild ->
           if sameNodeType (renderedWidget oldChild) newChild
             then diffRenderNode animState (Just oldChild) newChild
             else do
@@ -489,31 +478,10 @@ matchNewChildren animState oldKeyMap oldOrdered newItems = do
         Nothing ->
           createRenderedNode animState newChild
       let usedKeys' = case maybeOld of
-            Just (matchedKey, _) -> IntSet.insert matchedKey usedKeys
-            Nothing              -> usedKeys
-      (restNodes, finalUsed) <- go reserved usedKeys' rest
+            Just _  -> IntSet.insert keyVal usedKeys
+            Nothing -> usedKeys
+      (restNodes, finalUsed) <- go usedKeys' rest
       pure ((keyVal, diffedChild) : restNodes, finalUsed)
-
-    -- | Try to find an old child to match against.
-    -- 1. Exact key match (if not already consumed).
-    -- 2. Position fallback: old child at same index, but only if that
-    --    old child's key is NOT reserved by an exact match elsewhere.
-    findMatch :: IntSet -> Int -> Int -> IntSet -> Maybe (Int, RenderedNode)
-    findMatch reserved keyVal position usedKeys =
-      -- 1. Key-based match
-      case if IntSet.member keyVal usedKeys then Nothing
-           else IntMap.lookup keyVal oldKeyMap of
-        Just oldChild -> Just (keyVal, oldChild)
-        Nothing ->
-          -- 2. Position-based fallback
-          case drop position oldOrdered of
-            ((oldKey, _) : _)
-              | not (IntSet.member oldKey usedKeys)
-              , not (IntSet.member oldKey reserved) ->
-                  case IntMap.lookup oldKey oldKeyMap of
-                    Just oldChild -> Just (oldKey, oldChild)
-                    Nothing       -> Nothing
-            _ -> Nothing
 
 -- | Destroy an old node and create a fresh replacement.
 replaceNode :: AnimationState -> RenderedNode -> Widget -> IO RenderedNode

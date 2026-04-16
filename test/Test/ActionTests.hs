@@ -28,6 +28,7 @@ import Hatter.Widget
   , Widget(..)
   , WidgetStyle(..)
   , column
+  , item
   , keyedItem
   , text
   )
@@ -430,18 +431,20 @@ incrementalRenderTests = testGroup "Incremental rendering"
           -- TextInput node is preserved (not destroyed+recreated)
           inputNodeId1 @?= inputNodeId2
 
-      , testCase "inserting child at position 0 preserves TextInput (issue #186)" $ do
+      , testCase "inserting child at position 0 preserves keyed TextInput (issue #186)" $ do
           ((changeHandle, clickAction), rs) <- withActions $ do
             ch <- createOnChange (\_ -> pure ())
             ca <- createAction (pure ())
             pure (ch, ca)
-          -- Render: [TextInput, Button]
+          -- Render: [TextInput(key=10), Button(key=20)]
           let textInput = TextInput TextInputConfig
                 { tiInputType = InputText, tiHint = "enter text", tiValue = ""
                 , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
               toggleBtn = Button ButtonConfig
                 { bcLabel = "toggle", bcAction = clickAction, bcFontConfig = Nothing }
-              widget1 = column [textInput, toggleBtn]
+              widget1 = Column LayoutSettings
+                { lsWidgets = [keyedItem 10 textInput, keyedItem 20 toggleBtn]
+                , lsScrollable = False }
           renderWidget rs widget1
           tree1 <- readIORef (rsRenderedTree rs)
           let inputNodeId1 = case tree1 of
@@ -449,9 +452,11 @@ incrementalRenderTests = testGroup "Incremental rendering"
                   (inputNode : _) -> nodeIdOf inputNode
                   _               -> -1
                 Nothing -> -1
-          -- Re-render: [Text "Banner", TextInput, Button]
+          -- Re-render: [Banner(unkeyed), TextInput(key=10), Button(key=20)]
           let banner = Text TextConfig { tcLabel = "Banner", tcFontConfig = Nothing }
-              widget2 = column [banner, textInput, toggleBtn]
+              widget2 = Column LayoutSettings
+                { lsWidgets = [item banner, keyedItem 10 textInput, keyedItem 20 toggleBtn]
+                , lsScrollable = False }
           renderWidget rs widget2
           tree2 <- readIORef (rsRenderedTree rs)
           let inputNodeId2 = case tree2 of
@@ -459,7 +464,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
                   (_ : inputNode : _) -> nodeIdOf inputNode
                   _                   -> -2
                 Nothing -> -2
-          -- TextInput keeps same native node ID via key-based matching
+          -- TextInput keeps same native node ID via explicit key matching
           inputNodeId1 @?= inputNodeId2
 
       , testCase "explicit keyed children survive reordering" $ do
