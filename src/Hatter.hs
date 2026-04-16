@@ -75,6 +75,8 @@ module Hatter
   , button
   , column
   , row
+  , scrollColumn
+  , scrollRow
   , text
     -- * Actions
   , Action(..)
@@ -178,6 +180,8 @@ import Hatter.Widget
   , column
   , defaultStyle
   , row
+  , scrollColumn
+  , scrollRow
   , text
   )
 

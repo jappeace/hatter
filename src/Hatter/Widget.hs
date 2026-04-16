@@ -42,6 +42,8 @@ module Hatter.Widget
   , button
   , column
   , row
+  , scrollColumn
+  , scrollRow
   , text
   )
 where
@@ -341,6 +343,14 @@ column widgets = Column LayoutSettings { lsWidgets = widgets, lsScrollable = Fal
 -- | Build a non-scrollable horizontal container.
 row :: [Widget] -> Widget
 row widgets = Row LayoutSettings { lsWidgets = widgets, lsScrollable = False }
+
+-- | Build a scrollable vertical container (native scroll view).
+scrollColumn :: [Widget] -> Widget
+scrollColumn widgets = Column LayoutSettings { lsWidgets = widgets, lsScrollable = True }
+
+-- | Build a scrollable horizontal container (native horizontal scroll view).
+scrollRow :: [Widget] -> Widget
+scrollRow widgets = Row LayoutSettings { lsWidgets = widgets, lsScrollable = True }
 
 -- | A declarative description of a UI element.
 --
