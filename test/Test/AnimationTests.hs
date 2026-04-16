@@ -236,6 +236,44 @@ animatedWidgetRenderTests = testGroup "Animated widget rendering"
       -- Different node type means different node ID
       assertBool "Node ID should change for different node types"
         (firstNodeId /= secondNodeId)
+  , testCase "Toggle-back registers tween after animation completes" $ do
+      -- Hypothesis: after animation A→B completes, toggling B→A should
+      -- register a new tween. If oldChildNode is never updated to reflect
+      -- the post-animation state, the diff sees oldChild==newChild and
+      -- skips the tween, leaving the native view stuck at B.
+      animState <- newAnimationState
+      writeIORef (ansContextPtr animState) nullPtr
+      writeIORef (ansLoopActive animState) True
+      actionState <- newActionState
+      rs <- newRenderState actionState animState
+      let styledA = Styled (defaultStyle { wsPadding = Just 10 }) (Text TextConfig { tcLabel = "x", tcFontConfig = Nothing })
+          styledB = Styled (defaultStyle { wsPadding = Just 50 }) (Text TextConfig { tcLabel = "x", tcFontConfig = Nothing })
+          widgetA = Animated (AnimatedConfig 500 Linear) styledA
+          widgetB = Animated (AnimatedConfig 500 Linear) styledB
+
+      -- Render 1: initial state (padding=10)
+      renderWidget rs widgetA
+      tweensAfter1 <- readIORef (ansTweens animState)
+      assertBool "No tween after first render" (IntMap.null tweensAfter1)
+
+      -- Render 2: change to padding=50 — tween should be registered
+      renderWidget rs widgetB
+      tweensAfter2 <- readIORef (ansTweens animState)
+      assertBool "Tween registered after padding change (10→50)" (not (IntMap.null tweensAfter2))
+
+      -- Complete the animation: first dispatch sets startTime, second completes it
+      dispatchAnimationFrame animState 0.0    -- initialises startTime=0
+      dispatchAnimationFrame animState 1000.0 -- elapsed=1000 > duration=500 → done
+      tweensAfterDispatch <- readIORef (ansTweens animState)
+      assertBool "Tween completed after dispatch" (IntMap.null tweensAfterDispatch)
+
+      -- Render 3: toggle back to padding=10 — tween MUST be registered again
+      -- BUG: if oldChildNode still records padding=10 (pre-animation state),
+      -- the diff sees oldChild==newChild and skips the tween.
+      writeIORef (ansLoopActive animState) True
+      renderWidget rs widgetA
+      tweensAfter3 <- readIORef (ansTweens animState)
+      assertBool "Tween registered after toggle-back (50→10)" (not (IntMap.null tweensAfter3))
   ]
 
 -- | Helper: get the native node ID from a RenderedNode, following through

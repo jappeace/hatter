@@ -67,6 +67,21 @@ renderedWidget (RenderedContainer widget _ _) = widget
 renderedWidget (RenderedStyled widget _ _)    = widget
 renderedWidget (RenderedAnimated widget _)    = widget
 
+-- | Update the widget stored in a RenderedNode to reflect an animation target.
+-- The native node ID and children are preserved; only the bookkeeping fields
+-- (widget, style) change so the next diff sees the post-animation state.
+updateRenderedTarget :: Widget -> RenderedNode -> RenderedNode
+updateRenderedTarget target (RenderedLeaf _ nodeId) =
+  RenderedLeaf target nodeId
+updateRenderedTarget target (RenderedContainer _ nodeId children) =
+  RenderedContainer target nodeId children
+updateRenderedTarget (Styled newStyle _) (RenderedStyled _ _ child) =
+  RenderedStyled (Styled newStyle (renderedWidget child)) newStyle child
+updateRenderedTarget target (RenderedStyled _ oldStyle child) =
+  RenderedStyled target oldStyle child
+updateRenderedTarget target (RenderedAnimated _ child) =
+  RenderedAnimated target child
+
 -- ---------------------------------------------------------------------------
 -- Render state
 -- ---------------------------------------------------------------------------
@@ -329,7 +344,8 @@ diffRenderNode animState (Just (RenderedAnimated _ oldChildNode)) (Animated newC
                oldChildWidget newChild (anDuration newConfig) (anEasing newConfig)
         else pure ()
       -- Update the RenderedAnimated to reflect the new target
-      pure (RenderedAnimated (Animated newConfig newChild) oldChildNode)
+      let updatedChildNode = updateRenderedTarget newChild oldChildNode
+      pure (RenderedAnimated (Animated newConfig newChild) updatedChildNode)
     else do
       -- Different child type: can't animate, destroy+create
       destroyRenderedSubtree oldChildNode
