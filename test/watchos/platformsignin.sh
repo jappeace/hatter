@@ -11,7 +11,7 @@ EXIT_CODE=0
 
 start_app "$PLATFORM_SIGN_IN_APP" "platformsignin" --autotest-buttons
 wait_for_render "platformsignin" --autotest-buttons
-sleep 5
+wait_for_log "$STREAM_LOG" "PlatformSignIn demo app registered" 30 || true
 collect_logs "platformsignin"
 
 assert_log "$FULL_LOG" "setRoot" "setRoot"

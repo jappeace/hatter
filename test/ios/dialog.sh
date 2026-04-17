@@ -20,7 +20,6 @@ if [ $WAIT_RC -eq 2 ]; then
     exit 1
 fi
 
-sleep 5
 kill "$LOG_STREAM_PID" 2>/dev/null || true
 sleep 1
 

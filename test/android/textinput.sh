@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$TEXTINPUT_APK" "textinput"
 wait_for_render "textinput"
-sleep 5
+wait_for_logcat "setNumProp.*inputType" 30 || true
 collect_logcat "textinput"
 
 assert_logcat "$LOGCAT_FILE" "createNode.*type=4" "createNode(type=4) TextInput node"
@@ -25,8 +25,8 @@ for attempt in 1 2 3; do
         dump_ok=1
         break
     fi
-    echo "  uiautomator dump attempt $attempt failed, retrying in 5s..."
-    sleep 5
+    echo "  uiautomator dump attempt $attempt failed, retrying in 2s..."
+    sleep 2
 done
 
 if [ $dump_ok -eq 1 ]; then

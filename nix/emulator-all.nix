@@ -646,7 +646,16 @@ if [ "$BOOT_DONE" != "1" ]; then
 fi
 
 echo "Waiting for device to settle..."
-sleep 30
+SETTLE_ELAPSED=0
+SETTLE_TIMEOUT=30
+while [ $SETTLE_ELAPSED -lt $SETTLE_TIMEOUT ]; do
+    if "$ADB" -s "$EMULATOR_SERIAL" shell pm list packages 2>/dev/null | grep -q "package:"; then
+        echo "Device ready after ~''${SETTLE_ELAPSED}s"
+        break
+    fi
+    sleep 2
+    SETTLE_ELAPSED=$((SETTLE_ELAPSED + 2))
+done
 
 # ===========================================================================
 # PHASE 1 + PHASE 2 — Run test scripts

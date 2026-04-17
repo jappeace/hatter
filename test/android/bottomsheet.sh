@@ -12,15 +12,15 @@ EXIT_CODE=0
 start_app "$BOTTOM_SHEET_APK" "bottomsheet"
 
 wait_for_logcat "setRoot" 120 || true
-sleep 5
+wait_for_logcat "setHandler" 30 || true
 
 # Tap the "Show Actions" button
 tap_button "Show Actions" || { echo "FAIL: could not tap Show Actions"; EXIT_CODE=1; }
-sleep 3
+sleep 1
 
 # Tap "Edit" in the bottom sheet
 tap_button "Edit" || { echo "FAIL: could not tap Edit"; EXIT_CODE=1; }
-sleep 3
+wait_for_logcat "BottomSheet result" 15 || true
 
 collect_logcat "bottomsheet"
 

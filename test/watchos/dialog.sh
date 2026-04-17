@@ -14,7 +14,6 @@ start_app "$DIALOG_APP" "dialog" --autotest-buttons
 # Wait for the alert result
 wait_for_log "$STREAM_LOG" "Dialog alert result" 60 || true
 
-sleep 2
 kill "$LOG_STREAM_PID" 2>/dev/null || true
 sleep 1
 

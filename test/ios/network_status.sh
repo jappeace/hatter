@@ -25,7 +25,7 @@ xcrun simctl spawn "$SIM_UDID" log stream \
     --style compact \
     > "$STREAM_LOG" 2>&1 &
 LOG_STREAM_PID=$!
-sleep 5
+sleep 1
 
 xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" --autotest
 
@@ -35,13 +35,13 @@ wait_for_log "$STREAM_LOG" "setRoot" 60 && render_done=1 || true
 if [ $render_done -eq 0 ]; then
     echo "WARNING: setRoot not found — retrying with relaunch"
     xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
-    sleep 3
+    sleep 1
     true > "$STREAM_LOG"
     xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" --autotest
     wait_for_log "$STREAM_LOG" "setRoot" 60 || true
 fi
 
-sleep 10
+wait_for_log "$STREAM_LOG" "Network status demo app registered" 30 || true
 
 kill "$LOG_STREAM_PID" 2>/dev/null || true
 sleep 1

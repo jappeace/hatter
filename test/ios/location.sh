@@ -14,7 +14,7 @@ xcrun simctl location "$SIM_UDID" set 52.37,4.90 2>/dev/null || true
 
 start_app "$LOCATION_APP" "location" --autotest
 wait_for_render "location" --autotest
-sleep 10
+wait_for_log "$STREAM_LOG" "Location demo app registered" 30 || true
 collect_logs "location"
 
 assert_log "$FULL_LOG" "Location demo app registered" "Location demo app started"

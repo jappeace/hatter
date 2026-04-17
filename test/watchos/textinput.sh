@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$TEXTINPUT_APP" "textinput"
 wait_for_render "textinput"
-sleep 5
+wait_for_log "$STREAM_LOG" "createNode" 30 || true
 collect_logs "textinput"
 
 assert_log "$FULL_LOG" "createNode" "createNode called (app renders without crashing)"

@@ -1579,7 +1579,7 @@ if [ "$STATE" != "Booted" ]; then
     exit 1
 fi
 
-sleep 5
+sleep 2
 
 # ===========================================================================
 # PHASE 1 + PHASE 2 — Run test scripts
@@ -1629,8 +1629,7 @@ run_with_retry() {
         echo "[$label] attempt $attempt FAILED"
         attempt=$((attempt + 1))
         if [ $attempt -le $max_attempts ]; then
-            echo "[$label] retrying in 5s..."
-            sleep 5
+            xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
         fi
     done
     echo "[$label] FAILED after $max_attempts attempts"

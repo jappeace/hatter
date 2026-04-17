@@ -11,7 +11,7 @@ EXIT_CODE=0
 
 start_app "$BLE_APP" "ble" --autotest
 wait_for_render "ble" --autotest
-sleep 10
+wait_for_log "$STREAM_LOG" "BLE adapter:" 30 || true
 collect_logs "ble"
 
 assert_log "$FULL_LOG" "BLE adapter:" "BLE adapter check logged"

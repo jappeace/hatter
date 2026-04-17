@@ -12,15 +12,15 @@ EXIT_CODE=0
 start_app "$SECURE_STORAGE_APK" "securestorage"
 
 wait_for_logcat "setRoot" 120 || true
-sleep 5
+wait_for_logcat "setHandler" 30 || true
 
 # Tap the "Store Token" button
 tap_button "Store Token" || { echo "FAIL: could not tap Store Token"; EXIT_CODE=1; }
-sleep 3
+wait_for_logcat "SecureStorage write result" 15 || true
 
 # Tap the "Read Token" button
 tap_button "Read Token" || { echo "FAIL: could not tap Read Token"; EXIT_CODE=1; }
-sleep 3
+wait_for_logcat "SecureStorage read result" 15 || true
 
 collect_logcat "securestorage"
 

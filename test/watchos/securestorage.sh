@@ -14,7 +14,6 @@ start_app "$SECURE_STORAGE_APP" "securestorage" --autotest-buttons
 # Wait for the read result (last meaningful log from the demo app)
 wait_for_log "$STREAM_LOG" "SecureStorage read result" 60 || true
 
-sleep 2
 kill "$LOG_STREAM_PID" 2>/dev/null || true
 sleep 1
 

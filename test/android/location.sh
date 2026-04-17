@@ -12,18 +12,18 @@ EXIT_CODE=0
 start_app "$LOCATION_APK" "location"
 
 wait_for_logcat "setRoot" 120 || true
-sleep 5
+wait_for_logcat "setHandler" 30 || true
 
 # Grant location permission
 "$ADB" -s "$EMULATOR_SERIAL" shell pm grant "$PACKAGE" android.permission.ACCESS_FINE_LOCATION 2>/dev/null || true
 
 # Tap Start Location button
 tap_button "Start Location" || { echo "WARNING: could not tap Start Location"; }
-sleep 3
+sleep 1
 
 # Inject GPS fix: geo fix takes lon lat alt (longitude first!)
 "$ADB" -s "$EMULATOR_SERIAL" emu geo fix 4.90 52.37 0.0 2>/dev/null || true
-sleep 5
+wait_for_logcat "Location:.*52.3" 15 || true
 
 # Re-dump logcat to capture location update
 collect_logcat "location"
@@ -32,7 +32,7 @@ assert_logcat "$LOGCAT_FILE" "Location:.*4.9" "Longitude appears in log"
 
 # Tap Stop Location button
 tap_button "Stop Location" || { echo "WARNING: could not tap Stop Location"; }
-sleep 2
+sleep 1
 
 # Inject another GPS fix with different coords
 "$ADB" -s "$EMULATOR_SERIAL" emu geo fix 5.0 53.0 0.0 2>/dev/null || true

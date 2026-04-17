@@ -19,7 +19,7 @@ wait_for_render "textinput-rerender"
 # Wait for the autotest text change (fires 3s after render)
 wait_for_log "$STREAM_LOG" "view rebuilt: Typed: hello" 30 || true
 
-sleep 5
+sleep 1
 collect_logs "textinput-rerender"
 
 assert_log "$FULL_LOG" "setRoot" "setRoot rendered"

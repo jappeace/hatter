@@ -12,15 +12,15 @@ EXIT_CODE=0
 start_app "$DIALOG_APK" "dialog"
 
 wait_for_logcat "setRoot" 120 || true
-sleep 5
+wait_for_logcat "setHandler" 30 || true
 
 # Tap the "Show Alert" button
 tap_button "Show Alert" || { echo "FAIL: could not tap Show Alert"; EXIT_CODE=1; }
-sleep 3
+sleep 1
 
 # Tap "OK" in the AlertDialog
 tap_button "OK" || { echo "FAIL: could not tap OK"; EXIT_CODE=1; }
-sleep 3
+wait_for_logcat "Dialog alert result" 15 || true
 
 collect_logcat "dialog"
 
@@ -28,15 +28,14 @@ assert_logcat "$LOGCAT_FILE" "Dialog alert result: DialogButton1" "alert callbac
 
 # Clear logcat for confirm test
 "$ADB" -s "$EMULATOR_SERIAL" logcat -c
-sleep 2
 
 # Tap "Show Confirm" button
 tap_button "Show Confirm" || { echo "FAIL: could not tap Show Confirm"; EXIT_CODE=1; }
-sleep 3
+sleep 1
 
 # Tap "No" in the confirm dialog (button 2)
 tap_button "No" || { echo "FAIL: could not tap No"; EXIT_CODE=1; }
-sleep 3
+wait_for_logcat "Dialog confirm result" 15 || true
 
 LOGCAT_FILE2="$WORK_DIR/dialog_logcat2.txt"
 "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_FILE2" 2>&1

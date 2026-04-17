@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$PLATFORM_SIGN_IN_APK" "platformsignin"
 wait_for_render "platformsignin"
-sleep 5
+wait_for_logcat "PlatformSignIn demo app registered" 30 || true
 collect_logcat "platformsignin"
 
 # Bridge initialized

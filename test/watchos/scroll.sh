@@ -14,7 +14,7 @@ wait_for_render "scroll" --autotest
 # Auto-tap fires 3s after render; poll stream log until click appears or 30s timeout
 wait_for_log "$STREAM_LOG" "Click dispatched" 30 || true
 # Extra buffer so the persistent log store catches up before log show
-sleep 5
+sleep 1
 
 collect_logs "scroll"
 

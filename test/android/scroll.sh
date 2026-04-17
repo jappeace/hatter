@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$SCROLL_APK" "scroll"
 wait_for_render "scroll"
-sleep 5
+wait_for_logcat "createNode.*type=5" 30 || true
 collect_logcat "scroll"
 
 assert_logcat "$LOGCAT_FILE" "createNode.*type=5" "createNode(type=5) scroll view"
@@ -24,8 +24,8 @@ for attempt in 1 2 3; do
         scroll_dump_ok=1
         break
     fi
-    echo "  uiautomator dump attempt $attempt failed, retrying in 5s..."
-    sleep 5
+    echo "  uiautomator dump attempt $attempt failed, retrying in 2s..."
+    sleep 2
 done
 
 if [ $scroll_dump_ok -eq 1 ]; then
@@ -43,7 +43,7 @@ fi
 # Swipe up to reveal Reached Bottom button
 echo "=== Swipe up to reveal Reached Bottom ==="
 "$ADB" -s "$EMULATOR_SERIAL" shell input swipe 540 1500 540 500
-sleep 3
+sleep 1
 
 SCROLL_DUMP2="$WORK_DIR/scroll_ui2.xml"
 scroll_dump2_ok=0
@@ -53,8 +53,8 @@ for attempt in 1 2 3; do
         scroll_dump2_ok=1
         break
     fi
-    echo "  uiautomator dump attempt $attempt failed, retrying in 5s..."
-    sleep 5
+    echo "  uiautomator dump attempt $attempt failed, retrying in 2s..."
+    sleep 2
 done
 
 if [ $scroll_dump2_ok -eq 1 ]; then
@@ -79,7 +79,7 @@ if [ $tap_done -eq 0 ]; then
     echo "Using fallback tap at (540, 1400)"
     "$ADB" -s "$EMULATOR_SERIAL" shell input tap 540 1400
 fi
-sleep 5
+wait_for_logcat "Click dispatched" 15 || true
 
 collect_logcat "scroll"
 assert_logcat "$LOGCAT_FILE" "Click dispatched" "Click dispatched after Reached Bottom tap"

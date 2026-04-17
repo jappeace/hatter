@@ -14,7 +14,6 @@ start_app "$BOTTOM_SHEET_APP" "bottomsheet" --autotest-buttons
 # Wait for the bottom sheet result
 wait_for_log "$STREAM_LOG" "BottomSheet result" 60 || true
 
-sleep 2
 kill "$LOG_STREAM_PID" 2>/dev/null || true
 sleep 1
 

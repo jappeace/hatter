@@ -28,7 +28,7 @@ if [ $WAIT_RC -eq 2 ]; then
     exit 1
 fi
 
-sleep 5
+sleep 1
 collect_logs "textinput-rerender"
 
 # Verify app started and rendered

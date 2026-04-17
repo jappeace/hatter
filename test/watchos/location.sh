@@ -11,7 +11,7 @@ EXIT_CODE=0
 
 start_app "$LOCATION_APP" "location" --autotest
 wait_for_render "location" --autotest
-sleep 10
+wait_for_log "$STREAM_LOG" "setRoot" 30 || true
 collect_logs "location"
 
 assert_log "$FULL_LOG" "setRoot" "setRoot"

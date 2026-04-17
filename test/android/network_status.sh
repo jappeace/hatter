@@ -18,11 +18,11 @@ install_apk "$NETWORK_STATUS_APK" || { echo "FAIL: install_apk"; exit 1; }
 "$ADB" -s "$EMULATOR_SERIAL" shell am start -n "$PACKAGE/$ACTIVITY"
 
 wait_for_logcat "setRoot" 120 || true
-sleep 5
+wait_for_logcat "setHandler" 30 || true
 
 # Tap Start Monitoring button
 tap_button "Start Monitoring" || { echo "WARNING: could not tap Start Monitoring"; }
-sleep 5
+wait_for_logcat "Network monitoring started" 15 || true
 
 # Dump logcat to check for network status callback
 LOGCAT_FILE="$WORK_DIR/networkstatus_logcat.txt"
@@ -32,7 +32,7 @@ assert_logcat "$LOGCAT_FILE" "Network:.*connected=" "Network status callback fir
 
 # Tap Stop Monitoring button
 tap_button "Stop Monitoring" || { echo "WARNING: could not tap Stop Monitoring"; }
-sleep 2
+wait_for_logcat "Network monitoring stopped" 15 || true
 
 LOGCAT_FILE2="$WORK_DIR/networkstatus_logcat2.txt"
 "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_FILE2" 2>&1 || true
