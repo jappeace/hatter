@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$MAPVIEW_APP" "mapview"
 wait_for_render "mapview"
-sleep 5
+wait_for_log "$STREAM_LOG" "setHandler.*mapRegionChange" 30 || true
 collect_logs "mapview"
 
 # MapView node created (type=7)

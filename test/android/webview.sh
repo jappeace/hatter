@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$WEBVIEW_APK" "webview"
 wait_for_render "webview"
-sleep 5
+wait_for_logcat "setStrProp.*webviewUrl" 30 || true
 collect_logcat "webview"
 
 # WebView node created (type=8)

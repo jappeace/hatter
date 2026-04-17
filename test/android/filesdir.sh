@@ -15,7 +15,7 @@ install_apk "$FILES_DIR_APK" || { echo "FAIL: install_apk"; exit 1; }
 "$ADB" -s "$EMULATOR_SERIAL" shell am start -n "$PACKAGE/$ACTIVITY"
 
 wait_for_logcat "setRoot" 120 || true
-sleep 5
+wait_for_logcat "FilesDir write-read OK" 30 || true
 
 LOGCAT_FILE="$WORK_DIR/filesdir_logcat.txt"
 "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_FILE" 2>&1 || true

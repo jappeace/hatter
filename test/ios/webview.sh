@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$WEBVIEW_APP" "webview"
 wait_for_render "webview"
-sleep 5
+wait_for_log "$STREAM_LOG" "setStrProp.*webviewUrl" 30 || true
 collect_logs "webview"
 
 # WebView node created (type=8)

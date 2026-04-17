@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$AUTH_SESSION_APK" "authsession"
 wait_for_render "authsession"
-sleep 5
+wait_for_logcat "AuthSession demo app registered" 30 || true
 collect_logcat "authsession"
 
 # Bridge initialized

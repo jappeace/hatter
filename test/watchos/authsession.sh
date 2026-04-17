@@ -11,7 +11,7 @@ EXIT_CODE=0
 
 start_app "$AUTH_SESSION_APP" "authsession" --autotest-buttons
 wait_for_render "authsession" --autotest-buttons
-sleep 5
+wait_for_log "$STREAM_LOG" "AuthSession success:" 30 || true
 collect_logs "authsession"
 
 assert_log "$FULL_LOG" "setRoot" "setRoot"

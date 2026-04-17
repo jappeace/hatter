@@ -15,11 +15,11 @@ start_app "$PERMISSION_APK" "permission"
 "$ADB" -s "$EMULATOR_SERIAL" shell pm grant "$PACKAGE" android.permission.CAMERA
 
 wait_for_logcat "setRoot" 120 || true
-sleep 5
+wait_for_logcat "setHandler" 30 || true
 
 # Tap the "Request Camera" button
 tap_button "Request Camera" || { echo "FAIL: could not tap Request Camera"; EXIT_CODE=1; }
-sleep 3
+wait_for_logcat "Permission result" 15 || true
 
 collect_logcat "permission"
 

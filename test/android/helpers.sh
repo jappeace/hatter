@@ -121,8 +121,8 @@ tap_button() {
             dump_ok=1
             break
         fi
-        echo "  uiautomator dump attempt $attempt failed, retrying in 5s..."
-        sleep 5
+        echo "  uiautomator dump attempt $attempt failed, retrying in 2s..."
+        sleep 2
     done
 
     if [ $dump_ok -eq 0 ]; then

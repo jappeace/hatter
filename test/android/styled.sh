@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$COUNTER_APK" "styled"
 wait_for_render "styled"
-sleep 5
+wait_for_logcat "setStrProp.*bgColor" 30 || true
 collect_logcat "styled"
 
 assert_logcat "$LOGCAT_FILE" "setNumProp.*fontSize" "setNumProp dispatched for fontSize"

@@ -13,7 +13,7 @@ EXIT_CODE=0
 echo "=== Node Pool Test (iOS) ==="
 
 start_app "$NODEPOOL_APP" "nodepool"
-sleep 8
+wait_for_log "$STREAM_LOG" "createNode.*-> 300" 60 || true
 
 LOGFILE="$WORK_DIR/log_nodepool_ios.txt"
 get_full_log "$APP_START_TIME" "$LOGFILE"

@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$CAMERA_APK" "camera"
 wait_for_render "camera"
-sleep 5
+wait_for_logcat "Camera demo app registered" 30 || true
 collect_logcat "camera"
 
 # setRoot called (demo UI rendered)

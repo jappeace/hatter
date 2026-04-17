@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$CAMERA_APP" "camera" --autotest
 wait_for_render "camera" --autotest
-sleep 5
+wait_for_log "$STREAM_LOG" "Camera demo app registered" 30 || true
 collect_logs "camera"
 
 assert_log "$FULL_LOG" "setRoot" "setRoot"

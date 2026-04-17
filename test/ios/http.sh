@@ -11,7 +11,7 @@ EXIT_CODE=0
 
 start_app "$HTTP_APP" "http" --autotest-buttons
 wait_for_render "http" --autotest-buttons
-sleep 5
+wait_for_log "$STREAM_LOG" "HTTP response: 200" 30 || true
 collect_logs "http"
 
 assert_log "$FULL_LOG" "setRoot" "setRoot"

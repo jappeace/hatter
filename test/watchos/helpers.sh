@@ -78,7 +78,7 @@ start_app() {
         --style compact \
         > "$STREAM_LOG" 2>&1 &
     LOG_STREAM_PID=$!
-    sleep 5
+    sleep 1
 
     xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" "$@"
 }
@@ -96,7 +96,7 @@ wait_for_render() {
     if [ $render_done -eq 0 ]; then
         echo "WARNING: setRoot not found — retrying with relaunch"
         xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
-        sleep 3
+        sleep 1
         : > "$STREAM_LOG"
         xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" "$@"
         wait_for_log "$STREAM_LOG" "setRoot" 60 || true

@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$MAPVIEW_APK" "mapview"
 wait_for_render "mapview"
-sleep 5
+wait_for_logcat "setNumProp.*mapProp" 30 || true
 collect_logcat "mapview"
 
 # MapView node created (type=7)

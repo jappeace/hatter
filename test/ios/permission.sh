@@ -16,7 +16,7 @@ start_app "$PERMISSION_APP" "permission" --autotest
 wait_for_render "permission" --autotest
 
 # Wait for autotest tap + permission result
-sleep 10
+wait_for_log "$STREAM_LOG" "Permission result" 30 || true
 
 collect_logs "permission"
 

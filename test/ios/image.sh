@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$IMAGE_APP" "image"
 wait_for_render "image"
-sleep 5
+wait_for_log "$STREAM_LOG" "setImageData" 30 || true
 collect_logs "image"
 
 # All 3 Image nodes created (type=6)

@@ -31,7 +31,6 @@ if [ $WAIT_RC -eq 2 ]; then
     kill "$LOGCAT_STREAM_PID" 2>/dev/null || true
     exit 1
 fi
-sleep 5
 
 # Verify initial state: "Typed: " (empty)
 assert_logcat "$LOGCAT_STREAM_FILE" 'view rebuilt: Typed:' "Initial render shows empty Typed label"
@@ -43,7 +42,7 @@ for attempt in 1 2 3; do
         "$ADB" -s "$EMULATOR_SERIAL" pull /data/local/tmp/ui.xml "$TAP_DUMP" 2>/dev/null
         break
     fi
-    sleep 3
+    sleep 2
 done
 
 # Find and tap the EditText
@@ -63,7 +62,7 @@ else
     "$ADB" -s "$EMULATOR_SERIAL" shell input tap 540 400
 fi
 # Wait for keyboard to fully settle
-sleep 5
+sleep 2
 
 # Type "hello" character by character using keyevent.
 # Individual KEYCODE_* events are more reliable than "input text"
@@ -81,7 +80,7 @@ sleep 1
 echo "Done typing."
 
 # Wait for all key events to be processed and render to complete
-sleep 10
+wait_for_logcat "view rebuilt: Typed: hello" 15 || true
 
 # Diagnostic: show app-specific logcat lines
 echo "=== App logcat ==="

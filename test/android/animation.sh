@@ -15,11 +15,11 @@ install_apk "$ANIMATION_APK" || { echo "FAIL: install_apk"; exit 1; }
 "$ADB" -s "$EMULATOR_SERIAL" shell am start -n "$PACKAGE/$ACTIVITY"
 
 wait_for_logcat "setRoot" 120 || true
-sleep 3
+wait_for_logcat "setHandler" 30 || true
 
 # Tap Toggle Padding button to trigger animation
 tap_button "Toggle Padding" || { echo "WARNING: could not tap Toggle Padding"; }
-sleep 3
+wait_for_logcat "Toggled padding" 15 || true
 
 # Dump logcat to check for animation callbacks
 LOGCAT_FILE="$WORK_DIR/animation_logcat.txt"

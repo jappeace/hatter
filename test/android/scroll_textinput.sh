@@ -17,7 +17,7 @@ EXIT_CODE=0
 
 start_app "$SCROLL_TEXTINPUT_APK" "scroll_textinput"
 wait_for_render "scroll_textinput"
-sleep 3
+wait_for_logcat "ScrollTextInput demo app registered" 30 || true
 collect_logcat "scroll_textinput"
 
 # Basic checks: app started and rendered
@@ -33,8 +33,8 @@ for attempt in 1 2 3; do
         dump_ok=1
         break
     fi
-    echo "  uiautomator dump attempt $attempt failed, retrying in 5s..."
-    sleep 5
+    echo "  uiautomator dump attempt $attempt failed, retrying in 2s..."
+    sleep 2
 done
 
 if [ $dump_ok -eq 1 ]; then
@@ -59,7 +59,7 @@ if [ $tap_done -eq 0 ]; then
     # Fallback: tap near the top-center where the first TextInput should be
     "$ADB" -s "$EMULATOR_SERIAL" shell input tap 540 300
 fi
-sleep 5
+sleep 2
 
 # Collect logcat again to capture any crash/exception
 collect_logcat "scroll_textinput"
@@ -88,7 +88,7 @@ fi
 # Dismiss keyboard and verify app is still alive
 echo "=== Pressing back to dismiss keyboard ==="
 "$ADB" -s "$EMULATOR_SERIAL" shell input keyevent KEYCODE_BACK
-sleep 3
+sleep 1
 
 # Check the app is still running
 APP_PID=$("$ADB" -s "$EMULATOR_SERIAL" shell pidof "$PACKAGE" 2>/dev/null || echo "")

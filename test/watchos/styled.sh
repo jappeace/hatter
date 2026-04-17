@@ -11,7 +11,7 @@ EXIT_CODE=0
 start_app "$COUNTER_APP" "styled"
 
 wait_for_log "$STREAM_LOG" "setNumProp" 60 || true
-sleep 5
+wait_for_log "$STREAM_LOG" "setStrProp.*bgColor" 30 || true
 
 assert_log "$STREAM_LOG" "setNumProp.*fontSize" "setNumProp dispatched for fontSize"
 assert_log "$STREAM_LOG" "setNumProp.*padding"  "setNumProp dispatched for padding"

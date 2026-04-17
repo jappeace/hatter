@@ -10,7 +10,7 @@ EXIT_CODE=0
 
 start_app "$COUNTER_APK" "ui"
 wait_for_render "ui"
-sleep 5
+wait_for_logcat "setStrProp.*Counter: 0" 30 || true
 collect_logcat "ui"
 
 assert_logcat "$LOGCAT_FILE" "setRoot" "initial setRoot"
@@ -19,7 +19,7 @@ assert_logcat "$LOGCAT_FILE" "setHandler.*click" "setHandler click"
 
 # Tap + button
 tap_button "+" || "$ADB" -s "$EMULATOR_SERIAL" shell input tap 300 600
-sleep 5
+wait_for_logcat "Click dispatched" 15 || true
 
 collect_logcat "ui"
 
