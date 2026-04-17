@@ -55,11 +55,11 @@ confettiParticle offsetX offsetY =
 -- final scattered positions wrapped in a single Animated node.
 confettiParticles :: [Widget]
 confettiParticles =
-  [ confettiParticle 120.0 (-90.0)
-  , confettiParticle (-80.0) (-60.0)
+  [ confettiParticle 120.0 50.0
+  , confettiParticle (-80.0) 30.0
   , confettiParticle 50.0 100.0
   , confettiParticle (-110.0) 40.0
-  , confettiParticle 30.0 (-120.0)
+  , confettiParticle 30.0 70.0
   ]
 
 main :: IO (Ptr AppContext)
