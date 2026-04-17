@@ -6,13 +6,13 @@
 # createRenderedNode (first render) does not register tweens — only
 # diffRenderNode (re-render with changed props) does.
 #
-# Asserts:
+# Asserts (desired behavior — currently FAILS due to the bug):
 #   1. App started without crash
 #   2. No "*" particles visible before triggering confetti
 #   3. After tapping "Trigger Confetti", "*" particles are visible
 #   4. "Confetti triggered" logged in logcat
-#   5. No setNumProp.*translateX=0 in logcat (proves no tween from origin;
-#      particles were created at final position, not animated from 0)
+#   5. Particles animated FROM origin: setNumProp translateX=0.0 in logcat
+#   6. Particles animated TO final positions: setNumProp translateX=120.0 etc.
 #
 # Required env vars (set by emulator-all.nix harness):
 #   ADB, EMULATOR_SERIAL, CONFETTI_REPRO_APK, PACKAGE, ACTIVITY, WORK_DIR
@@ -102,24 +102,18 @@ collect_logcat "confetti-repro"
 assert_logcat "$LOGCAT_FILE" "ConfettiRepDemoMain started" "Demo app started"
 assert_logcat "$LOGCAT_FILE" "Confetti triggered" "Confetti trigger logged"
 
-# The key assertion: if a tween were registered, the animation would
-# interpolate from translateX=0 (origin) to the final value.  Since
-# particles are created at their final positions on first render
-# (createRenderedNode), no tween fires and translateX=0 never appears.
-# Note: setNumProp translateX=<final> calls DO appear (creation), but
-# translateX=0.0 would only appear if a tween animated from origin.
-if grep -q "setNumProp.*translateX=0\.0" "$LOGCAT_FILE" 2>/dev/null; then
-    echo "INFO: translateX=0.0 found — tween DID animate from origin (bug may be fixed)"
-    grep "setNumProp.*translateX=0" "$LOGCAT_FILE" | head -5
-else
-    echo "PASS (bug confirmed): No translateX=0.0 — particles were not animated from origin"
-fi
+# The key assertions: particles should animate FROM origin TO final positions.
+# A working animation would set translateX=0.0 (start) then interpolate to
+# the final value (e.g. 120.0).  The bug: createRenderedNode places nodes
+# at their final positions immediately, so translateX=0.0 never appears.
+assert_logcat "$LOGCAT_FILE" "setNumProp.*translateX=0\.0" "Particles start at origin (translateX=0)"
+assert_logcat "$LOGCAT_FILE" "setNumProp.*translateY=0\.0" "Particles start at origin (translateY=0)"
+assert_logcat "$LOGCAT_FILE" "setNumProp.*translateX=120\.0" "Particle 1 reaches final translateX=120"
+assert_logcat "$LOGCAT_FILE" "setNumProp.*translateX=-80\.0" "Particle 2 reaches final translateX=-80"
 
-# Log the creation-time setNumProp calls for debugging visibility
-if grep -q "setNumProp.*translateX" "$LOGCAT_FILE" 2>/dev/null; then
-    echo "Creation-time translateX values (expected: final positions only):"
-    grep "setNumProp.*translateX" "$LOGCAT_FILE" | head -5
-fi
+# Debug: show all translateX calls to help diagnose the animation path
+echo "All translateX setNumProp calls:"
+grep "setNumProp.*translateX" "$LOGCAT_FILE" | head -10 || echo "(none)"
 
 # Verify no crash
 LOGCAT_ERR="$WORK_DIR/confetti_repro_err.txt"
