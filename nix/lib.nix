@@ -561,6 +561,18 @@ in {
       gmpStatic = iosPkgs.gmp.overrideAttrs (old: {
         dontDisableStatic = true;
       });
+      # Apple's libffi (v40) only ships .dylib — no static archive.
+      # Build GNU libffi from source with --enable-static for bundling
+      # into the iOS fat archive (mac2ios patches the platform tag).
+      libffiStatic = iosPkgs.stdenv.mkDerivation {
+        pname = "libffi-static";
+        version = "3.5.2";
+        src = iosPkgs.fetchurl {
+          url = "https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz";
+          hash = "sha256-86MIKiOzfCk6T80QUxR7Nx8v+R+n6hsqUuM1Z2usgtw=";
+        };
+        configureFlags = [ "--enable-static" "--disable-shared" ];
+      };
     in
     iosPkgs.stdenv.mkDerivation {
       inherit pname;
@@ -569,7 +581,7 @@ in {
       src = hatterSrc + "/src";
 
       nativeBuildInputs = [ iosGhc iosPkgs.cctools ];
-      buildInputs = [ iosPkgs.libffi gmpStatic ];
+      buildInputs = [ libffiStatic gmpStatic ];
 
       buildPhase = ''
         mkdir -p Hatter
@@ -678,6 +690,7 @@ in {
         echo "Merging static archives into libHatter.a"
         libtool -static -o libCombined.a libHatter.a \
           ${gmpStatic}/lib/libgmp.a \
+          ${libffiStatic}/lib/libffi.a \
           ${if crossDeps != null then "${crossDeps}/lib/*.a" else ""}
         mv libCombined.a libHatter.a
 
@@ -788,6 +801,15 @@ open(sys.argv[1], "w").write(yml)
       gmpStatic = iosPkgs.gmp.overrideAttrs (old: {
         dontDisableStatic = true;
       });
+      libffiStatic = iosPkgs.stdenv.mkDerivation {
+        pname = "libffi-static";
+        version = "3.5.2";
+        src = iosPkgs.fetchurl {
+          url = "https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz";
+          hash = "sha256-86MIKiOzfCk6T80QUxR7Nx8v+R+n6hsqUuM1Z2usgtw=";
+        };
+        configureFlags = [ "--enable-static" "--disable-shared" ];
+      };
     in
     iosPkgs.stdenv.mkDerivation {
       inherit pname;
@@ -796,7 +818,7 @@ open(sys.argv[1], "w").write(yml)
       src = hatterSrc + "/src";
 
       nativeBuildInputs = [ iosGhc iosPkgs.cctools ];
-      buildInputs = [ iosPkgs.libffi gmpStatic ];
+      buildInputs = [ libffiStatic gmpStatic ];
 
       buildPhase = ''
         mkdir -p Hatter
@@ -905,6 +927,7 @@ open(sys.argv[1], "w").write(yml)
         echo "Merging static archives into libHatter.a"
         libtool -static -o libCombined.a libHatter.a \
           ${gmpStatic}/lib/libgmp.a \
+          ${libffiStatic}/lib/libffi.a \
           ${if crossDeps != null then "${crossDeps}/lib/*.a" else ""}
         mv libCombined.a libHatter.a
 
