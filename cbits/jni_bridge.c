@@ -9,6 +9,7 @@
  */
 
 #include <jni.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <android/log.h>
@@ -79,6 +80,16 @@ extern void haskellLogLocale(void);
 
 /* App files directory (cbits/files_dir.c) */
 extern void setAppFilesDir(const char *path);
+
+/* Device info (cbits/device_info.c) */
+extern void setDeviceModel(const char *value);
+extern void setDeviceOsVersion(const char *value);
+extern void setDeviceScreenDensity(const char *value);
+extern void setDeviceScreenWidth(const char *value);
+extern void setDeviceScreenHeight(const char *value);
+
+/* Log device info from Haskell (Hatter.DeviceInfo) */
+extern void haskellLogDeviceInfo(void);
 
 /* Haskell foreign exports */
 extern void haskellOnLifecycle(void *ctx, int eventType);
@@ -214,10 +225,64 @@ JNI_OnLoad(JavaVM *vm, void *reserved)
                 (*env)->ReleaseStringUTFChars(env, jpath, cpath);
             }
         }
+
+        /* Device info: Build.MODEL */
+        {
+            jclass buildClass = (*env)->FindClass(env, "android/os/Build");
+            jfieldID modelField = (*env)->GetStaticFieldID(env, buildClass,
+                "MODEL", "Ljava/lang/String;");
+            jstring jmodel = (*env)->GetStaticObjectField(env, buildClass, modelField);
+            const char *cmodel = (*env)->GetStringUTFChars(env, jmodel, NULL);
+            setDeviceModel(strdup(cmodel));
+            (*env)->ReleaseStringUTFChars(env, jmodel, cmodel);
+        }
+
+        /* Device info: Build.VERSION.RELEASE */
+        {
+            jclass versionClass = (*env)->FindClass(env, "android/os/Build$VERSION");
+            jfieldID releaseField = (*env)->GetStaticFieldID(env, versionClass,
+                "RELEASE", "Ljava/lang/String;");
+            jstring jrelease = (*env)->GetStaticObjectField(env, versionClass, releaseField);
+            const char *crelease = (*env)->GetStringUTFChars(env, jrelease, NULL);
+            setDeviceOsVersion(strdup(crelease));
+            (*env)->ReleaseStringUTFChars(env, jrelease, crelease);
+        }
+
+        /* Device info: DisplayMetrics (density, width, height) */
+        {
+            jclass resourcesClass = (*env)->FindClass(env, "android/content/res/Resources");
+            jmethodID getSystem = (*env)->GetStaticMethodID(env, resourcesClass,
+                "getSystem", "()Landroid/content/res/Resources;");
+            jobject resources = (*env)->CallStaticObjectMethod(env, resourcesClass, getSystem);
+            jmethodID getDisplayMetrics = (*env)->GetMethodID(env, resourcesClass,
+                "getDisplayMetrics", "()Landroid/util/DisplayMetrics;");
+            jobject metrics = (*env)->CallObjectMethod(env, resources, getDisplayMetrics);
+
+            jclass dmClass = (*env)->FindClass(env, "android/util/DisplayMetrics");
+
+            jfieldID densityField = (*env)->GetFieldID(env, dmClass, "density", "F");
+            float density = (*env)->GetFloatField(env, metrics, densityField);
+            char densityBuf[32];
+            snprintf(densityBuf, sizeof(densityBuf), "%.2f", density);
+            setDeviceScreenDensity(strdup(densityBuf));
+
+            jfieldID widthField = (*env)->GetFieldID(env, dmClass, "widthPixels", "I");
+            int width = (*env)->GetIntField(env, metrics, widthField);
+            char widthBuf[32];
+            snprintf(widthBuf, sizeof(widthBuf), "%d", width);
+            setDeviceScreenWidth(strdup(widthBuf));
+
+            jfieldID heightField = (*env)->GetFieldID(env, dmClass, "heightPixels", "I");
+            int height = (*env)->GetIntField(env, metrics, heightField);
+            char heightBuf[32];
+            snprintf(heightBuf, sizeof(heightBuf), "%d", height);
+            setDeviceScreenHeight(strdup(heightBuf));
+        }
     }
 
     g_haskell_ctx = haskellRunMain();
     haskellLogLocale();
+    haskellLogDeviceInfo();
 
     return JNI_VERSION_1_6;
 }

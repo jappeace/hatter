@@ -262,6 +262,17 @@ let
     name = "hatter-filesdir-apk";
   };
 
+  deviceInfoAndroid = import ./android.nix {
+    inherit sources androidArch;
+    mainModule = ../test/DeviceInfoDemoMain.hs;
+  };
+  deviceInfoApk = lib.mkApk {
+    sharedLibs = [{ lib = deviceInfoAndroid; inherit abiDir; }];
+    androidSrc = ../android;
+    apkName = "hatter-deviceinfo.apk";
+    name = "hatter-deviceinfo-apk";
+  };
+
   textinputRerenderAndroid = import ./android.nix {
     inherit sources androidArch;
     mainModule = ../test/TextInputReRenderDemoMain.hs;
@@ -420,6 +431,7 @@ NETWORK_STATUS_APK="${networkStatusApk}/hatter-networkstatus.apk"
 MAPVIEW_APK="${mapviewApk}/hatter-mapview.apk"
 ANIMATION_APK="${animationApk}/hatter-animation.apk"
 FILES_DIR_APK="${filesDirApk}/hatter-filesdir.apk"
+DEVICE_INFO_APK="${deviceInfoApk}/hatter-deviceinfo.apk"
 TEXTINPUT_RERENDER_APK="${textinputRerenderApk}/hatter-textinput-rerender.apk"
 STACK_APK="${stackApk}/hatter-stack.apk"
 SCROLLVIEW_SWITCH_APK="${scrollviewSwitchApk}/hatter-scrollview-switch.apk"
@@ -459,6 +471,7 @@ for so_path in \
     "${mapviewAndroid}/lib/${abiDir}/libhatter.so" \
     "${animationAndroid}/lib/${abiDir}/libhatter.so" \
     "${filesDirAndroid}/lib/${abiDir}/libhatter.so" \
+    "${deviceInfoAndroid}/lib/${abiDir}/libhatter.so" \
     "${textinputRerenderAndroid}/lib/${abiDir}/libhatter.so" \
     "${stackAndroid}/lib/${abiDir}/libhatter.so" \
     "${styledTypeChangeAndroid}/lib/${abiDir}/libhatter.so" \
@@ -674,7 +687,7 @@ done
 # ===========================================================================
 # PHASE 1 + PHASE 2 — Run test scripts
 # ===========================================================================
-export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK SCROLL_TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK PLATFORM_SIGN_IN_APK CAMERA_APK BOTTOM_SHEET_APK HTTP_APK NETWORK_STATUS_APK MAPVIEW_APK ANIMATION_APK FILES_DIR_APK TEXTINPUT_RERENDER_APK STACK_APK SCROLLVIEW_SWITCH_APK STYLED_TYPE_CHANGE_APK HORIZONTAL_SCROLL_APK ASYNC_OOM_APK REDRAW_APK CONFETTI_REPRO_APK PACKAGE ACTIVITY WORK_DIR
+export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK SCROLL_TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK PLATFORM_SIGN_IN_APK CAMERA_APK BOTTOM_SHEET_APK HTTP_APK NETWORK_STATUS_APK MAPVIEW_APK ANIMATION_APK FILES_DIR_APK DEVICE_INFO_APK TEXTINPUT_RERENDER_APK STACK_APK SCROLLVIEW_SWITCH_APK STYLED_TYPE_CHANGE_APK HORIZONTAL_SCROLL_APK ASYNC_OOM_APK REDRAW_APK CONFETTI_REPRO_APK PACKAGE ACTIVITY WORK_DIR
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0
@@ -698,6 +711,7 @@ PHASE19_EXIT=0
 PHASE20_EXIT=0
 PHASE21_EXIT=0
 PHASE23_EXIT=0
+PHASE24_EXIT=0
 
 # run_with_retry LABEL COMMAND [ARGS...]
 # Runs the command up to 10 times. Succeeds on first pass, fails only if all 10 fail.
@@ -778,6 +792,8 @@ echo "--- animation ---"
 run_with_retry "animation" bash "$TEST_SCRIPTS/android/animation.sh" || PHASE13_EXIT=1
 echo "--- filesdir ---"
 run_with_retry "filesdir" bash "$TEST_SCRIPTS/android/filesdir.sh" || PHASE14_EXIT=1
+echo "--- deviceinfo ---"
+run_with_retry "deviceinfo" bash "$TEST_SCRIPTS/android/deviceinfo.sh" || PHASE24_EXIT=1
 echo "--- textinput_rerender ---"
 run_with_retry "textinput_rerender" bash "$TEST_SCRIPTS/android/textinput_rerender.sh" || PHASE15_EXIT=1
 echo "--- stack ---"
@@ -1014,6 +1030,16 @@ else
     echo "PHASE 23 FAILED"
 fi
 
+if [ $PHASE24_EXIT -eq 0 ]; then
+    PHASE24_OK=1
+    echo ""
+    echo "PHASE 24 PASSED"
+else
+    PHASE24_OK=0
+    echo ""
+    echo "PHASE 24 FAILED"
+fi
+
 # ===========================================================================
 # Final report
 # ===========================================================================
@@ -1175,6 +1201,13 @@ if [ $PHASE23_OK -eq 1 ]; then
     echo "PASS  Phase 23 — Confetti animation reproducer (first-render no-tween bug)"
 else
     echo "FAIL  Phase 23 — Confetti animation reproducer (first-render no-tween bug)"
+    FINAL_EXIT=1
+fi
+
+if [ $PHASE24_OK -eq 1 ]; then
+    echo "PASS  Phase 24 — DeviceInfo demo app"
+else
+    echo "FAIL  Phase 24 — DeviceInfo demo app"
     FINAL_EXIT=1
 fi
 

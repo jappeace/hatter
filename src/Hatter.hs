@@ -153,6 +153,7 @@ import Hatter.Lifecycle
   , lifecycleFromInt
   )
 import Hatter.Locale ()  -- for foreign export ccall haskellLogLocale
+import Hatter.DeviceInfo ()  -- for foreign export ccall haskellLogDeviceInfo
 import Hatter.Location (dispatchLocationUpdate)
 import Hatter.NetworkStatus (dispatchNetworkStatusChange)
 import Hatter.Permission (dispatchPermissionResult)

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# iOS device info test: install device-info app, launch with
+# --autotest, verify device information is retrieved and logged.
+#
+# Required env vars (set by simulator-all.nix harness):
+#   SIM_UDID, BUNDLE_ID, DEVICE_INFO_APP, WORK_DIR
+set -euo pipefail
+source "$(dirname "$0")/helpers.sh"
+
+EXIT_CODE=0
+
+xcrun simctl install "$SIM_UDID" "$DEVICE_INFO_APP"
+echo "DeviceInfo app installed."
+
+DI_START=$(date "+%Y-%m-%d %H:%M:%S")
+
+STREAM_LOG="$WORK_DIR/deviceinfo_stream.txt"
+true > "$STREAM_LOG"
+xcrun simctl spawn "$SIM_UDID" log stream \
+    --level info \
+    --predicate "subsystem == \"$BUNDLE_ID\"" \
+    --style compact \
+    > "$STREAM_LOG" 2>&1 &
+LOG_STREAM_PID=$!
+sleep 1
+
+xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" --autotest
+
+render_done=0
+wait_for_log "$STREAM_LOG" "setRoot" 60 && render_done=1 || true
+
+if [ $render_done -eq 0 ]; then
+    echo "WARNING: setRoot not found — retrying with relaunch"
+    xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
+    sleep 1
+    true > "$STREAM_LOG"
+    xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" --autotest
+    wait_for_log "$STREAM_LOG" "setRoot" 60 || true
+fi
+
+wait_for_log "$STREAM_LOG" "DeviceInfo model:" 30 || true
+
+kill "$LOG_STREAM_PID" 2>/dev/null || true
+sleep 1
+
+FULL_LOG="$WORK_DIR/deviceinfo_full.txt"
+get_full_log "$DI_START" "$FULL_LOG"
+
+if ! grep -q "setRoot" "$FULL_LOG" 2>/dev/null; then
+    echo "  'log show' empty/incomplete, using stream log"
+    FULL_LOG="$STREAM_LOG"
+fi
+
+assert_log "$FULL_LOG" "DeviceInfo demo app registered" "DeviceInfo demo app started"
+assert_log "$FULL_LOG" "DeviceInfo model:" "DeviceInfo model retrieved"
+assert_log "$FULL_LOG" "DeviceInfo osVersion:" "DeviceInfo osVersion retrieved"
+assert_log "$FULL_LOG" "DeviceInfo screenDensity:" "DeviceInfo screenDensity retrieved"
+assert_log "$FULL_LOG" "DeviceInfo screenWidth:" "DeviceInfo screenWidth retrieved"
+assert_log "$FULL_LOG" "DeviceInfo screenHeight:" "DeviceInfo screenHeight retrieved"
+assert_log "$FULL_LOG" "setRoot" "setRoot"
+
+xcrun simctl uninstall "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
+
+exit $EXIT_CODE

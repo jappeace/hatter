@@ -111,6 +111,7 @@ library
       Hatter.Http
       Hatter.NetworkStatus
       Hatter.FilesDir
+      Hatter.DeviceInfo
   hs-source-dirs:
       src
   build-depends:
@@ -137,6 +138,7 @@ library
       cbits/animation_bridge.c
       cbits/redraw_bridge.c
       cbits/files_dir.c
+      cbits/device_info.c
   include-dirs:
       include
 
@@ -200,6 +202,16 @@ executable confetti-repro-demo
       hatter,
       text
 
+executable device-info-demo
+  import: common-options
+  main-is: DeviceInfoDemoMain.hs
+  ghc-options: -Wno-unused-packages -threaded
+  hs-source-dirs:
+      test
+  build-depends:
+      hatter,
+      text
+
 test-suite unit
   import: common-options
   type: exitcode-stdio-1.0
@@ -213,6 +225,7 @@ test-suite unit
       Test.ActionTests
       Test.AnimationTests
       Test.FilesDirTests
+      Test.DeviceInfoTests
   ghc-options: -Wno-unused-packages -threaded -rtsopts "-with-rtsopts=-N -M7G -T -Iw10"
   hs-source-dirs:
       test

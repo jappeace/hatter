@@ -1,4 +1,5 @@
 import Foundation
+import WatchKit
 import os.log
 
 /// Swift wrapper around the Haskell FFI functions exposed via C.
@@ -20,8 +21,20 @@ class HaskellBridge {
     static func initialize() {
         hs_init(nil, nil)
         setSystemLocale("en")  // watchOS default locale, before Haskell main
+
+        // Device info — WKInterfaceDevice for watchOS
+        let device = WKInterfaceDevice.current()
+        setDeviceModel(strdup(device.model))
+        setDeviceOsVersion(strdup(device.systemVersion))
+        let scale = device.screenScale
+        setDeviceScreenDensity(strdup(String(format: "%.1f", scale)))
+        let bounds = device.screenBounds
+        setDeviceScreenWidth(strdup(String(Int(bounds.width * scale))))
+        setDeviceScreenHeight(strdup(String(Int(bounds.height * scale))))
+
         context = haskellRunMain()
         haskellLogLocale()
+        haskellLogDeviceInfo()
         setup_watchos_redraw_bridge(context)
     }
 

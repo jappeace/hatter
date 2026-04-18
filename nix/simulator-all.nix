@@ -241,6 +241,17 @@ let
     name = "hatter-filesdir-simulator-app";
   };
 
+  deviceInfoIos = import ./ios.nix {
+    inherit sources;
+    mainModule = ../test/DeviceInfoDemoMain.hs;
+    simulator = true;
+  };
+  deviceInfoSimApp = lib.mkSimulatorApp {
+    iosLib = deviceInfoIos;
+    iosSrc = ../ios;
+    name = "hatter-deviceinfo-simulator-app";
+  };
+
   textinputRerenderIos = import ./ios.nix {
     inherit sources;
     mainModule = ../test/TextInputReRenderDemoMain.hs;
@@ -336,6 +347,7 @@ NETWORK_STATUS_SHARE_DIR="${networkStatusSimApp}/share/ios"
 MAPVIEW_SHARE_DIR="${mapviewSimApp}/share/ios"
 ANIMATION_SHARE_DIR="${animationSimApp}/share/ios"
 FILES_DIR_SHARE_DIR="${filesDirSimApp}/share/ios"
+DEVICE_INFO_SHARE_DIR="${deviceInfoSimApp}/share/ios"
 TEXTINPUT_RERENDER_SHARE_DIR="${textinputRerenderSimApp}/share/ios"
 STACK_SHARE_DIR="${stackSimApp}/share/ios"
 STYLED_TYPE_CHANGE_SHARE_DIR="${styledTypeChangeSimApp}/share/ios"
@@ -368,6 +380,7 @@ PHASE17_OK=0
 PHASE18_OK=0
 PHASE19_OK=0
 PHASE20_OK=0
+PHASE21_OK=0
 
 cleanup() {
     echo ""
@@ -1380,6 +1393,53 @@ if [ -z "$FILES_DIR_APP" ]; then
 fi
 echo "FilesDir app: $FILES_DIR_APP"
 
+# --- Stage and build deviceinfo demo app ---
+echo "=== Staging deviceinfo demo app ==="
+mkdir -p "$WORK_DIR/deviceinfo/lib" "$WORK_DIR/deviceinfo/include"
+cp "$DEVICE_INFO_SHARE_DIR/lib/libHatter.a" "$WORK_DIR/deviceinfo/lib/"
+cp "$DEVICE_INFO_SHARE_DIR/include/Hatter.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/UIBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/PermissionBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/SecureStorageBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/BleBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/DialogBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/LocationBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/AuthSessionBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/PlatformSignInBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/CameraBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/BottomSheetBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/HttpBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/NetworkStatusBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/AnimationBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp "$DEVICE_INFO_SHARE_DIR/include/RedrawBridge.h" "$WORK_DIR/deviceinfo/include/"
+cp -r "$DEVICE_INFO_SHARE_DIR/Hatter" "$WORK_DIR/deviceinfo/"
+cp "$DEVICE_INFO_SHARE_DIR/project.yml" "$WORK_DIR/deviceinfo/"
+chmod -R u+w "$WORK_DIR/deviceinfo"
+
+echo "=== Generating deviceinfo Xcode project ==="
+cd "$WORK_DIR/deviceinfo"
+${xcodegen}/bin/xcodegen generate
+
+echo "=== Building deviceinfo demo app for simulator ==="
+xcodebuild build \
+    -project Hatter.xcodeproj \
+    -scheme "$SCHEME" \
+    -sdk iphonesimulator \
+    -configuration Release \
+    -derivedDataPath "$WORK_DIR/deviceinfo-build" \
+    CODE_SIGN_IDENTITY=- \
+    CODE_SIGNING_ALLOWED=NO \
+    ARCHS=arm64 \
+    ONLY_ACTIVE_ARCH=NO \
+    | tail -20
+
+DEVICE_INFO_APP=$(find "$WORK_DIR/deviceinfo-build" -name "*.app" -type d | head -1)
+if [ -z "$DEVICE_INFO_APP" ]; then
+    echo "ERROR: Could not find deviceinfo .app bundle"
+    exit 1
+fi
+echo "DeviceInfo app: $DEVICE_INFO_APP"
+
 # --- Stage and build textinput-rerender demo app ---
 echo "=== Staging textinput-rerender demo app ==="
 mkdir -p "$WORK_DIR/textinput-rerender/lib" "$WORK_DIR/textinput-rerender/include"
@@ -1584,7 +1644,7 @@ sleep 2
 # ===========================================================================
 # PHASE 1 + PHASE 2 — Run test scripts
 # ===========================================================================
-export SIM_UDID BUNDLE_ID COUNTER_APP SCROLL_APP TEXTINPUT_APP PERMISSION_APP SECURE_STORAGE_APP IMAGE_APP NODEPOOL_APP BLE_APP DIALOG_APP LOCATION_APP WEBVIEW_APP AUTH_SESSION_APP PLATFORM_SIGN_IN_APP CAMERA_APP BOTTOM_SHEET_APP HTTP_APP NETWORK_STATUS_APP MAPVIEW_APP ANIMATION_APP FILES_DIR_APP TEXTINPUT_RERENDER_APP STACK_APP STYLED_TYPE_CHANGE_APP HORIZONTAL_SCROLL_APP REDRAW_APP WORK_DIR
+export SIM_UDID BUNDLE_ID COUNTER_APP SCROLL_APP TEXTINPUT_APP PERMISSION_APP SECURE_STORAGE_APP IMAGE_APP NODEPOOL_APP BLE_APP DIALOG_APP LOCATION_APP WEBVIEW_APP AUTH_SESSION_APP PLATFORM_SIGN_IN_APP CAMERA_APP BOTTOM_SHEET_APP HTTP_APP NETWORK_STATUS_APP MAPVIEW_APP ANIMATION_APP FILES_DIR_APP DEVICE_INFO_APP TEXTINPUT_RERENDER_APP STACK_APP STYLED_TYPE_CHANGE_APP HORIZONTAL_SCROLL_APP REDRAW_APP WORK_DIR
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0
@@ -1606,6 +1666,7 @@ PHASE17_EXIT=0
 PHASE18_EXIT=0
 PHASE19_EXIT=0
 PHASE20_EXIT=0
+PHASE21_EXIT=0
 
 # run_with_retry LABEL COMMAND [ARGS...]
 # Runs the command up to 10 times. Succeeds on first pass, fails only if all 10 fail.
@@ -1685,6 +1746,8 @@ echo "--- animation ---"
 run_with_retry "animation" bash "$TEST_SCRIPTS/ios/animation.sh" || PHASE13_EXIT=1
 echo "--- filesdir ---"
 run_with_retry "filesdir" bash "$TEST_SCRIPTS/ios/filesdir.sh" || PHASE14_EXIT=1
+echo "--- deviceinfo ---"
+run_with_retry "deviceinfo" bash "$TEST_SCRIPTS/ios/deviceinfo.sh" || PHASE21_EXIT=1
 echo "--- textinput_rerender ---"
 run_with_retry "textinput_rerender" bash "$TEST_SCRIPTS/ios/textinput_rerender.sh" || PHASE15_EXIT=1
 echo "--- stack ---"
@@ -1905,6 +1968,16 @@ else
     echo "PHASE 20 FAILED"
 fi
 
+if [ $PHASE21_EXIT -eq 0 ]; then
+    PHASE21_OK=1
+    echo ""
+    echo "PHASE 21 PASSED"
+else
+    PHASE21_OK=0
+    echo ""
+    echo "PHASE 21 FAILED"
+fi
+
 # ===========================================================================
 # Final report
 # ===========================================================================
@@ -2052,6 +2125,13 @@ if [ $PHASE20_OK -eq 1 ]; then
     echo "PASS  Phase 20 — XCUITest counter app"
 else
     echo "FAIL  Phase 20 — XCUITest counter app"
+    FINAL_EXIT=1
+fi
+
+if [ $PHASE21_OK -eq 1 ]; then
+    echo "PASS  Phase 21 — DeviceInfo demo app"
+else
+    echo "FAIL  Phase 21 — DeviceInfo demo app"
     FINAL_EXIT=1
 fi
 

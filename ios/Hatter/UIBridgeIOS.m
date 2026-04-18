@@ -13,6 +13,7 @@
 #import <MapKit/MapKit.h>
 #import <os/log.h>
 #import <objc/runtime.h>
+#include <sys/utsname.h>
 #include <stdlib.h>
 #include <string.h>
 #include "UIBridge.h"
@@ -72,6 +73,13 @@ extern void setSystemLocale(const char *locale);
 
 /* App files directory (cbits/files_dir.c) */
 extern void setAppFilesDir(const char *path);
+
+/* Device info (cbits/device_info.c) */
+extern void setDeviceModel(const char *value);
+extern void setDeviceOsVersion(const char *value);
+extern void setDeviceScreenDensity(const char *value);
+extern void setDeviceScreenWidth(const char *value);
+extern void setDeviceScreenHeight(const char *value);
 
 /* ---- Global state (valid only on the main thread) ---- */
 static UIViewController *g_viewController = nil;
@@ -878,6 +886,32 @@ void setup_ios_platform_globals(void)
                 withIntermediateDirectories:YES attributes:nil error:nil];
             setAppFilesDir(strdup([appSupport UTF8String]));
         }
+    }
+
+    /* Device info */
+    {
+        struct utsname systemInfo;
+        uname(&systemInfo);
+        setDeviceModel(strdup(systemInfo.machine));
+
+        NSString *osVer = [[UIDevice currentDevice] systemVersion];
+        setDeviceOsVersion(strdup([osVer UTF8String]));
+
+        CGFloat scale = [[UIScreen mainScreen] scale];
+        CGFloat pixelWidth = [UIScreen mainScreen].bounds.size.width * scale;
+        CGFloat pixelHeight = [UIScreen mainScreen].bounds.size.height * scale;
+
+        char densityBuf[32];
+        snprintf(densityBuf, sizeof(densityBuf), "%.1f", (double)scale);
+        setDeviceScreenDensity(strdup(densityBuf));
+
+        char widthBuf[32];
+        snprintf(widthBuf, sizeof(widthBuf), "%d", (int)pixelWidth);
+        setDeviceScreenWidth(strdup(widthBuf));
+
+        char heightBuf[32];
+        snprintf(heightBuf, sizeof(heightBuf), "%d", (int)pixelHeight);
+        setDeviceScreenHeight(strdup(heightBuf));
     }
 }
 

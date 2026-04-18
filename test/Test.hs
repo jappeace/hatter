@@ -19,6 +19,7 @@ import Test.AppContextTests (registrationTests, appContextTests, exceptionHandle
 import Test.ActionTests (actionTests, widgetEqTests, incrementalRenderTests)
 import Test.AnimationTests (animationTests)
 import Test.FilesDirTests (filesDirTests)
+import Test.DeviceInfoTests (deviceInfoTests)
 
 main :: IO ()
 main = do
@@ -73,4 +74,5 @@ tests ffiPermState ffiSecureStorageState ffiDialogState ffiAuthSessionState ffiP
     , incrementalRenderTests
     , animationTests
     , filesDirTests
+    , deviceInfoTests
     ]
