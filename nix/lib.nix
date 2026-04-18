@@ -561,9 +561,6 @@ in {
       gmpStatic = iosPkgs.gmp.overrideAttrs (old: {
         dontDisableStatic = true;
       });
-      libffiStatic = iosPkgs.libffi.overrideAttrs (old: {
-        dontDisableStatic = true;
-      });
     in
     iosPkgs.stdenv.mkDerivation {
       inherit pname;
@@ -572,7 +569,7 @@ in {
       src = hatterSrc + "/src";
 
       nativeBuildInputs = [ iosGhc iosPkgs.cctools ];
-      buildInputs = [ libffiStatic gmpStatic ];
+      buildInputs = [ iosPkgs.libffi gmpStatic ];
 
       buildPhase = ''
         mkdir -p Hatter
@@ -681,7 +678,7 @@ in {
         echo "Merging static archives into libHatter.a"
         libtool -static -o libCombined.a libHatter.a \
           ${gmpStatic}/lib/libgmp.a \
-          ${libffiStatic}/lib/libffi.a \
+          ${iosPkgs.libffi}/lib/libffi.a \
           ${if crossDeps != null then "${crossDeps}/lib/*.a" else ""}
         mv libCombined.a libHatter.a
 
@@ -792,9 +789,6 @@ open(sys.argv[1], "w").write(yml)
       gmpStatic = iosPkgs.gmp.overrideAttrs (old: {
         dontDisableStatic = true;
       });
-      libffiStatic = iosPkgs.libffi.overrideAttrs (old: {
-        dontDisableStatic = true;
-      });
     in
     iosPkgs.stdenv.mkDerivation {
       inherit pname;
@@ -803,7 +797,7 @@ open(sys.argv[1], "w").write(yml)
       src = hatterSrc + "/src";
 
       nativeBuildInputs = [ iosGhc iosPkgs.cctools ];
-      buildInputs = [ libffiStatic gmpStatic ];
+      buildInputs = [ iosPkgs.libffi gmpStatic ];
 
       buildPhase = ''
         mkdir -p Hatter
@@ -912,7 +906,7 @@ open(sys.argv[1], "w").write(yml)
         echo "Merging static archives into libHatter.a"
         libtool -static -o libCombined.a libHatter.a \
           ${gmpStatic}/lib/libgmp.a \
-          ${libffiStatic}/lib/libffi.a \
+          ${iosPkgs.libffi}/lib/libffi.a \
           ${if crossDeps != null then "${crossDeps}/lib/*.a" else ""}
         mv libCombined.a libHatter.a
 
