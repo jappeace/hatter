@@ -74,6 +74,13 @@ extern void setSystemLocale(const char *locale);
 /* App files directory (cbits/files_dir.c) */
 extern void setAppFilesDir(const char *path);
 
+/* Device info (cbits/device_info.c) */
+extern void setDeviceModel(const char *value);
+extern void setDeviceOsVersion(const char *value);
+extern void setDeviceScreenDensity(const char *value);
+extern void setDeviceScreenWidth(const char *value);
+extern void setDeviceScreenHeight(const char *value);
+
 /* ---- Global state (valid only on the main thread) ---- */
 static UIViewController *g_viewController = nil;
 
