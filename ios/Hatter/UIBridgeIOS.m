@@ -13,6 +13,7 @@
 #import <MapKit/MapKit.h>
 #import <os/log.h>
 #import <objc/runtime.h>
+#include <sys/utsname.h>
 #include <stdlib.h>
 #include <string.h>
 #include "UIBridge.h"
@@ -878,6 +879,32 @@ void setup_ios_platform_globals(void)
                 withIntermediateDirectories:YES attributes:nil error:nil];
             setAppFilesDir(strdup([appSupport UTF8String]));
         }
+    }
+
+    /* Device info */
+    {
+        struct utsname systemInfo;
+        uname(&systemInfo);
+        setDeviceModel(strdup(systemInfo.machine));
+
+        NSString *osVer = [[UIDevice currentDevice] systemVersion];
+        setDeviceOsVersion(strdup([osVer UTF8String]));
+
+        CGFloat scale = [[UIScreen mainScreen] scale];
+        CGFloat pixelWidth = [UIScreen mainScreen].bounds.size.width * scale;
+        CGFloat pixelHeight = [UIScreen mainScreen].bounds.size.height * scale;
+
+        char densityBuf[32];
+        snprintf(densityBuf, sizeof(densityBuf), "%.1f", (double)scale);
+        setDeviceScreenDensity(strdup(densityBuf));
+
+        char widthBuf[32];
+        snprintf(widthBuf, sizeof(widthBuf), "%d", (int)pixelWidth);
+        setDeviceScreenWidth(strdup(widthBuf));
+
+        char heightBuf[32];
+        snprintf(heightBuf, sizeof(heightBuf), "%d", (int)pixelHeight);
+        setDeviceScreenHeight(strdup(heightBuf));
     }
 }
 

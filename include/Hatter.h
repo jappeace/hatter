@@ -67,6 +67,42 @@ void setAppFilesDir(const char *path);
  * or falls back to "." (current directory) on desktop. */
 const char* getAppFilesDir(void);
 
+/* Set the device model string. Called by platform bridges during init,
+ * before haskellRunMain(). The caller owns the memory (must be strdup'd). */
+void setDeviceModel(const char *value);
+
+/* Get the device model string. Returns the value set by setDeviceModel(),
+ * or falls back to "desktop". */
+const char* getDeviceModel(void);
+
+/* Set the OS version string. Called by platform bridges during init. */
+void setDeviceOsVersion(const char *value);
+
+/* Get the OS version string, or "unknown" on desktop. */
+const char* getDeviceOsVersion(void);
+
+/* Set the screen density string. Called by platform bridges during init. */
+void setDeviceScreenDensity(const char *value);
+
+/* Get the screen density string, or "1.0" on desktop. */
+const char* getDeviceScreenDensity(void);
+
+/* Set the screen width (pixels) as a string. */
+void setDeviceScreenWidth(const char *value);
+
+/* Get the screen width string, or "0" on desktop. */
+const char* getDeviceScreenWidth(void);
+
+/* Set the screen height (pixels) as a string. */
+void setDeviceScreenHeight(const char *value);
+
+/* Get the screen height string, or "0" on desktop. */
+const char* getDeviceScreenHeight(void);
+
+/* Log all device info fields via platformLog.
+ * Called from platform bridges after setDevice*() calls. */
+void haskellLogDeviceInfo(void);
+
 /* Dispatch a permission result from native code back to Haskell.
  * requestId: opaque ID from the original permission_request() call.
  * statusCode: PERMISSION_GRANTED (0) or PERMISSION_DENIED (1).
