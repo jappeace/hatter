@@ -36,8 +36,7 @@ class HaskellBridge {
         os_log("HaskellBridge: platform globals set", log: bridgeLog, type: .info)
 
         context = haskellRunMain()
-        let contextAddr: UnsafeMutableRawPointer = context ?? UnsafeMutableRawPointer(bitPattern: 0)!
-        os_log("HaskellBridge: haskellRunMain done, context=%{public}p", log: bridgeLog, type: .info, contextAddr)
+        os_log("HaskellBridge: haskellRunMain done, context=%{public}s", log: bridgeLog, type: .info, String(describing: context))
 
         haskellLogLocale()
         os_log("HaskellBridge: locale logged", log: bridgeLog, type: .info)
