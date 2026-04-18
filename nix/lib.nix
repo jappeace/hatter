@@ -678,7 +678,6 @@ in {
         echo "Merging static archives into libHatter.a"
         libtool -static -o libCombined.a libHatter.a \
           ${gmpStatic}/lib/libgmp.a \
-          ${iosPkgs.libffi}/lib/libffi.a \
           ${if crossDeps != null then "${crossDeps}/lib/*.a" else ""}
         mv libCombined.a libHatter.a
 
@@ -906,7 +905,6 @@ open(sys.argv[1], "w").write(yml)
         echo "Merging static archives into libHatter.a"
         libtool -static -o libCombined.a libHatter.a \
           ${gmpStatic}/lib/libgmp.a \
-          ${iosPkgs.libffi}/lib/libffi.a \
           ${if crossDeps != null then "${crossDeps}/lib/*.a" else ""}
         mv libCombined.a libHatter.a
 
