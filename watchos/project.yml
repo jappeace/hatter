@@ -25,7 +25,7 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: Hatter/Hatter-Bridging-Header.h
         LIBRARY_SEARCH_PATHS: ["$(inherited)", "$(PROJECT_DIR)/lib"]
         HEADER_SEARCH_PATHS: ["$(inherited)", "$(PROJECT_DIR)/include"]
-        OTHER_LDFLAGS: ["$(inherited)", "-lHatter", "-lz", "-liconv", "-lc++", "-framework", "AuthenticationServices"]
+        OTHER_LDFLAGS: ["$(inherited)", "-lHatter", "-lz", "-liconv", "-lffi", "-lc++", "-framework", "AuthenticationServices"]
 
   HatterUITests:
     type: bundle.ui-testing
