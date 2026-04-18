@@ -19,6 +19,7 @@ class HaskellBridge {
     /// Initialize the Haskell RTS. Must be called before any other Haskell function.
     /// Passes -M512m to limit the heap — iOS rejects the default ~1TB virtual memory reservation.
     static func initialize() {
+        os_log("HaskellBridge: starting hs_init", log: bridgeLog, type: .info)
         var args = ["hatter", "+RTS", "-M512m", "-RTS"].map { strdup($0) }
         var argc = Int32(args.count)
         args.withUnsafeMutableBufferPointer { buf in
@@ -28,22 +29,43 @@ class HaskellBridge {
             }
         }
         args.forEach { free($0) }
-        setup_ios_platform_globals()  // locale + files dir before Haskell main
+        os_log("HaskellBridge: hs_init done", log: bridgeLog, type: .info)
+
+        setup_ios_platform_globals()
+        os_log("HaskellBridge: platform globals set", log: bridgeLog, type: .info)
+
         context = haskellRunMain()
+        os_log("HaskellBridge: haskellRunMain done, context=%{public}p", log: bridgeLog, type: .info, context ?? UnsafeMutableRawPointer(bitPattern: 0)!)
+
         haskellLogLocale()
+        os_log("HaskellBridge: locale logged", log: bridgeLog, type: .info)
+
         setup_ios_permission_bridge(context)
+        os_log("HaskellBridge: permission bridge", log: bridgeLog, type: .info)
         setup_ios_secure_storage_bridge(context)
+        os_log("HaskellBridge: secure storage bridge", log: bridgeLog, type: .info)
         setup_ios_ble_bridge(context)
+        os_log("HaskellBridge: ble bridge", log: bridgeLog, type: .info)
         setup_ios_dialog_bridge(context)
+        os_log("HaskellBridge: dialog bridge", log: bridgeLog, type: .info)
         setup_ios_location_bridge(context)
+        os_log("HaskellBridge: location bridge", log: bridgeLog, type: .info)
         setup_ios_auth_session_bridge(context)
+        os_log("HaskellBridge: auth session bridge", log: bridgeLog, type: .info)
         setup_ios_camera_bridge(context)
+        os_log("HaskellBridge: camera bridge", log: bridgeLog, type: .info)
         setup_ios_bottom_sheet_bridge(context)
+        os_log("HaskellBridge: bottom sheet bridge", log: bridgeLog, type: .info)
         setup_ios_http_bridge(context)
+        os_log("HaskellBridge: http bridge", log: bridgeLog, type: .info)
         setup_ios_network_status_bridge(context)
+        os_log("HaskellBridge: network status bridge", log: bridgeLog, type: .info)
         setup_ios_animation_bridge(context)
+        os_log("HaskellBridge: animation bridge", log: bridgeLog, type: .info)
         setup_ios_redraw_bridge(context)
+        os_log("HaskellBridge: redraw bridge", log: bridgeLog, type: .info)
         setup_ios_platform_sign_in_bridge(context)
+        os_log("HaskellBridge: all bridges initialized", log: bridgeLog, type: .info)
     }
 
     /// Notify Haskell of a lifecycle event.
