@@ -20,7 +20,8 @@ class HaskellBridge {
     /// Initialize the Haskell RTS. Must be called before any other Haskell function.
     /// Passes -M256m to limit the heap — iOS/watchOS reject the default ~1TB virtual memory reservation.
     static func initialize() {
-        var args = ["hatter", "+RTS", "-M256m", "-RTS"].map { strdup($0) }
+        let rtsArgs = ["hatter", "+RTS", "-M256m", "-RTS"]
+        var args: [UnsafeMutablePointer<CChar>?] = rtsArgs.map { strdup($0) }
         var argc = Int32(args.count)
         args.withUnsafeMutableBufferPointer { buf in
             var ptr = buf.baseAddress

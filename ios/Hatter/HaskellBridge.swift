@@ -20,7 +20,8 @@ class HaskellBridge {
     /// Passes -M512m to limit the heap — iOS rejects the default ~1TB virtual memory reservation.
     static func initialize() {
         os_log("HaskellBridge: starting hs_init", log: bridgeLog, type: .info)
-        var args = ["hatter", "+RTS", "-M512m", "-RTS"].map { strdup($0) }
+        let rtsArgs = ["hatter", "+RTS", "-M512m", "-RTS"]
+        var args: [UnsafeMutablePointer<CChar>?] = rtsArgs.map { strdup($0) }
         var argc = Int32(args.count)
         args.withUnsafeMutableBufferPointer { buf in
             var ptr = buf.baseAddress
@@ -35,7 +36,8 @@ class HaskellBridge {
         os_log("HaskellBridge: platform globals set", log: bridgeLog, type: .info)
 
         context = haskellRunMain()
-        os_log("HaskellBridge: haskellRunMain done, context=%{public}p", log: bridgeLog, type: .info, context ?? UnsafeMutableRawPointer(bitPattern: 0)!)
+        let contextAddr: UnsafeMutableRawPointer = context ?? UnsafeMutableRawPointer(bitPattern: 0)!
+        os_log("HaskellBridge: haskellRunMain done, context=%{public}p", log: bridgeLog, type: .info, contextAddr)
 
         haskellLogLocale()
         os_log("HaskellBridge: locale logged", log: bridgeLog, type: .info)
