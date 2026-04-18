@@ -17,9 +17,13 @@ class HaskellBridge {
     private static var context: UnsafeMutableRawPointer?
 
     /// Initialize the Haskell RTS. Must be called before any other Haskell function.
-    /// Passes -M512m to limit the heap — iOS rejects the default ~1TB virtual memory reservation.
+    /// On real devices, passes -M512m to limit the heap — iOS rejects the default ~1TB
+    /// virtual memory reservation.  The simulator runs on macOS and doesn't need the cap.
     static func initialize() {
         os_log("HaskellBridge: starting hs_init", log: bridgeLog, type: .info)
+        #if targetEnvironment(simulator)
+        hs_init(nil, nil)
+        #else
         let rtsArgs = ["hatter", "+RTS", "-M512m", "-RTS"]
         var args: [UnsafeMutablePointer<CChar>?] = rtsArgs.map { strdup($0) }
         var argc = Int32(args.count)
@@ -30,6 +34,7 @@ class HaskellBridge {
             }
         }
         args.forEach { free($0) }
+        #endif
         os_log("HaskellBridge: hs_init done", log: bridgeLog, type: .info)
 
         setup_ios_platform_globals()
