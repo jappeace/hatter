@@ -15,6 +15,12 @@ import Hatter
   ( AnimatedConfig(..)
   , Keyframe(..)
   , KeyframeAt
+  , andThen
+  , easeInAnimation
+  , easeInOutAnimation
+  , easeOutAnimation
+  , linearAnimation
+  , lerpStyle
   , mkKeyframeAt
   , unKeyframeAt
   , newActionState
@@ -55,6 +61,7 @@ animationTests = testGroup "Animation"
   , normalizeAnimatedTests
   , translateAnimationTests
   , firstRenderAnimationTests
+  , smartConstructorTests
   ]
 
 -- | Unsafely create a KeyframeAt for test convenience.
@@ -583,4 +590,100 @@ firstRenderAnimationTests = testGroup "First-render animation"
       renderWidget rs widget
       tweens <- readIORef (ansTweens animState)
       assertBool "Tween registered for 3-keyframe animation" (not (IntMap.null tweens))
+  ]
+
+-- ---------------------------------------------------------------------------
+-- Smart constructors
+-- ---------------------------------------------------------------------------
+
+smartConstructorTests :: TestTree
+smartConstructorTests = testGroup "Smart constructors"
+  [ testCase "linearAnimation produces 2 keyframes at 0 and 1" $ do
+      let cfg = linearAnimation 0.5
+                  (defaultStyle { wsPadding = Just 0 })
+                  (defaultStyle { wsPadding = Just 100 })
+      length (anKeyframes cfg) @?= 2
+      anDuration cfg @?= 0.5
+      let [kf0, kf1] = anKeyframes cfg
+      unKeyframeAt (kfAt kf0) @?= 0
+      unKeyframeAt (kfAt kf1) @?= 1
+      wsPadding (kfStyle kf0) @?= Just 0
+      wsPadding (kfStyle kf1) @?= Just 100
+  , testCase "easeInAnimation produces 5 keyframes" $ do
+      let cfg = easeInAnimation 1.0
+                  (defaultStyle { wsTranslateX = Just 0 })
+                  (defaultStyle { wsTranslateX = Just 100 })
+      length (anKeyframes cfg) @?= 5
+      anDuration cfg @?= 1.0
+      -- First keyframe should be at 0 with from-style
+      let firstKf = head (anKeyframes cfg)
+      unKeyframeAt (kfAt firstKf) @?= 0
+      wsTranslateX (kfStyle firstKf) @?= Just 0
+      -- Midpoint should be < 50 (ease-in is slow at start)
+      let midKf = anKeyframes cfg !! 2
+      case wsTranslateX (kfStyle midKf) of
+        Just midVal -> assertBool "ease-in midpoint < 50" (midVal < 50)
+        Nothing     -> assertFailure "midpoint should have translateX"
+  , testCase "easeOutAnimation midpoint > 50" $ do
+      let cfg = easeOutAnimation 1.0
+                  (defaultStyle { wsTranslateX = Just 0 })
+                  (defaultStyle { wsTranslateX = Just 100 })
+      let midKf = anKeyframes cfg !! 2
+      case wsTranslateX (kfStyle midKf) of
+        Just midVal -> assertBool "ease-out midpoint > 50" (midVal > 50)
+        Nothing     -> assertFailure "midpoint should have translateX"
+  , testCase "easeInOutAnimation endpoints match from/to" $ do
+      let from = defaultStyle { wsPadding = Just 10 }
+          to   = defaultStyle { wsPadding = Just 90 }
+          cfg  = easeInOutAnimation 0.8 from to
+          kfs  = anKeyframes cfg
+      wsPadding (kfStyle (head kfs)) @?= Just 10
+      wsPadding (kfStyle (last kfs)) @?= Just 90
+  , testCase "andThen combines durations" $ do
+      let cfgA = linearAnimation 0.3
+                   (defaultStyle { wsPadding = Just 0 })
+                   (defaultStyle { wsPadding = Just 50 })
+          cfgB = linearAnimation 0.7
+                   (defaultStyle { wsPadding = Just 50 })
+                   (defaultStyle { wsPadding = Just 100 })
+          combined = andThen cfgA cfgB
+      anDuration combined @?= 1.0
+      length (anKeyframes combined) @?= 4  -- 2 from A + 2 from B
+  , testCase "andThen rescales keyframe positions correctly" $ do
+      let cfgA = linearAnimation 1.0
+                   (defaultStyle { wsTranslateX = Just 0 })
+                   (defaultStyle { wsTranslateX = Just 100 })
+          cfgB = linearAnimation 1.0
+                   (defaultStyle { wsTranslateX = Just 100 })
+                   (defaultStyle { wsTranslateX = Just 200 })
+          combined = andThen cfgA cfgB
+          positions = map (realToFrac . unKeyframeAt . kfAt) (anKeyframes combined) :: [Double]
+      -- A's [0,1] maps to [0,0.5], B's [0,1] maps to [0.5,1]
+      length positions @?= 4
+      assertBool "First position is 0" (abs (positions !! 0) < 0.001)
+      assertBool "Second position is 0.5" (abs (positions !! 1 - 0.5) < 0.001)
+      assertBool "Third position is 0.5" (abs (positions !! 2 - 0.5) < 0.001)
+      assertBool "Fourth position is 1.0" (abs (positions !! 3 - 1.0) < 0.001)
+  , testCase "lerpStyle interpolates numeric fields" $ do
+      let from = defaultStyle { wsPadding = Just 0, wsTranslateX = Just 10 }
+          to   = defaultStyle { wsPadding = Just 100, wsTranslateX = Just 50 }
+          mid  = lerpStyle 0.5 from to
+      wsPadding mid @?= Just 50
+      wsTranslateX mid @?= Just 30
+  , testCase "lerpStyle at boundaries" $ do
+      let from = defaultStyle { wsPadding = Just 10 }
+          to   = defaultStyle { wsPadding = Just 90 }
+      wsPadding (lerpStyle 0.0 from to) @?= Just 10
+      wsPadding (lerpStyle 1.0 from to) @?= Just 90
+  , testCase "lerpStyle interpolates colors" $ do
+      let red  = Color 255 0 0 255
+          blue = Color 0 0 255 255
+          from = defaultStyle { wsTextColor = Just red }
+          to   = defaultStyle { wsTextColor = Just blue }
+          mid  = lerpStyle 0.5 from to
+      case wsTextColor mid of
+        Just c  -> do
+          colorRed c @?= 128
+          colorBlue c @?= 128
+        Nothing -> assertFailure "Expected interpolated color"
   ]

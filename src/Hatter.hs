@@ -97,6 +97,12 @@ module Hatter
   , unKeyframeAt
   , Keyframe(..)
   , AnimatedConfig(..)
+  , linearAnimation
+  , easeInAnimation
+  , easeOutAnimation
+  , easeInOutAnimation
+  , andThen
+  , lerpStyle
     -- * Lifecycle
   , LifecycleEvent(..)
   , MobileContext(..)
@@ -185,13 +191,19 @@ import Hatter.Widget
   , Widget(..)
   , WidgetKey(..)
   , WidgetStyle(..)
+  , andThen
   , button
+  , easeInAnimation
+  , easeInOutAnimation
+  , easeOutAnimation
   , colorFromText
   , colorToHex
   , column
   , defaultStyle
   , item
   , keyedItem
+  , linearAnimation
+  , lerpStyle
   , mkKeyframeAt
   , row
   , scrollColumn

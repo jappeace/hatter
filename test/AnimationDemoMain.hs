@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- | Self-contained animation demo app.
 --
--- A button toggles padding between 10 and 50, using 2-keyframe
+-- A button toggles padding between 10 and 50, using a linear
 -- animation over 0.5 seconds.  The desktop stub fires test frames
 -- synchronously, which exercises the tween interpolation path and
 -- logs progress to stderr.
@@ -13,10 +13,7 @@ import Foreign.Ptr (Ptr)
 import Hatter
   ( MobileApp(..)
   , UserState(..)
-  , AnimatedConfig(..)
-  , Keyframe(..)
-  , KeyframeAt
-  , mkKeyframeAt
+  , linearAnimation
   , startMobileApp
   , newActionState
   , runActionM
@@ -34,12 +31,6 @@ import Hatter.Widget
   , column
   )
 
--- | Unsafely create a KeyframeAt, assuming the value is in [0,1].
-unsafeKeyframeAt :: Rational -> Hatter.KeyframeAt
-unsafeKeyframeAt value = case mkKeyframeAt (fromRational value) of
-  Just kfAt -> kfAt
-  Nothing   -> error ("Invalid keyframe position: " ++ show value)
-
 main :: IO (Ptr AppContext)
 main = do
   actionState <- newActionState
@@ -52,12 +43,11 @@ main = do
   let viewFn :: UserState -> IO Widget
       viewFn _userState = do
         currentPadding <- readIORef paddingRef
-        let keyframes =
-              [ Keyframe (unsafeKeyframeAt 0) (defaultStyle { wsPadding = Just 0 })
-              , Keyframe (unsafeKeyframeAt 1) (defaultStyle { wsPadding = Just currentPadding })
-              ]
+        let config = linearAnimation 0.5
+                       (defaultStyle { wsPadding = Just 0 })
+                       (defaultStyle { wsPadding = Just currentPadding })
         pure $ column
-          [ Animated (AnimatedConfig 0.5 keyframes) $
+          [ Animated config $
               Styled (defaultStyle { wsPadding = Just currentPadding }) $
                 Text TextConfig
                   { tcLabel = "Animated padding"

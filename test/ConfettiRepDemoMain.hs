@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
--- | Confetti animation demo using keyframe API.
+-- | Confetti animation demo using easeOut smart constructor.
 --
--- Each particle gets its own 2-keyframe Animated wrapper:
+-- Each particle gets its own Animated wrapper with easeOut:
 -- origin (0,0) -> target (offsetX, offsetY) over 1.2 seconds.
 module Main where
 
@@ -10,10 +10,7 @@ import Foreign.Ptr (Ptr)
 import Hatter
   ( MobileApp(..)
   , UserState(..)
-  , AnimatedConfig(..)
-  , Keyframe(..)
-  , KeyframeAt
-  , mkKeyframeAt
+  , easeOutAnimation
   , startMobileApp
   , newActionState
   , runActionM
@@ -31,22 +28,13 @@ import Hatter.Widget
   , column
   )
 
--- | Unsafely create a KeyframeAt, assuming the value is in [0,1].
-unsafeKeyframeAt :: Rational -> Hatter.KeyframeAt
-unsafeKeyframeAt value = case mkKeyframeAt (fromRational value) of
-  Just kfAt -> kfAt
-  Nothing   -> error ("Invalid keyframe position: " ++ show value)
-
--- | A confetti particle with a 2-keyframe animation from origin to target.
+-- | A confetti particle with an easeOut animation from origin to target.
 confettiParticle :: Double -> Double -> Widget
 confettiParticle offsetX offsetY =
-  let keyframes =
-        [ Keyframe (unsafeKeyframeAt 0)
-            (defaultStyle { wsTranslateX = Just 0, wsTranslateY = Just 0 })
-        , Keyframe (unsafeKeyframeAt 1)
-            (defaultStyle { wsTranslateX = Just offsetX, wsTranslateY = Just offsetY })
-        ]
-  in Animated (AnimatedConfig 1.2 keyframes) $
+  let config = easeOutAnimation 1.2
+                 (defaultStyle { wsTranslateX = Just 0, wsTranslateY = Just 0 })
+                 (defaultStyle { wsTranslateX = Just offsetX, wsTranslateY = Just offsetY })
+  in Animated config $
        Styled (defaultStyle { wsTranslateX = Just offsetX
                             , wsTranslateY = Just offsetY
                             }) $

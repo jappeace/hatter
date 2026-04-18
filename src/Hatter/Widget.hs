@@ -40,6 +40,12 @@ module Hatter.Widget
   , unKeyframeAt
   , Keyframe(..)
   , AnimatedConfig(..)
+  , linearAnimation
+  , easeInAnimation
+  , easeOutAnimation
+  , easeInOutAnimation
+  , andThen
+  , lerpStyle
   , normalizeAnimated
   , wrapLayoutItemAnimated
   , interpolateColor
@@ -251,6 +257,112 @@ data AnimatedConfig = AnimatedConfig
   , anKeyframes :: [Keyframe]
     -- ^ Keyframes sorted by 'kfAt'.  At least two are needed for animation.
   } deriving (Show, Eq)
+
+-- | Build a simple 2-keyframe animation that interpolates linearly
+-- from one style to another over the given duration.
+--
+-- @
+-- linearAnimation 0.3 (defaultStyle { wsPadding = Just 0 })
+--                      (defaultStyle { wsPadding = Just 20 })
+-- @
+linearAnimation :: NominalDiffTime -> WidgetStyle -> WidgetStyle -> AnimatedConfig
+linearAnimation duration fromStyle toStyle = AnimatedConfig
+  { anDuration  = duration
+  , anKeyframes =
+      [ Keyframe (KeyframeAt 0) fromStyle
+      , Keyframe (KeyframeAt 1) toStyle
+      ]
+  }
+
+-- | 2-keyframe animation with an ease-in curve (slow start, fast end).
+-- Approximated with 5 sampled keyframes along the cubic @t^3@ curve.
+easeInAnimation :: NominalDiffTime -> WidgetStyle -> WidgetStyle -> AnimatedConfig
+easeInAnimation = sampledAnimation (\t -> t * t * t)
+
+-- | 2-keyframe animation with an ease-out curve (fast start, slow end).
+-- Approximated with 5 sampled keyframes along the cubic @1 - (1-t)^3@ curve.
+easeOutAnimation :: NominalDiffTime -> WidgetStyle -> WidgetStyle -> AnimatedConfig
+easeOutAnimation = sampledAnimation (\t -> let s = 1 - t in 1 - s * s * s)
+
+-- | 2-keyframe animation with an ease-in-out curve (slow start and end).
+-- Approximated with 5 sampled keyframes along the smoothstep @3t^2 - 2t^3@ curve.
+easeInOutAnimation :: NominalDiffTime -> WidgetStyle -> WidgetStyle -> AnimatedConfig
+easeInOutAnimation = sampledAnimation (\t -> t * t * (3 - 2 * t))
+
+-- | Build an AnimatedConfig by sampling an easing curve at 5 uniform points.
+-- The curve function maps linear progress @[0,1]@ to eased progress @[0,1]@.
+sampledAnimation :: (Double -> Double) -> NominalDiffTime -> WidgetStyle -> WidgetStyle -> AnimatedConfig
+sampledAnimation curve duration fromStyle toStyle = AnimatedConfig
+  { anDuration  = duration
+  , anKeyframes = map sampleAt [0, 0.25, 0.5, 0.75, 1.0]
+  }
+  where
+    sampleAt :: Double -> Keyframe
+    sampleAt t = Keyframe kfPosition (lerpStyle (curve t) fromStyle toStyle)
+      where
+        kfPosition = case mkKeyframeAt (realToFrac t) of
+          Just pos -> pos
+          Nothing  -> error ("sampledAnimation: invalid sample point " ++ show t)
+
+-- | Pure linear interpolation of widget styles.
+-- Numeric fields present in both styles are interpolated;
+-- fields present in only one are snapped at the halfway mark.
+lerpStyle :: Double -> WidgetStyle -> WidgetStyle -> WidgetStyle
+lerpStyle t from to = WidgetStyle
+  { wsPadding          = lerpMaybeDouble (wsPadding from) (wsPadding to)
+  , wsTextAlign        = snapMaybe (wsTextAlign from) (wsTextAlign to)
+  , wsTextColor        = lerpMaybeColor (wsTextColor from) (wsTextColor to)
+  , wsBackgroundColor  = lerpMaybeColor (wsBackgroundColor from) (wsBackgroundColor to)
+  , wsTranslateX       = lerpMaybeDouble (wsTranslateX from) (wsTranslateX to)
+  , wsTranslateY       = lerpMaybeDouble (wsTranslateY from) (wsTranslateY to)
+  , wsTouchPassthrough = snapMaybe (wsTouchPassthrough from) (wsTouchPassthrough to)
+  }
+  where
+    lerpMaybeDouble :: Maybe Double -> Maybe Double -> Maybe Double
+    lerpMaybeDouble (Just a) (Just b) = Just (a + (b - a) * t)
+    lerpMaybeDouble a        b        = snapMaybe a b
+
+    lerpMaybeColor :: Maybe Color -> Maybe Color -> Maybe Color
+    lerpMaybeColor (Just a) (Just b) = Just (interpolateColor a b t)
+    lerpMaybeColor a        b        = snapMaybe a b
+
+    snapMaybe :: Maybe a -> Maybe a -> Maybe a
+    snapMaybe a b = if t < 0.5 then a else b
+
+-- | Chain two animations sequentially.  The resulting 'AnimatedConfig'
+-- plays @first@ then @second@, with the combined duration.
+--
+-- Keyframe positions are rescaled so that @first@'s keyframes occupy
+-- @[0, split]@ and @second@'s occupy @[split, 1]@ where
+-- @split = durationFirst / (durationFirst + durationSecond)@.
+andThen :: AnimatedConfig -> AnimatedConfig -> AnimatedConfig
+andThen first second = AnimatedConfig
+  { anDuration  = totalDuration
+  , anKeyframes = rescaledFirst ++ rescaledSecond
+  }
+  where
+    totalDuration :: NominalDiffTime
+    totalDuration = anDuration first + anDuration second
+
+    splitRatio :: Double
+    splitRatio = realToFrac (anDuration first) / realToFrac totalDuration
+
+    rescaleKeyframe :: Double -> Double -> Keyframe -> Keyframe
+    rescaleKeyframe scale offset (Keyframe kfPosition style) =
+      let originalPos = realToFrac (unKeyframeAt kfPosition) :: Double
+          newPos      = offset + originalPos * scale
+          newFixed    = realToFrac newPos :: Fixed E6
+          -- Clamp to [0,1] to avoid floating-point edge cases
+          clampedAt   = case mkKeyframeAt (max 0 (min 1 newFixed)) of
+            Just validated -> validated
+            Nothing        -> kfPosition  -- unreachable after clamp
+      in Keyframe clampedAt style
+
+    rescaledFirst :: [Keyframe]
+    rescaledFirst  = map (rescaleKeyframe splitRatio 0) (anKeyframes first)
+
+    rescaledSecond :: [Keyframe]
+    rescaledSecond = map (rescaleKeyframe (1 - splitRatio) splitRatio) (anKeyframes second)
 
 -- | Linearly interpolate a single 'Word8' channel.
 lerpWord8 :: Word8 -> Word8 -> Double -> Word8
