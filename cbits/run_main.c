@@ -12,6 +12,9 @@
  */
 
 #include "Rts.h"
+#include <stdio.h>
+
+extern void hatterLog(const char *msg);
 
 /* Initialize the GHC RTS with compile-time RTS options.
  * Uses hs_init_ghc() with RtsConfig.rts_opts instead of passing
@@ -24,12 +27,19 @@
  *           Pass NULL to use default RTS settings. */
 void hatter_hs_init(const char *rts_opts)
 {
+    char buf[256];
+    snprintf(buf, sizeof(buf), "hatter_hs_init: rts_opts=\"%s\"",
+             rts_opts ? rts_opts : "(null)");
+    hatterLog(buf);
+
     RtsConfig conf = defaultRtsConfig;
     if (rts_opts) {
         conf.rts_opts_enabled = RtsOptsAll;
         conf.rts_opts = rts_opts;
     }
     hs_init_ghc(NULL, NULL, conf);
+
+    hatterLog("hatter_hs_init: RTS initialized");
 }
 
 /* GHC's Z-encoded symbol for :Main.main (the program's main closure) */
