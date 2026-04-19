@@ -18,11 +18,13 @@ class HaskellBridge {
     private static var context: UnsafeMutableRawPointer?
 
     /// Initialize the Haskell RTS. Must be called before any other Haskell function.
-    /// Uses hatter_hs_init with RtsConfig to set -M256m — passing argv to hs_init
+    /// Uses hatter_hs_init with RtsConfig — passing argv to hs_init
     /// hangs on watchOS cross-compiled builds (the argv parsing codepath is broken).
+    /// -M256m: max heap 256 MiB.
+    /// -xr2G: reserve only 2 GiB virtual address space (default 1 TiB is rejected by watchOS).
     static func initialize() {
-        os_log("HaskellBridge: calling hatter_hs_init with -M256m", log: bridgeLog, type: .fault)
-        hatter_hs_init("-M256m")
+        os_log("HaskellBridge: calling hatter_hs_init with -M256m -xr2G", log: bridgeLog, type: .fault)
+        hatter_hs_init("-M256m -xr2G")
         os_log("HaskellBridge: hatter_hs_init returned", log: bridgeLog, type: .fault)
 
         setSystemLocale("en")  // watchOS default locale, before Haskell main

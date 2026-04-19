@@ -17,11 +17,13 @@ class HaskellBridge {
     private static var context: UnsafeMutableRawPointer?
 
     /// Initialize the Haskell RTS. Must be called before any other Haskell function.
-    /// Uses hatter_hs_init with RtsConfig to set -M512m — passing argv to hs_init
+    /// Uses hatter_hs_init with RtsConfig — passing argv to hs_init
     /// hangs on iOS cross-compiled builds (the argv parsing codepath is broken).
+    /// -M512m: max heap 512 MiB.
+    /// -xr4G: reserve only 4 GiB virtual address space (default 1 TiB is rejected by iOS).
     static func initialize() {
-        os_log("HaskellBridge: calling hatter_hs_init with -M512m", log: bridgeLog, type: .fault)
-        hatter_hs_init("-M512m")
+        os_log("HaskellBridge: calling hatter_hs_init with -M512m -xr4G", log: bridgeLog, type: .fault)
+        hatter_hs_init("-M512m -xr4G")
         os_log("HaskellBridge: hatter_hs_init returned", log: bridgeLog, type: .fault)
 
         setup_ios_platform_globals()
