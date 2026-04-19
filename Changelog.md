@@ -1,5 +1,23 @@
 # Change log for hatter
 
+## Version 0.3.0 2026.04.19 
+We used advanced sciences and made hatter even better!
+
+Science was used to make the animations work!
+
+
+Also we used science to get IOS to run and install !!!
+
+We had some science left and use that to
+kill all bugs with pesticides.
+
+very good.
+
+I can make ask claudes to make a nice overview in here.
+but fuck that,
+
+better to make u laugh traveler.
+
 ## Version 0.2.0
 
 ### Breaking changes
