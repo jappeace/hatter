@@ -7,7 +7,9 @@
 void hs_init(int *argc, char **argv[]);
 
 /* Initialize the GHC RTS with RTS options via RtsConfig (avoids argv parsing).
- * rts_opts: RTS flag string, e.g. "-M512m" (without +RTS/-RTS wrappers).
+ * rts_opts: space-separated RTS flags, e.g. "-M512m -xr4G".
+ *           -M sets max heap; -xr sets virtual address space reservation
+ *           (default 1 TiB — too large for iOS/watchOS).
  *           Pass NULL to use default RTS settings. */
 void hatter_hs_init(const char *rts_opts);
 

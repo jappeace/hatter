@@ -18,7 +18,9 @@
  * argv to hs_init() — the argv parsing codepath hangs on iOS/watchOS
  * cross-compiled builds.
  *
- * rts_opts: RTS flag string, e.g. "-M512m" (without +RTS/-RTS wrappers).
+ * rts_opts: space-separated RTS flags, e.g. "-M512m -xr4G".
+ *           -M sets max heap; -xr sets virtual address space reservation
+ *           (default 1 TiB — too large for iOS/watchOS).
  *           Pass NULL to use default RTS settings. */
 void hatter_hs_init(const char *rts_opts)
 {
