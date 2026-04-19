@@ -13,6 +13,23 @@
 
 #include "Rts.h"
 
+/* Initialize the GHC RTS with compile-time RTS options.
+ * Uses hs_init_ghc() with RtsConfig.rts_opts instead of passing
+ * argv to hs_init() — the argv parsing codepath hangs on iOS/watchOS
+ * cross-compiled builds.
+ *
+ * rts_opts: RTS flag string, e.g. "-M512m" (without +RTS/-RTS wrappers).
+ *           Pass NULL to use default RTS settings. */
+void hatter_hs_init(const char *rts_opts)
+{
+    RtsConfig conf = defaultRtsConfig;
+    if (rts_opts) {
+        conf.rts_opts_enabled = RtsOptsAll;
+        conf.rts_opts = rts_opts;
+    }
+    hs_init_ghc(NULL, NULL, conf);
+}
+
 /* GHC's Z-encoded symbol for :Main.main (the program's main closure) */
 extern StgClosure ZCMain_main_closure;
 

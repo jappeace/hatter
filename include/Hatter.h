@@ -6,6 +6,11 @@
 /* GHC RTS initialization (call before any Haskell function) */
 void hs_init(int *argc, char **argv[]);
 
+/* Initialize the GHC RTS with RTS options via RtsConfig (avoids argv parsing).
+ * rts_opts: RTS flag string, e.g. "-M512m" (without +RTS/-RTS wrappers).
+ *           Pass NULL to use default RTS settings. */
+void hatter_hs_init(const char *rts_opts);
+
 /* Run the user's Haskell main :: IO (Ptr AppContext).
  * Uses the GHC RTS API to evaluate ZCMain_main_closure and capture
  * the returned context pointer — no foreign export ccall needed in
