@@ -37,7 +37,11 @@ let
     haskellPkgs = nativeHaskellPkgs;
   };
 
+  # Hatter's own non-boot dependencies — always included so mkIOSLib's
+  # raw GHC invocation can find them even without a consumer cabal file.
+  hatterOwnDeps = [ nativeHaskellPkgs.unwitch ];
+
 in import ./collect-deps.nix {
   inherit pkgs ghc ghcPkgCmd;
-  deps = resolvedDeps;
+  deps = resolvedDeps ++ hatterOwnDeps;
 }
