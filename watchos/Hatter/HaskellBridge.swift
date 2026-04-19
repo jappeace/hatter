@@ -18,23 +18,24 @@ class HaskellBridge {
     private static var context: UnsafeMutableRawPointer?
 
     /// Initialize the Haskell RTS. Must be called before any other Haskell function.
-    /// On real devices, passes -M256m to limit the heap — watchOS rejects the default
-    /// ~1TB virtual memory reservation.  The simulator runs on macOS and doesn't need the cap.
+    /// Passes -M256m to limit the heap — watchOS rejects the default ~1TB virtual memory reservation.
     static func initialize() {
-        #if targetEnvironment(simulator)
-        hs_init(nil, nil)
-        #else
+        os_log("HaskellBridge: starting hs_init", log: bridgeLog, type: .info)
         let rtsArgs = ["hatter", "+RTS", "-M256m", "-RTS"]
         var args: [UnsafeMutablePointer<CChar>?] = rtsArgs.map { strdup($0) }
-        var argc = Int32(args.count)
+        args.append(nil)  // null terminator, like C argv
+        var argc = Int32(rtsArgs.count)
+        os_log("HaskellBridge: argc=%d, args allocated", log: bridgeLog, type: .info, argc)
+        os_log("HaskellBridge: calling hs_init", log: bridgeLog, type: .info)
         args.withUnsafeMutableBufferPointer { buf in
             var ptr = buf.baseAddress
             withUnsafeMutablePointer(to: &ptr) { argv in
+                os_log("HaskellBridge: about to call hs_init(&argc, argv)", log: bridgeLog, type: .info)
                 hs_init(&argc, argv)
             }
         }
-        args.forEach { free($0) }
-        #endif
+        os_log("HaskellBridge: hs_init returned, argc now=%d", log: bridgeLog, type: .info, argc)
+        for arg in args { if let arg = arg { free(arg) } }
         setSystemLocale("en")  // watchOS default locale, before Haskell main
 
         // Device info — WKInterfaceDevice for watchOS
