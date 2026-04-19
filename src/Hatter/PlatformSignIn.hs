@@ -35,6 +35,8 @@ import Data.Text (Text)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
+import Unwitch.Convert.CInt qualified as CInt
+import Unwitch.Convert.Int32 qualified as Int32
 
 -- | Identity provider for platform sign-in.
 data SignInProvider
@@ -126,10 +128,10 @@ signInResultFromInt _ _ _ _ _ _ = Nothing
 startPlatformSignIn :: PlatformSignInState -> SignInProvider -> (SignInResult -> IO ()) -> IO ()
 startPlatformSignIn signInState provider callback = do
   requestId <- readIORef (psiNextId signInState)
-  modifyIORef' (psiCallbacks signInState) (IntMap.insert (fromIntegral requestId) callback)
+  modifyIORef' (psiCallbacks signInState) (IntMap.insert (int32ToIntKey requestId) callback)
   writeIORef (psiNextId signInState) (requestId + 1)
   ctx <- readIORef (psiContextPtr signInState)
-  c_platformSignInStart ctx (fromIntegral requestId) (providerToInt provider)
+  c_platformSignInStart ctx (Int32.toCInt requestId) (providerToInt provider)
 
 -- | Dispatch a platform sign-in result from the platform back to the
 -- registered Haskell callback. Removes the callback after firing.
@@ -140,7 +142,7 @@ dispatchPlatformSignInResult signInState requestId statusCode maybeToken maybeUs
     Nothing -> hPutStrLn stderr $
       "dispatchPlatformSignInResult: unknown status code " ++ show statusCode
     Just result -> do
-      let reqKey = fromIntegral requestId
+      let reqKey = CInt.toInt requestId
       callbacks <- readIORef (psiCallbacks signInState)
       case IntMap.lookup reqKey callbacks of
         Just callback -> do
@@ -148,6 +150,11 @@ dispatchPlatformSignInResult signInState requestId statusCode maybeToken maybeUs
           callback result
         Nothing -> hPutStrLn stderr $
           "dispatchPlatformSignInResult: unknown request ID " ++ show requestId
+
+-- | Convert Int32 to Int for use as IntMap key.
+-- Total on all GHC-supported platforms (Int >= 32 bits).
+int32ToIntKey :: Int32 -> Int
+int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: start a platform sign-in via the C bridge.
 foreign import ccall "platform_sign_in_start"

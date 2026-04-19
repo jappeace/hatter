@@ -43,6 +43,9 @@ import Foreign.C.String (CString, withCString)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
+import Unwitch.Convert.CInt qualified as CInt
+import Unwitch.Convert.Int qualified as Int
+import Unwitch.Convert.Int32 qualified as Int32
 
 -- | HTTP request method.
 data HttpMethod
@@ -128,7 +131,7 @@ parseHeaders headerText =
 performRequest :: HttpState -> HttpRequest -> (Either HttpError HttpResponse -> IO ()) -> IO ()
 performRequest httpState request callback = do
   requestId <- readIORef (hsNextId httpState)
-  modifyIORef' (hsCallbacks httpState) (IntMap.insert (fromIntegral requestId) callback)
+  modifyIORef' (hsCallbacks httpState) (IntMap.insert (int32ToIntKey requestId) callback)
   writeIORef (hsNextId httpState) (requestId + 1)
   ctx <- readIORef (hsContextPtr httpState)
   let methodInt = httpMethodToInt (hrMethod request)
@@ -136,22 +139,22 @@ performRequest httpState request callback = do
   withCString (Text.unpack (hrUrl request)) $ \cUrl ->
     withCString headerStr $ \cHeaders ->
       BS.useAsCStringLen (hrBody request) $ \(cBody, bodyLen) ->
-        c_httpRequest ctx (fromIntegral requestId) methodInt
-                      cUrl cHeaders cBody (fromIntegral bodyLen)
+        c_httpRequest ctx (Int32.toCInt requestId) methodInt
+                      cUrl cHeaders cBody (maybe 0 id (Int.toCInt bodyLen))
 
 -- | Dispatch an HTTP result from the platform back to the registered
 -- Haskell callback. Removes the callback after firing.
 -- Unknown request IDs or result codes are silently logged to stderr.
 dispatchHttpResult :: HttpState -> CInt -> CInt -> CInt -> Maybe Text -> ByteString -> IO ()
 dispatchHttpResult httpState requestId resultCode httpStatus maybeHeaders responseBody = do
-  let reqKey = fromIntegral requestId
+  let reqKey = CInt.toInt requestId
   callbacks <- readIORef (hsCallbacks httpState)
   case IntMap.lookup reqKey callbacks of
     Just callback -> do
       modifyIORef' (hsCallbacks httpState) (IntMap.delete reqKey)
       let result = case resultCode of
             0 -> Right HttpResponse
-              { hrStatusCode  = fromIntegral httpStatus
+              { hrStatusCode  = CInt.toInt httpStatus
               , hrRespHeaders = maybe [] parseHeaders maybeHeaders
               , hrRespBody    = responseBody
               }
@@ -161,6 +164,11 @@ dispatchHttpResult httpState requestId resultCode httpStatus maybeHeaders respon
       callback result
     Nothing -> hPutStrLn stderr $
       "dispatchHttpResult: unknown request ID " ++ show requestId
+
+-- | Convert Int32 to Int for use as IntMap key.
+-- Total on all GHC-supported platforms (Int >= 32 bits).
+int32ToIntKey :: Int32 -> Int
+int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: send an HTTP request via the C bridge.
 foreign import ccall "http_request"

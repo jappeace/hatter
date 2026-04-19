@@ -43,6 +43,8 @@ import Data.IntMap.Strict qualified as IntMap
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
+import Unwitch.Convert.CInt qualified as CInt
+import Unwitch.Convert.Int32 qualified as Int32
 
 -- | Which camera to use.
 data CameraSource
@@ -130,7 +132,7 @@ cameraStatusFromInt _ = Nothing
 startCameraSession :: CameraState -> CameraSource -> IO ()
 startCameraSession cameraState source = do
   ctx <- readIORef (csContextPtr cameraState)
-  c_cameraStartSession ctx (fromIntegral (cameraSourceToInt source))
+  c_cameraStartSession ctx (Int32.toCInt (cameraSourceToInt source))
 
 -- | Stop the active camera session.
 -- Safe to call when no session is active (no-op).
@@ -144,10 +146,10 @@ stopCameraSession _cameraState =
 capturePhoto :: CameraState -> (CameraResult -> IO ()) -> IO ()
 capturePhoto cameraState callback = do
   requestId <- readIORef (csNextId cameraState)
-  modifyIORef' (csCallbacks cameraState) (IntMap.insert (fromIntegral requestId) callback)
+  modifyIORef' (csCallbacks cameraState) (IntMap.insert (int32ToIntKey requestId) callback)
   writeIORef (csNextId cameraState) (requestId + 1)
   ctx <- readIORef (csContextPtr cameraState)
-  c_cameraCapturePhoto ctx (fromIntegral requestId)
+  c_cameraCapturePhoto ctx (Int32.toCInt requestId)
 
 -- | Start recording video.  Registers three callbacks:
 --
@@ -163,13 +165,13 @@ startVideoCapture :: CameraState
                   -> IO ()
 startVideoCapture cameraState frameCallback audioCallback completionCallback = do
   requestId <- readIORef (csNextId cameraState)
-  let reqKey = fromIntegral requestId
+  let reqKey = int32ToIntKey requestId
   modifyIORef' (csCallbacks cameraState) (IntMap.insert reqKey completionCallback)
   modifyIORef' (csFrameCallbacks cameraState) (IntMap.insert reqKey frameCallback)
   modifyIORef' (csAudioCallbacks cameraState) (IntMap.insert reqKey audioCallback)
   writeIORef (csNextId cameraState) (requestId + 1)
   ctx <- readIORef (csContextPtr cameraState)
-  c_cameraStartVideo ctx (fromIntegral requestId)
+  c_cameraStartVideo ctx (Int32.toCInt requestId)
 
 -- | Stop recording video. The callback registered by 'startVideoCapture'
 -- will be fired with a completion result.
@@ -191,12 +193,12 @@ dispatchCameraResult cameraState requestId statusCode
     Nothing -> hPutStrLn stderr $
       "dispatchCameraResult: unknown status code " ++ show statusCode
     Just status -> do
-      let reqKey = fromIntegral requestId
+      let reqKey = CInt.toInt requestId
           maybePicture = case status of
             CameraSuccess -> case maybeImageData of
               Just imageBytes -> Just Picture
-                { pictureWidth  = fromIntegral imageWidth
-                , pictureHeight = fromIntegral imageHeight
+                { pictureWidth  = CInt.toInt imageWidth
+                , pictureHeight = CInt.toInt imageHeight
                 , pictureData   = imageBytes
                 }
               Nothing -> Nothing
@@ -220,10 +222,10 @@ dispatchCameraResult cameraState requestId statusCode
 -- recording stops.
 dispatchVideoFrame :: CameraState -> CInt -> ByteString -> CInt -> CInt -> IO ()
 dispatchVideoFrame cameraState requestId frameBytes frameWidth frameHeight = do
-  let reqKey = fromIntegral requestId
+  let reqKey = CInt.toInt requestId
       picture = Picture
-        { pictureWidth  = fromIntegral frameWidth
-        , pictureHeight = fromIntegral frameHeight
+        { pictureWidth  = CInt.toInt frameWidth
+        , pictureHeight = CInt.toInt frameHeight
         , pictureData   = frameBytes
         }
   frameCallbacks <- readIORef (csFrameCallbacks cameraState)
@@ -237,12 +239,17 @@ dispatchVideoFrame cameraState requestId frameBytes frameWidth frameHeight = do
 -- recording stops.
 dispatchAudioChunk :: CameraState -> CInt -> ByteString -> IO ()
 dispatchAudioChunk cameraState requestId audioBytes = do
-  let reqKey = fromIntegral requestId
+  let reqKey = CInt.toInt requestId
   audioCallbacks <- readIORef (csAudioCallbacks cameraState)
   case IntMap.lookup reqKey audioCallbacks of
     Just callback -> callback audioBytes
     Nothing -> hPutStrLn stderr $
       "dispatchAudioChunk: unknown request ID " ++ show requestId
+
+-- | Convert Int32 to Int for use as IntMap key.
+-- Total on all GHC-supported platforms (Int >= 32 bits).
+int32ToIntKey :: Int32 -> Int
+int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: start a camera session via the C bridge.
 foreign import ccall "camera_start_session"

@@ -31,6 +31,8 @@ import Foreign.C.String (CString, withCString)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
+import Unwitch.Convert.CInt qualified as CInt
+import Unwitch.Convert.Int32 qualified as Int32
 
 -- | Which button was tapped, or whether the dialog was dismissed.
 data DialogAction
@@ -91,7 +93,7 @@ dialogActionFromInt _ = Nothing
 showDialog :: DialogState -> DialogConfig -> (DialogAction -> IO ()) -> IO ()
 showDialog dialogState config callback = do
   requestId <- readIORef (dsNextId dialogState)
-  modifyIORef' (dsCallbacks dialogState) (IntMap.insert (fromIntegral requestId) callback)
+  modifyIORef' (dsCallbacks dialogState) (IntMap.insert (int32ToIntKey requestId) callback)
   writeIORef (dsNextId dialogState) (requestId + 1)
   ctx <- readIORef (dsContextPtr dialogState)
   withCString (Text.unpack (dcTitle config)) $ \cTitle ->
@@ -99,7 +101,7 @@ showDialog dialogState config callback = do
       withCString (Text.unpack (dcButton1 config)) $ \cButton1 ->
         withOptionalCString (dcButton2 config) $ \cButton2 ->
           withOptionalCString (dcButton3 config) $ \cButton3 ->
-            c_dialogShow ctx (fromIntegral requestId) cTitle cMessage cButton1 cButton2 cButton3
+            c_dialogShow ctx (Int32.toCInt requestId) cTitle cMessage cButton1 cButton2 cButton3
 
 -- | Dispatch a dialog result from the platform back to the
 -- registered Haskell callback.  Removes the callback after firing.
@@ -110,7 +112,7 @@ dispatchDialogResult dialogState requestId actionCode =
     Nothing -> hPutStrLn stderr $
       "dispatchDialogResult: unknown action code " ++ show actionCode
     Just action -> do
-      let reqKey = fromIntegral requestId
+      let reqKey = CInt.toInt requestId
       callbacks <- readIORef (dsCallbacks dialogState)
       case IntMap.lookup reqKey callbacks of
         Just callback -> do
@@ -123,6 +125,11 @@ dispatchDialogResult dialogState requestId actionCode =
 withOptionalCString :: Maybe Text -> (CString -> IO a) -> IO a
 withOptionalCString Nothing  action = action nullPtr
 withOptionalCString (Just t) action = withCString (Text.unpack t) action
+
+-- | Convert Int32 to Int for use as IntMap key.
+-- Total on all GHC-supported platforms (Int >= 32 bits).
+int32ToIntKey :: Int32 -> Int
+int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: show a dialog via the C bridge.
 foreign import ccall "dialog_show"

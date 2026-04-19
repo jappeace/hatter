@@ -31,6 +31,9 @@ import Data.Word (Word8)
 import Foreign.C.String (CString, withCString)
 import Foreign.C.Types (CInt(..), CDouble(..))
 import Foreign.Ptr (Ptr, castPtr)
+import Unwitch.Convert.Int qualified as Int
+import Unwitch.Convert.Int32 qualified as Int32
+import Unwitch.Convert.CInt qualified as CInt
 
 -- | Widget node types corresponding to @UI_NODE_*@ in @UIBridge.h@.
 data NodeType
@@ -133,50 +136,50 @@ foreign import ccall "ui_clear"          c_clear        :: IO ()
 
 -- | Create a native node of the given type. Returns an opaque node ID.
 createNode :: NodeType -> IO Int32
-createNode nt = fromIntegral <$> c_createNode (fromIntegral (nodeTypeToInt nt))
+createNode nt = CInt.toInt32 <$> c_createNode (Int32.toCInt (nodeTypeToInt nt))
 
 -- | Set a string property on a node.
 setStrProp :: Int32 -> PropId -> Text -> IO ()
 setStrProp nodeId propId value =
   withCString (unpack value) $ \cstr ->
-    c_setStrProp (fromIntegral nodeId) (fromIntegral (propIdToInt propId)) cstr
+    c_setStrProp (Int32.toCInt nodeId) (Int32.toCInt (propIdToInt propId)) cstr
 
 -- | Set a numeric property on a node.
 setNumProp :: Int32 -> PropId -> Double -> IO ()
 setNumProp nodeId propId value =
-  c_setNumProp (fromIntegral nodeId) (fromIntegral (propIdToInt propId)) (realToFrac value)
+  c_setNumProp (Int32.toCInt nodeId) (Int32.toCInt (propIdToInt propId)) (realToFrac value)
 
 -- | Set raw image data (PNG/JPEG bytes) on a node.
 setImageData :: Int32 -> ByteString -> IO ()
 setImageData nodeId imageBytes =
   BS.useAsCStringLen imageBytes $ \(ptr, len) ->
-    c_setImageData (fromIntegral nodeId) (castPtr ptr) (fromIntegral len)
+    c_setImageData (Int32.toCInt nodeId) (castPtr ptr) (maybe 0 id (Int.toCInt len))
 
 -- | Register an event handler on a node. The @callbackId@ is looked up
 -- in the 'RenderState' callback registry when the event fires.
 setHandler :: Int32 -> EventType -> Int32 -> IO ()
 setHandler nodeId eventType callbackId =
-  c_setHandler (fromIntegral nodeId) (fromIntegral (eventTypeToInt eventType)) (fromIntegral callbackId)
+  c_setHandler (Int32.toCInt nodeId) (Int32.toCInt (eventTypeToInt eventType)) (Int32.toCInt callbackId)
 
 -- | Add a child node to a parent container.
 addChild :: Int32 -> Int32 -> IO ()
 addChild parentId childId =
-  c_addChild (fromIntegral parentId) (fromIntegral childId)
+  c_addChild (Int32.toCInt parentId) (Int32.toCInt childId)
 
 -- | Remove a child node from a parent container.
 removeChild :: Int32 -> Int32 -> IO ()
 removeChild parentId childId =
-  c_removeChild (fromIntegral parentId) (fromIntegral childId)
+  c_removeChild (Int32.toCInt parentId) (Int32.toCInt childId)
 
 -- | Destroy a node and free its native resources.
 destroyNode :: Int32 -> IO ()
 destroyNode nodeId =
-  c_destroyNode (fromIntegral nodeId)
+  c_destroyNode (Int32.toCInt nodeId)
 
 -- | Set a node as the root of the display.
 setRoot :: Int32 -> IO ()
 setRoot nodeId =
-  c_setRoot (fromIntegral nodeId)
+  c_setRoot (Int32.toCInt nodeId)
 
 -- | Clear all nodes (called before re-render).
 clear :: IO ()

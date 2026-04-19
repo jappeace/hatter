@@ -32,6 +32,8 @@ import Foreign.C.String (CString, withCString)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
+import Unwitch.Convert.CInt qualified as CInt
+import Unwitch.Convert.Int32 qualified as Int32
 
 -- | Result of a bottom sheet interaction.
 data BottomSheetAction
@@ -76,7 +78,7 @@ newBottomSheetState = do
 bottomSheetActionFromInt :: CInt -> Maybe BottomSheetAction
 bottomSheetActionFromInt (-1) = Just BottomSheetDismissed
 bottomSheetActionFromInt code
-  | code >= 0 = Just (BottomSheetItemSelected (fromIntegral code))
+  | code >= 0 = Just (BottomSheetItemSelected (CInt.toInt32 code))
   | otherwise = Nothing
 
 -- | Show a bottom sheet with the given configuration.  Registers
@@ -86,13 +88,13 @@ bottomSheetActionFromInt code
 showBottomSheet :: BottomSheetState -> BottomSheetConfig -> (BottomSheetAction -> IO ()) -> IO ()
 showBottomSheet bottomSheetState config callback = do
   requestId <- readIORef (bssNextId bottomSheetState)
-  modifyIORef' (bssCallbacks bottomSheetState) (IntMap.insert (fromIntegral requestId) callback)
+  modifyIORef' (bssCallbacks bottomSheetState) (IntMap.insert (int32ToIntKey requestId) callback)
   writeIORef (bssNextId bottomSheetState) (requestId + 1)
   ctx <- readIORef (bssContextPtr bottomSheetState)
   let joinedItems = Text.unpack (Text.intercalate "\n" (bscItems config))
   withCString (Text.unpack (bscTitle config)) $ \cTitle ->
     withCString joinedItems $ \cItems ->
-      c_bottomSheetShow ctx (fromIntegral requestId) cTitle cItems
+      c_bottomSheetShow ctx (Int32.toCInt requestId) cTitle cItems
 
 -- | Dispatch a bottom sheet result from the platform back to the
 -- registered Haskell callback.  Removes the callback after firing.
@@ -103,7 +105,7 @@ dispatchBottomSheetResult bottomSheetState requestId actionCode =
     Nothing -> hPutStrLn stderr $
       "dispatchBottomSheetResult: unknown action code " ++ show actionCode
     Just action -> do
-      let reqKey = fromIntegral requestId
+      let reqKey = CInt.toInt requestId
       callbacks <- readIORef (bssCallbacks bottomSheetState)
       case IntMap.lookup reqKey callbacks of
         Just callback -> do
@@ -111,6 +113,11 @@ dispatchBottomSheetResult bottomSheetState requestId actionCode =
           callback action
         Nothing -> hPutStrLn stderr $
           "dispatchBottomSheetResult: unknown request ID " ++ show requestId
+
+-- | Convert Int32 to Int for use as IntMap key.
+-- Total on all GHC-supported platforms (Int >= 32 bits).
+int32ToIntKey :: Int32 -> Int
+int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: show a bottom sheet via the C bridge.
 foreign import ccall "bottom_sheet_show"

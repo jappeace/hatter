@@ -29,6 +29,8 @@ import Data.IntMap.Strict qualified as IntMap
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
+import Unwitch.Convert.CInt qualified as CInt
+import Unwitch.Convert.Int32 qualified as Int32
 
 -- | Dangerous permissions that require runtime consent on mobile.
 data Permission
@@ -98,10 +100,10 @@ permissionStatusFromInt _ = Nothing
 requestPermission :: PermissionState -> Permission -> (PermissionStatus -> IO ()) -> IO ()
 requestPermission permissionState permission callback = do
   requestId <- readIORef (psNextId permissionState)
-  modifyIORef' (psCallbacks permissionState) (IntMap.insert (fromIntegral requestId) callback)
+  modifyIORef' (psCallbacks permissionState) (IntMap.insert (int32ToIntKey requestId) callback)
   writeIORef (psNextId permissionState) (requestId + 1)
   ctx <- readIORef (psContextPtr permissionState)
-  c_permissionRequest ctx (permissionToInt permission) (fromIntegral requestId)
+  c_permissionRequest ctx (permissionToInt permission) (Int32.toCInt requestId)
 
 -- | Check whether a permission is currently granted (synchronous).
 checkPermission :: Permission -> IO PermissionStatus
@@ -123,12 +125,17 @@ dispatchPermissionResult permissionState requestId statusCode =
       "dispatchPermissionResult: unknown status code " ++ show statusCode
     Just status -> do
       callbacks <- readIORef (psCallbacks permissionState)
-      case IntMap.lookup (fromIntegral requestId) callbacks of
+      case IntMap.lookup (CInt.toInt requestId) callbacks of
         Nothing -> hPutStrLn stderr $
           "dispatchPermissionResult: unknown request ID " ++ show requestId
         Just callback -> do
-          modifyIORef' (psCallbacks permissionState) (IntMap.delete (fromIntegral requestId))
+          modifyIORef' (psCallbacks permissionState) (IntMap.delete (CInt.toInt requestId))
           callback status
+
+-- | Convert Int32 to Int for use as IntMap key.
+-- Total on all GHC-supported platforms (Int >= 32 bits).
+int32ToIntKey :: Int32 -> Int
+int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: request a permission via the C bridge.
 -- Takes an opaque context pointer, permission code, and request ID.
