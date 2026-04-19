@@ -108,6 +108,7 @@ jobs:
 
   watchos:
     runs-on: macos-latest
+    timeout-minutes: 45
     steps:
     - uses: actions/checkout@v4
     - uses: cachix/install-nix-action@v31
@@ -116,7 +117,24 @@ jobs:
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
           extra-substituters = https://nix-cache.jappie.me
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
-    - run: nix-build nix/ci.nix -A watchos-simulator-all -A watchos-lib
+    - name: Build watchOS (with diagnostics)
+      run: |
+        # Background watchdog: every 60s log what nix is building + system load
+        (while true; do
+          echo "=== WATCHDOG $(date -u +%H:%M:%S) ==="
+          echo "--- nix builders ---"
+          ps aux | grep '[n]ix-build\|[n]ix-daemon\|[g]hc\|[l]ibtool\|[c]lang\|[c]onfigure' | head -10 || true
+          echo "--- disk ---"
+          df -h / | tail -1
+          echo "--- load ---"
+          uptime
+          echo "=== END WATCHDOG ==="
+          sleep 60
+        done) &
+        WATCHDOG_PID=$!
+        trap "kill $WATCHDOG_PID 2>/dev/null" EXIT
+
+        nix-build nix/ci.nix -A watchos-simulator-all -A watchos-lib -v
     - name: Run combined watchOS simulator test
       run: nix-build nix/ci.nix -A watchos-simulator-all -o result-watchos && ./result-watchos/bin/test-all-watchos
     - name: Cancel workflow on failure
