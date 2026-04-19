@@ -11,17 +11,18 @@ EXIT_CODE=0
 start_app "$COUNTER_APP" "lifecycle"
 
 # Poll for lifecycle events
+# Use || true to prevent set -e from killing the script on timeout
 lifecycle_done=0
-wait_for_log "$STREAM_LOG" "Lifecycle: Create" 60
-WAIT_RC=$?
+WAIT_RC=0
+wait_for_log "$STREAM_LOG" "Lifecycle: Create" 60 || WAIT_RC=$?
 if [ $WAIT_RC -eq 2 ]; then
     dump_ios_log "$STREAM_LOG" "lifecycle"
     echo "FATAL: Native library failed to load — aborting"
     exit 1
 fi
 if [ $WAIT_RC -eq 0 ]; then
-    wait_for_log "$STREAM_LOG" "Lifecycle: Resume" 5
-    WAIT_RC2=$?
+    WAIT_RC2=0
+    wait_for_log "$STREAM_LOG" "Lifecycle: Resume" 5 || WAIT_RC2=$?
     if [ $WAIT_RC2 -eq 2 ]; then
         dump_ios_log "$STREAM_LOG" "lifecycle"
         echo "FATAL: Native library failed to load — aborting"
@@ -33,7 +34,8 @@ if [ $WAIT_RC -eq 0 ]; then
 fi
 
 if [ $lifecycle_done -eq 0 ]; then
-    echo "WARNING: Lifecycle events not found — retrying with relaunch"
+    echo "WARNING: Lifecycle events not found — dumping stream log before retry"
+    dump_ios_log "$STREAM_LOG" "lifecycle-before-retry"
     xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" 2>/dev/null || true
     sleep 3
     : > "$STREAM_LOG"
@@ -46,6 +48,9 @@ assert_log "$STREAM_LOG" "Lifecycle: Resume" "Lifecycle: Resume"
 assert_log "$STREAM_LOG" "setRoot" "setRoot"
 assert_log "$STREAM_LOG" "setStrProp.*Counter:" "setStrProp Counter label"
 assert_log "$STREAM_LOG" "setHandler.*click" "setHandler click"
+
+# Always dump stream log for diagnostic visibility
+dump_ios_log "$STREAM_LOG" "lifecycle-final"
 
 cleanup_app
 

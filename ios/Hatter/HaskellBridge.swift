@@ -17,10 +17,19 @@ class HaskellBridge {
     private static var context: UnsafeMutableRawPointer?
 
     /// Initialize the Haskell RTS. Must be called before any other Haskell function.
+    /// Uses hatter_hs_init with RtsConfig to set -M512m — passing argv to hs_init
+    /// hangs on iOS cross-compiled builds (the argv parsing codepath is broken).
     static func initialize() {
-        hs_init(nil, nil)
-        setup_ios_platform_globals()  // locale + files dir before Haskell main
+        os_log("HaskellBridge: calling hatter_hs_init with -M512m", log: bridgeLog, type: .fault)
+        hatter_hs_init("-M512m")
+        os_log("HaskellBridge: hatter_hs_init returned", log: bridgeLog, type: .fault)
+
+        setup_ios_platform_globals()
+        os_log("HaskellBridge: platform globals set", log: bridgeLog, type: .info)
+
         context = haskellRunMain()
+        os_log("HaskellBridge: haskellRunMain done, context=%{public}s", log: bridgeLog, type: .info, String(describing: context))
+
         haskellLogLocale()
         setup_ios_permission_bridge(context)
         setup_ios_secure_storage_bridge(context)
@@ -35,6 +44,7 @@ class HaskellBridge {
         setup_ios_animation_bridge(context)
         setup_ios_redraw_bridge(context)
         setup_ios_platform_sign_in_bridge(context)
+        os_log("HaskellBridge: all bridges initialized", log: bridgeLog, type: .info)
     }
 
     /// Notify Haskell of a lifecycle event.
