@@ -11,17 +11,18 @@ EXIT_CODE=0
 start_app "$COUNTER_APP" "lifecycle"
 
 # Poll for lifecycle events
+# Use || true to prevent set -e from killing the script on timeout
 lifecycle_done=0
-wait_for_log "$STREAM_LOG" "Lifecycle: Create" 60
-WAIT_RC=$?
+WAIT_RC=0
+wait_for_log "$STREAM_LOG" "Lifecycle: Create" 60 || WAIT_RC=$?
 if [ $WAIT_RC -eq 2 ]; then
     dump_ios_log "$STREAM_LOG" "lifecycle"
     echo "FATAL: Native library failed to load — aborting"
     exit 1
 fi
 if [ $WAIT_RC -eq 0 ]; then
-    wait_for_log "$STREAM_LOG" "Lifecycle: Resume" 5
-    WAIT_RC2=$?
+    WAIT_RC2=0
+    wait_for_log "$STREAM_LOG" "Lifecycle: Resume" 5 || WAIT_RC2=$?
     if [ $WAIT_RC2 -eq 2 ]; then
         dump_ios_log "$STREAM_LOG" "lifecycle"
         echo "FATAL: Native library failed to load — aborting"
