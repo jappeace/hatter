@@ -9,5 +9,9 @@ pkgs.haskellPackages.override {
     # NB this is a bit silly because nix files are now considered for the build
     # bigger projects should consider putting haskell stuff in a subfolder
     hatter-project = hnew.callCabal2nix "hatter" ../. { };
+    unwitch = hnew.callCabal2nix "unwitch" (builtins.fetchTarball {
+      url = "https://hackage.haskell.org/package/unwitch-2.2.0/unwitch-2.2.0.tar.gz";
+      sha256 = "sha256:he/wdUN1XOcEo0VTmJVRrdQnGmZldxgCPCxlSDvzd9c=";
+    }) {};
   };
 }

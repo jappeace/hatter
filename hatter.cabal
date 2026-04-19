@@ -119,7 +119,8 @@ library
       containers < 1,
       bytestring < 1,
       transformers < 0.7,
-      time
+      time,
+      unwitch >= 2.2.0 && < 3
   c-sources:
       cbits/android_stubs.c
       cbits/platform_log.c
@@ -191,7 +192,8 @@ executable redraw-demo
       test
   build-depends:
       hatter,
-      text
+      text,
+      unwitch >= 2.2.0 && < 3
 
 executable confetti-repro-demo
   import: common-options
@@ -250,4 +252,5 @@ test-suite unit
       text,
       bytestring,
       directory,
-      filepath
+      filepath,
+      unwitch >= 2.2.0 && < 3

@@ -31,6 +31,7 @@ import Data.Text (Text, pack)
 import Hatter.Action (Action(..), ActionState, OnChange(..), lookupAction, lookupTextAction)
 import Data.List (sortBy)
 import Data.Ord (comparing)
+import Unwitch.Convert.Int32 qualified as Int32
 import Hatter.Animation (AnimationState, registerTween)
 import Hatter.Widget (AnimatedConfig(..), ButtonConfig(..), FontConfig(..), ImageConfig(..), ImageSource(..), InputType(..), Keyframe(..), LayoutItem(..), LayoutSettings(..), MapViewConfig(..), ResourceName(..), ScaleType(..), TextAlignment(..), TextConfig(..), TextInputConfig(..), WebViewConfig(..), Widget(..), WidgetStyle(..), colorToHex, normalizeAnimated, resolveKeyAtIndex)
 
@@ -192,7 +193,7 @@ createRenderedNode _animState widget@(TextInput config) = do
   nodeId <- Bridge.createNode Bridge.NodeTextInput
   Bridge.setStrProp nodeId Bridge.PropText (tiValue config)
   Bridge.setStrProp nodeId Bridge.PropHint (tiHint config)
-  Bridge.setNumProp nodeId Bridge.PropInputType (fromIntegral (inputTypeToInt (tiInputType config)))
+  Bridge.setNumProp nodeId Bridge.PropInputType (Int32.toDouble (inputTypeToInt (tiInputType config)))
   Bridge.setHandler nodeId Bridge.EventTextChange (onChangeId (tiOnChange config))
   applyFontConfig nodeId (tiFontConfig config)
   when (tiAutoFocus config) $
@@ -437,7 +438,7 @@ diffRenderNode _animState (Just (RenderedLeaf (TextInput oldConfig) nodeId)) new
     else pure ()
   if tiInputType oldConfig /= tiInputType newConfig
     then Bridge.setNumProp nodeId Bridge.PropInputType
-           (fromIntegral (inputTypeToInt (tiInputType newConfig)))
+           (Int32.toDouble (inputTypeToInt (tiInputType newConfig)))
     else pure ()
   if onChangeId (tiOnChange oldConfig) /= onChangeId (tiOnChange newConfig)
     then Bridge.setHandler nodeId Bridge.EventTextChange
