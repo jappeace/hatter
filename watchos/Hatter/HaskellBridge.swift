@@ -18,8 +18,12 @@ class HaskellBridge {
     private static var context: UnsafeMutableRawPointer?
 
     /// Initialize the Haskell RTS. Must be called before any other Haskell function.
-    /// Passes -M256m to limit the heap — iOS/watchOS reject the default ~1TB virtual memory reservation.
+    /// On real devices, passes -M256m to limit the heap — watchOS rejects the default
+    /// ~1TB virtual memory reservation.  The simulator runs on macOS and doesn't need the cap.
     static func initialize() {
+        #if targetEnvironment(simulator)
+        hs_init(nil, nil)
+        #else
         let rtsArgs = ["hatter", "+RTS", "-M256m", "-RTS"]
         var args: [UnsafeMutablePointer<CChar>?] = rtsArgs.map { strdup($0) }
         var argc = Int32(args.count)
@@ -30,6 +34,7 @@ class HaskellBridge {
             }
         }
         args.forEach { free($0) }
+        #endif
         setSystemLocale("en")  // watchOS default locale, before Haskell main
 
         // Device info — WKInterfaceDevice for watchOS
