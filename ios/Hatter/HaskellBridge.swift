@@ -19,69 +19,68 @@ class HaskellBridge {
     /// Initialize the Haskell RTS. Must be called before any other Haskell function.
     /// Passes -M512m to limit the heap — iOS rejects the default ~1TB virtual memory reservation.
     static func initialize() {
-        os_log("HaskellBridge: starting hs_init", log: bridgeLog, type: .info)
-        // Build argv: ["hatter", "+RTS", "-M512m", "-RTS", NULL]
-        // GHC hs_init expects argc/argv like a C main(), null-terminated.
+        // Use .fault level for init — .info is memory-only and lost on crash.
+        // .fault writes synchronously to disk, so log stream captures it even if hs_init crashes.
+        os_log("HaskellBridge: starting hs_init", log: bridgeLog, type: .fault)
         let rtsArgs = ["hatter", "+RTS", "-M512m", "-RTS"]
         var args: [UnsafeMutablePointer<CChar>?] = rtsArgs.map { strdup($0) }
         args.append(nil)  // null terminator, like C argv
         var argc = Int32(rtsArgs.count)
-        os_log("HaskellBridge: argc=%d, args allocated", log: bridgeLog, type: .info, argc)
+        os_log("HaskellBridge: argc=%d, args allocated", log: bridgeLog, type: .fault, argc)
         for (index, arg) in args.enumerated() {
             if let arg = arg {
-                os_log("HaskellBridge: argv[%d]=%{public}s", log: bridgeLog, type: .info, index, String(cString: arg))
+                os_log("HaskellBridge: argv[%d]=%{public}s", log: bridgeLog, type: .fault, index, String(cString: arg))
             } else {
-                os_log("HaskellBridge: argv[%d]=NULL", log: bridgeLog, type: .info, index)
+                os_log("HaskellBridge: argv[%d]=NULL", log: bridgeLog, type: .fault, index)
             }
         }
-        os_log("HaskellBridge: calling hs_init", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: calling hs_init", log: bridgeLog, type: .fault)
         args.withUnsafeMutableBufferPointer { buf in
             var ptr = buf.baseAddress
-            os_log("HaskellBridge: buf.baseAddress=%{public}s, buf.count=%d", log: bridgeLog, type: .info, String(describing: ptr), buf.count)
+            os_log("HaskellBridge: buf.baseAddress=%{public}s, buf.count=%d", log: bridgeLog, type: .fault, String(describing: ptr), buf.count)
             withUnsafeMutablePointer(to: &ptr) { argv in
-                os_log("HaskellBridge: about to call hs_init(&argc, argv)", log: bridgeLog, type: .info)
+                os_log("HaskellBridge: about to call hs_init(&argc, argv)", log: bridgeLog, type: .fault)
                 hs_init(&argc, argv)
             }
         }
-        os_log("HaskellBridge: hs_init returned, argc now=%d", log: bridgeLog, type: .info, argc)
-        // Free the strdup'd strings (skip the nil terminator)
+        os_log("HaskellBridge: hs_init returned, argc now=%d", log: bridgeLog, type: .fault, argc)
         for arg in args { if let arg = arg { free(arg) } }
 
         setup_ios_platform_globals()
-        os_log("HaskellBridge: platform globals set", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: platform globals set", log: bridgeLog, type: .fault)
 
         context = haskellRunMain()
-        os_log("HaskellBridge: haskellRunMain done, context=%{public}s", log: bridgeLog, type: .info, String(describing: context))
+        os_log("HaskellBridge: haskellRunMain done, context=%{public}s", log: bridgeLog, type: .fault, String(describing: context))
 
         haskellLogLocale()
-        os_log("HaskellBridge: locale logged", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: locale logged", log: bridgeLog, type: .fault)
 
         setup_ios_permission_bridge(context)
-        os_log("HaskellBridge: permission bridge", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: permission bridge", log: bridgeLog, type: .fault)
         setup_ios_secure_storage_bridge(context)
-        os_log("HaskellBridge: secure storage bridge", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: secure storage bridge", log: bridgeLog, type: .fault)
         setup_ios_ble_bridge(context)
-        os_log("HaskellBridge: ble bridge", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: ble bridge", log: bridgeLog, type: .fault)
         setup_ios_dialog_bridge(context)
-        os_log("HaskellBridge: dialog bridge", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: dialog bridge", log: bridgeLog, type: .fault)
         setup_ios_location_bridge(context)
-        os_log("HaskellBridge: location bridge", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: location bridge", log: bridgeLog, type: .fault)
         setup_ios_auth_session_bridge(context)
-        os_log("HaskellBridge: auth session bridge", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: auth session bridge", log: bridgeLog, type: .fault)
         setup_ios_camera_bridge(context)
-        os_log("HaskellBridge: camera bridge", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: camera bridge", log: bridgeLog, type: .fault)
         setup_ios_bottom_sheet_bridge(context)
-        os_log("HaskellBridge: bottom sheet bridge", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: bottom sheet bridge", log: bridgeLog, type: .fault)
         setup_ios_http_bridge(context)
-        os_log("HaskellBridge: http bridge", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: http bridge", log: bridgeLog, type: .fault)
         setup_ios_network_status_bridge(context)
-        os_log("HaskellBridge: network status bridge", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: network status bridge", log: bridgeLog, type: .fault)
         setup_ios_animation_bridge(context)
-        os_log("HaskellBridge: animation bridge", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: animation bridge", log: bridgeLog, type: .fault)
         setup_ios_redraw_bridge(context)
-        os_log("HaskellBridge: redraw bridge", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: redraw bridge", log: bridgeLog, type: .fault)
         setup_ios_platform_sign_in_bridge(context)
-        os_log("HaskellBridge: all bridges initialized", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: all bridges initialized", log: bridgeLog, type: .fault)
     }
 
     /// Notify Haskell of a lifecycle event.

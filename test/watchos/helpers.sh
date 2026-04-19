@@ -8,6 +8,18 @@
 #   LOG_SUBSYSTEM  — me.jappie.hatter (for os_log predicates)
 #   WORK_DIR       — temp dir for log files
 
+# dump_ios_log LOGFILE LABEL
+# Dumps recent log lines to stdout for CI visibility.
+dump_ios_log() {
+    local logfile="$1"
+    local label="$2"
+    echo ""
+    echo "=== Log dump ($label) — last 40 lines ==="
+    tail -40 "$logfile"
+    echo "=== End log dump ==="
+    echo ""
+}
+
 # wait_for_log LOGFILE PATTERN TIMEOUT_SECONDS
 # Polls LOGFILE for PATTERN every 2s.
 # Returns 0 on success, 1 on timeout.

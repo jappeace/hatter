@@ -20,21 +20,31 @@ class HaskellBridge {
     /// Initialize the Haskell RTS. Must be called before any other Haskell function.
     /// Passes -M256m to limit the heap — watchOS rejects the default ~1TB virtual memory reservation.
     static func initialize() {
-        os_log("HaskellBridge: starting hs_init", log: bridgeLog, type: .info)
+        // Use .fault level for init — .info is memory-only and lost on crash.
+        // .fault writes synchronously to disk, so log stream captures it even if hs_init crashes.
+        os_log("HaskellBridge: starting hs_init", log: bridgeLog, type: .fault)
         let rtsArgs = ["hatter", "+RTS", "-M256m", "-RTS"]
         var args: [UnsafeMutablePointer<CChar>?] = rtsArgs.map { strdup($0) }
         args.append(nil)  // null terminator, like C argv
         var argc = Int32(rtsArgs.count)
-        os_log("HaskellBridge: argc=%d, args allocated", log: bridgeLog, type: .info, argc)
-        os_log("HaskellBridge: calling hs_init", log: bridgeLog, type: .info)
+        os_log("HaskellBridge: argc=%d, args allocated", log: bridgeLog, type: .fault, argc)
+        for (index, arg) in args.enumerated() {
+            if let arg = arg {
+                os_log("HaskellBridge: argv[%d]=%{public}s", log: bridgeLog, type: .fault, index, String(cString: arg))
+            } else {
+                os_log("HaskellBridge: argv[%d]=NULL", log: bridgeLog, type: .fault, index)
+            }
+        }
+        os_log("HaskellBridge: calling hs_init", log: bridgeLog, type: .fault)
         args.withUnsafeMutableBufferPointer { buf in
             var ptr = buf.baseAddress
+            os_log("HaskellBridge: buf.baseAddress=%{public}s, buf.count=%d", log: bridgeLog, type: .fault, String(describing: ptr), buf.count)
             withUnsafeMutablePointer(to: &ptr) { argv in
-                os_log("HaskellBridge: about to call hs_init(&argc, argv)", log: bridgeLog, type: .info)
+                os_log("HaskellBridge: about to call hs_init(&argc, argv)", log: bridgeLog, type: .fault)
                 hs_init(&argc, argv)
             }
         }
-        os_log("HaskellBridge: hs_init returned, argc now=%d", log: bridgeLog, type: .info, argc)
+        os_log("HaskellBridge: hs_init returned, argc now=%d", log: bridgeLog, type: .fault, argc)
         for arg in args { if let arg = arg { free(arg) } }
         setSystemLocale("en")  // watchOS default locale, before Haskell main
 
