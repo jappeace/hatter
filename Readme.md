@@ -98,20 +98,6 @@ then the framework re-renders automatically.
 
 
 
-### Platform bridges
-
-The `UserState` passed to `maView` provides access to platform APIs:
-
-| Bridge         | Functions                                                        | Comments                    |
-|----------------|------------------------------------------------------------------|-----------------------------|
-| Secure storage | `secureStorageWrite`, `secureStorageRead`, `secureStorageDelete` |                             |
-| BLE scanning   | `startBleScan`, `stopBleScan`, `checkBleAdapter`                 | still need to do connecting |
-| Location       | `startLocationUpdates`, `stopLocationUpdates`                    | gps for example             |
-| Auth sessions  | `startAuthSession` (OAuth/ASWebAuthenticationSession)            |                             |
-| Camera         | `startCameraSession`, `capturePhoto`, `startVideoCapture`        |                             |
-| HTTP           | `performRequest`                                                 | http-client also works but this results in much smaller apks which is good for wearables                            |
-| Permissions    | `requestPermission`, `checkPermission`                           |                             |
-
 ## Building for Android
 
 Requires Nix. The build cross-compiles your Haskell to a `.so` shared library
