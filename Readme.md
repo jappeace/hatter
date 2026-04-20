@@ -392,8 +392,8 @@ out if the integration works.
 Animations for example required several iterations,
 whereas HTTP worked on first try.
 
-The claudes should be able to mostly implement this stuff
+The claudes should be able to mostly implement this, 
 especially if you use [vibes](https://github.com/jappeace/vibes).
 
-I think you can implement this stuff by hand
+I think you can implement this by hand
 as well but I find it way to tedious.
