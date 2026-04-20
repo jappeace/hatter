@@ -104,7 +104,7 @@ then the framework re-renders automatically.
 Requires Nix. The build cross-compiles your Haskell to a `.so` shared library
 and packages it into an APK with the Java UI layer.
 
-### 1. Build the APK
+### 1. Build the APK (hatter demo)
 
 ```bash
 nix-build nix/apk.nix
@@ -112,13 +112,7 @@ nix-build nix/apk.nix
 
 This produces `result/hatter.apk` containing both arm64-v8a and armeabi-v7a architectures.
 
-To build with your own `Main.hs`:
-
-```bash
-nix-build nix/apk.nix --arg mainModule ./path/to/your/Main.hs
-```
-
-Or build just the shared library for a single architecture:
+To build just the shared library for a single architecture:
 
 ```bash
 nix-build nix/android.nix                               # aarch64 (default)
@@ -131,25 +125,98 @@ nix-build nix/android.nix --arg androidArch '"armv7a"'   # armv7a
 adb install result/hatter.apk
 ```
 
-### 3. Consumer projects with extra Haskell dependencies
+### 3. Consumer projects
 
-If your app needs Hackage packages beyond what hatter provides,
-pass them via `consumerCabalFile` or `hpkgs`:
+Consumer apps create their own nix files that import hatter's `nix/lib.nix`
+builder functions. Pin hatter via [npins](https://github.com/andir/npins)
+(or `builtins.fetchGit`) and write thin wrappers.
+
+**`nix/android.nix`** — build the shared library:
 
 ```nix
-# your-app/default.nix
+{ sources ? import ../npins
+, androidArch ? "aarch64"
+, mainModule ? ../app/Main.hs
+}:
 let
-  hatter = builtins.fetchGit {
-    url = "https://github.com/jappeace/hatter.git";
-    ref = "master";
+  hatterSrc = sources.hatter;
+  lib = import "${hatterSrc}/nix/lib.nix" { inherit sources androidArch; };
+
+  crossDeps = import "${hatterSrc}/nix/cross-deps.nix" {
+    inherit sources androidArch hatterSrc;
+    # Option A: point to your .cabal file (uses IFD to extract deps)
+    consumerCabalFile = ../your-app.cabal;
+    # Option B: inline cabal2nix function
+    # consumerCabal2Nix = { mkDerivation, base, text, aeson, lib }:
+    #   mkDerivation {
+    #     pname = "your-app"; version = "0.1.0.0";
+    #     libraryHaskellDepends = [ base text aeson ];
+    #     license = lib.licenses.mit;
+    #   };
   };
-in import "${hatter}/nix/apk.nix" {
-  mainModule = ./src/Main.hs;
-  # Option A: point to your .cabal file (uses IFD to extract deps)
-  consumerCabalFile = ./your-app.cabal;
-  # Option B: override haskellPackages directly
-  # hpkgs = self: super: { aeson = self.callHackage "aeson" "2.2.1.0" {}; };
+in
+lib.mkAndroidLib {
+  inherit hatterSrc mainModule crossDeps;
+  pname = "your-app-android";
+  javaPackageName = "com.example.yourapp";
+  # GHC uses one-shot compilation by default; consumer modules need --make
+  extraGhcFlags = ["--make" "-no-link"];
+  extraModuleCopy = ''
+    # Remove hatter source files — hatter is pre-compiled in the package DB
+    rm -f Hatter.hs
+    rm -rf Hatter/
+    # Copy your app's modules
+    mkdir -p YourApp
+    cp ${../src/YourApp/App.hs} YourApp/App.hs
+  '';
+  extraLinkObjects = [
+    "$(pwd)/YourApp/App.o"
+  ];
 }
+```
+
+**`nix/apk.nix`** — package into an APK:
+
+```nix
+{ sources ? import ../npins, androidArch ? "aarch64" }:
+let
+  hatterSrc = sources.hatter;
+  abiDir = { aarch64 = "arm64-v8a"; armv7a = "armeabi-v7a"; }.${androidArch};
+  lib = import "${hatterSrc}/nix/lib.nix" { inherit sources androidArch; };
+  sharedLib = import ./android.nix { inherit sources androidArch; };
+in
+lib.mkApk {
+  sharedLibs = [{ lib = sharedLib; inherit abiDir; }];
+  androidSrc = ../android;                          # your AndroidManifest.xml + res/
+  baseJavaSrc = "${hatterSrc}/android/java";        # hatter's Java sources
+  apkName = "your-app.apk";
+  name = "your-app-apk";
+}
+```
+
+**`install.sh`** — build and install on a phone:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+adb install "$(nix-build nix/apk.nix)/your-app.apk"
+```
+
+**`install-wear.sh`** — build and install on a Wear OS watch (armv7a):
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+adb install "$(nix-build nix/apk.nix --argstr androidArch armv7a)/your-app.apk"
+```
+
+Your `android/` directory needs `AndroidManifest.xml` and `res/` with your
+app's name, icon, and theme. Your `MainActivity` just extends `HatterActivity`:
+
+```java
+package com.example.yourapp;
+import me.jappie.hatter.HatterActivity;
+public class MainActivity extends HatterActivity {}
 ```
 
 ### How it works under the hood
@@ -161,53 +228,113 @@ When `onCreate` fires, Java calls `renderUI` through JNI, which invokes your `ma
 and the framework translates the `Widget` tree into Android `View` calls.
 
 You never need to write Java — `HatterActivity` handles all the native UI,
-permissions, camera, location, etc. Your consumer app's `MainActivity` just extends it:
-
-```java
-package com.example.myapp;
-import me.jappie.hatter.HatterActivity;
-public class MainActivity extends HatterActivity {}
-```
+permissions, camera, location, etc.
 
 ## Building for iOS
 
 Requires macOS with Nix. The build produces a static `.a` library that links into
 an Xcode project via a Swift bridge.
 
-### 1. Build the static library
+### 1. Build the static library (hatter demo)
 
 ```bash
-nix-build nix/ios.nix
+nix-build nix/ios.nix                    # device
+nix-build nix/ios.nix --arg simulator true  # simulator
 ```
 
 This produces `result/lib/libHatter.a` and headers in `result/include/`.
 
-To build with your own `Main.hs`:
+### 2. Set up and run in Xcode
+
+The nix build stages an Xcode project with the pre-built library via `mkSimulatorApp`.
+A setup script copies the (read-only) nix output to a writable directory and
+generates the Xcode project:
 
 ```bash
-nix-build nix/ios.nix --arg mainModule ./path/to/your/Main.hs
+#!/usr/bin/env bash
+set -euo pipefail
+
+TARGET="device"
+[ "${1:-}" = "--simulator" ] && TARGET="simulator"
+
+if [ "$TARGET" = "simulator" ]; then
+  result=$(nix-build nix/ios-app.nix)        # your wrapper calling lib.mkSimulatorApp
+else
+  result=$(nix-build nix/ios-device-app.nix)
+fi
+
+rm -rf ios-project
+cp -r "$result/share/ios/." ios-project/
+chmod -R u+w ios-project
+
+cd ios-project
+xcodegen generate
+
+echo "Open ios-project/Hatter.xcodeproj in Xcode, then Product → Run."
 ```
-
-### 2. Set up the Xcode project
-
-Stage the library and headers, then generate the Xcode project with [XcodeGen](https://github.com/yonaskolb/XcodeGen):
-
-```bash
-mkdir -p ios/lib ios/include
-cp result/lib/libHatter.a ios/lib/
-cp result/include/*.h ios/include/
-
-nix-shell -p xcodegen --run "cd ios && xcodegen generate"
-open ios/Hatter.xcodeproj
-```
-
-The `ios/project.yml` configures the bridging header, library search paths,
-and framework dependencies automatically.
-
-### 3. Build and run
 
 Configure signing in Xcode (team, bundle ID, provisioning profile), then
 build and run on a device or simulator.
+
+### 3. Consumer iOS projects
+
+Consumer apps create their own nix files, similar to Android.
+
+**`nix/ios.nix`**:
+
+```nix
+{ sources ? import ../npins, simulator ? false, mainModule ? ../app/Main.hs }:
+let
+  hatterSrc = sources.hatter;
+  lib = import "${hatterSrc}/nix/lib.nix" { inherit sources; };
+
+  iosDeps = import "${hatterSrc}/nix/ios-deps.nix" {
+    inherit sources;
+    consumerCabalFile = ../your-app.cabal;
+  };
+in
+lib.mkIOSLib {
+  inherit hatterSrc mainModule simulator;
+  pname = "your-app-ios";
+  crossDeps = iosDeps;
+  extraModuleCopy = ''
+    mkdir -p YourApp
+    cp ${../src/YourApp/App.hs} YourApp/App.hs
+  '';
+}
+```
+
+**`nix/ios-app.nix`** — stage the Xcode project (simulator):
+
+```nix
+{ sources ? import ../npins }:
+let
+  hatterSrc = sources.hatter;
+  lib = import "${hatterSrc}/nix/lib.nix" { inherit sources; };
+  iosLib = import ./ios.nix { inherit sources; simulator = true; };
+in
+lib.mkSimulatorApp {
+  inherit iosLib;
+  iosSrc = "${hatterSrc}/ios";
+  name = "your-app-ios-simulator";
+}
+```
+
+**`nix/ios-device-app.nix`** — stage the Xcode project (device):
+
+```nix
+{ sources ? import ../npins }:
+let
+  hatterSrc = sources.hatter;
+  lib = import "${hatterSrc}/nix/lib.nix" { inherit sources; };
+  iosLib = import ./ios.nix { inherit sources; simulator = false; };
+in
+lib.mkSimulatorApp {
+  inherit iosLib;
+  iosSrc = "${hatterSrc}/ios";
+  name = "your-app-ios-device";
+}
+```
 
 ### How it works under the hood
 
@@ -219,19 +346,6 @@ and calls `haskellRenderUI` when SwiftUI requests a view update.
 The bridging header (`Hatter-Bridging-Header.h`) exposes the C FFI functions
 to Swift. The `project.yml` links against the required system frameworks
 (CoreLocation, CoreBluetooth, AVFoundation, WebKit, etc.).
-
-### Consumer iOS projects
-
-Copy the `ios/` directory as a starting point for your app.
-The key files are:
-
-| File | Purpose |
-|------|---------|
-| `HaskellBridge.swift` | Boots GHC RTS, dispatches UI events |
-| `HatterApp.swift` | SwiftUI `@main` entry point |
-| `ContentView.swift` | SwiftUI view that calls `HaskellBridge.renderUI()` |
-| `Hatter-Bridging-Header.h` | C header imports for Swift |
-| `project.yml` | XcodeGen spec with signing, frameworks, search paths |
 
 ## Building for watchOS
 
