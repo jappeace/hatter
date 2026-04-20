@@ -40,6 +40,7 @@ import Data.Int (Int32)
 import Data.IntMap.Strict (IntMap)
 import Data.IntMap.Strict qualified as IntMap
 import Data.Text (Text)
+import Unwitch.Convert.Int32 qualified as Int32
 
 -- | An opaque handle to a click / tap callback.
 -- Carries only an 'Int32' identifier, so it derives 'Eq' and 'Show'.
@@ -86,7 +87,7 @@ newtype ActionM a = ActionM (ActionState -> IO a)
 createAction :: IO () -> ActionM Action
 createAction callback = ActionM $ \state -> do
   handleId <- readIORef (asNextId state)
-  modifyIORef' (asCallbacks state) (IntMap.insert (fromIntegral handleId) callback)
+  modifyIORef' (asCallbacks state) (IntMap.insert (Int32.toInt handleId) callback)
   modifyIORef' (asNextId state) (+ 1)
   pure (Action handleId)
 
@@ -94,7 +95,7 @@ createAction callback = ActionM $ \state -> do
 createOnChange :: (Text -> IO ()) -> ActionM OnChange
 createOnChange callback = ActionM $ \state -> do
   handleId <- readIORef (asNextId state)
-  modifyIORef' (asTextCallbacks state) (IntMap.insert (fromIntegral handleId) callback)
+  modifyIORef' (asTextCallbacks state) (IntMap.insert (Int32.toInt handleId) callback)
   modifyIORef' (asNextId state) (+ 1)
   pure (OnChange handleId)
 
@@ -107,11 +108,11 @@ runActionM state (ActionM f) = f state
 lookupAction :: ActionState -> Int32 -> IO (Maybe (IO ()))
 lookupAction state handleId = do
   callbacks <- readIORef (asCallbacks state)
-  pure (IntMap.lookup (fromIntegral handleId) callbacks)
+  pure (IntMap.lookup (Int32.toInt handleId) callbacks)
 
 -- | Look up a text-change callback by handle ID.
 -- Returns 'Nothing' if the ID is not registered.
 lookupTextAction :: ActionState -> Int32 -> IO (Maybe (Text -> IO ()))
 lookupTextAction state handleId = do
   callbacks <- readIORef (asTextCallbacks state)
-  pure (IntMap.lookup (fromIntegral handleId) callbacks)
+  pure (IntMap.lookup (Int32.toInt handleId) callbacks)

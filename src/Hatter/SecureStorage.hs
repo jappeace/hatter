@@ -32,6 +32,8 @@ import Foreign.C.String (CString, withCString)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
+import Unwitch.Convert.CInt qualified as CInt
+import Unwitch.Convert.Int32 qualified as Int32
 
 -- | Result of a secure storage operation.
 data SecureStorageStatus
@@ -89,12 +91,12 @@ storageStatusFromInt _ = Nothing
 secureStorageWrite :: SecureStorageState -> Text -> Text -> (SecureStorageStatus -> IO ()) -> IO ()
 secureStorageWrite storageState key value callback = do
   requestId <- readIORef (ssNextId storageState)
-  modifyIORef' (ssWriteCallbacks storageState) (IntMap.insert (fromIntegral requestId) callback)
+  modifyIORef' (ssWriteCallbacks storageState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (ssNextId storageState) (requestId + 1)
   ctx <- readIORef (ssContextPtr storageState)
   withCString (Text.unpack key) $ \cKey ->
     withCString (Text.unpack value) $ \cValue ->
-      c_secureStorageWrite ctx (fromIntegral requestId) cKey cValue
+      c_secureStorageWrite ctx (Int32.toCInt requestId) cKey cValue
 
 -- | Read a value from secure storage by key.  Registers @callback@ and
 -- calls the C bridge.  The callback receives the status and an optional
@@ -102,22 +104,22 @@ secureStorageWrite storageState key value callback = do
 secureStorageRead :: SecureStorageState -> Text -> (SecureStorageStatus -> Maybe Text -> IO ()) -> IO ()
 secureStorageRead storageState key callback = do
   requestId <- readIORef (ssNextId storageState)
-  modifyIORef' (ssReadCallbacks storageState) (IntMap.insert (fromIntegral requestId) callback)
+  modifyIORef' (ssReadCallbacks storageState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (ssNextId storageState) (requestId + 1)
   ctx <- readIORef (ssContextPtr storageState)
   withCString (Text.unpack key) $ \cKey ->
-    c_secureStorageRead ctx (fromIntegral requestId) cKey
+    c_secureStorageRead ctx (Int32.toCInt requestId) cKey
 
 -- | Delete a key from secure storage.  Registers @callback@ and calls
 -- the C bridge.  The callback fires when the platform responds.
 secureStorageDelete :: SecureStorageState -> Text -> (SecureStorageStatus -> IO ()) -> IO ()
 secureStorageDelete storageState key callback = do
   requestId <- readIORef (ssNextId storageState)
-  modifyIORef' (ssDeleteCallbacks storageState) (IntMap.insert (fromIntegral requestId) callback)
+  modifyIORef' (ssDeleteCallbacks storageState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (ssNextId storageState) (requestId + 1)
   ctx <- readIORef (ssContextPtr storageState)
   withCString (Text.unpack key) $ \cKey ->
-    c_secureStorageDelete ctx (fromIntegral requestId) cKey
+    c_secureStorageDelete ctx (Int32.toCInt requestId) cKey
 
 -- | Dispatch a secure storage result from the platform back to the
 -- registered Haskell callback.  Tries write callbacks first, then read,
@@ -129,7 +131,7 @@ dispatchSecureStorageResult storageState requestId statusCode maybeValue =
     Nothing -> hPutStrLn stderr $
       "dispatchSecureStorageResult: unknown status code " ++ show statusCode
     Just status -> do
-      let reqKey = fromIntegral requestId
+      let reqKey = CInt.toInt requestId
       -- Try write callbacks
       writeCallbacks <- readIORef (ssWriteCallbacks storageState)
       case IntMap.lookup reqKey writeCallbacks of

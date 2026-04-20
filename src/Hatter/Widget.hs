@@ -73,6 +73,8 @@ import Data.Text qualified as Text
 import Data.Time.Clock (NominalDiffTime)
 import Data.Word (Word8)
 import Hatter.Action (Action, OnChange)
+import Unwitch.Convert.Int qualified as Int
+import Unwitch.Convert.Word8 qualified as Word8
 
 -- | Font configuration for text-bearing widgets.
 -- Only 'Text', 'Button', and 'TextInput' can carry a 'FontConfig'.
@@ -149,7 +151,7 @@ colorFromText raw = do
   if all isHexDigit hex
     then case hex of
       [r1, g1, b1] ->
-        let expand ch = let val = digitToInt ch in fromIntegral (val * 16 + val)
+        let expand ch = let val = digitToInt ch in maybe 0 id (Int.toWord8 (val * 16 + val))
         in Just (Color (expand r1) (expand g1) (expand b1) 255)
       [r1, r2, g1, g2, b1, b2] ->
         Just (Color (hexByte r1 r2) (hexByte g1 g2) (hexByte b1 b2) 255)
@@ -160,14 +162,14 @@ colorFromText raw = do
 
 -- | Convert two hex characters to a Word8.
 hexByte :: Char -> Char -> Word8
-hexByte high low = fromIntegral (digitToInt high * 16 + digitToInt low)
+hexByte high low = maybe 0 id (Int.toWord8 (digitToInt high * 16 + digitToInt low))
 
 -- | Convert a 'Color' to a hex string in @"#AARRGGBB"@ format for the C bridge.
 colorToHex :: Color -> Text
 colorToHex (Color r g b a) = Text.pack ('#' : toHexByte a ++ toHexByte r ++ toHexByte g ++ toHexByte b)
   where
     toHexByte :: Word8 -> String
-    toHexByte byte = [intToDigit (fromIntegral byte `div` 16), intToDigit (fromIntegral byte `mod` 16)]
+    toHexByte byte = [intToDigit (Word8.toInt byte `div` 16), intToDigit (Word8.toInt byte `mod` 16)]
 
 -- | Visual style overrides for a widget node.
 -- Font size is not here — it belongs in the config records of
@@ -367,7 +369,7 @@ andThen first second = AnimatedConfig
 -- | Linearly interpolate a single 'Word8' channel.
 lerpWord8 :: Word8 -> Word8 -> Double -> Word8
 lerpWord8 from to progress =
-  round (fromIntegral from + (fromIntegral to - fromIntegral from) * progress :: Double)
+  round (Word8.toDouble from + (Word8.toDouble to - Word8.toDouble from) * progress :: Double)
 
 -- | Interpolate between two colors by lerping each RGBA channel.
 interpolateColor :: Color -> Color -> Double -> Color

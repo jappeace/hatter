@@ -15,6 +15,7 @@ import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Text (pack)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr)
+import Unwitch.Convert.CInt qualified as CInt
 import Hatter
   ( MobileApp(..)
   , UserState(..)
@@ -59,8 +60,8 @@ redrawView startedRef _userState = do
     -- Start C-level timer: 3 ticks, 3 seconds apart.
     -- The context was stored by redraw_store_ctx() in renderView.
     c_startPeriodicRedraw 3 3
-  count <- fromIntegral <$> c_getPeriodicCounter
-  platformLog ("view rebuilt: count=" <> pack (show (count :: Int)))
+  count <- CInt.toInt <$> c_getPeriodicCounter
+  platformLog ("view rebuilt: count=" <> pack (show count))
   pure $ column [Text TextConfig
     { tcLabel = "Count: " <> pack (show count)
     , tcFontConfig = Nothing

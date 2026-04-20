@@ -18,8 +18,15 @@
 let
   pkgs = import sources.nixpkgs {};
 
+  unwitchOverride = self: super: {
+    unwitch = self.callCabal2nix "unwitch" (builtins.fetchTarball {
+      url = "https://github.com/jappeace/unwitch/archive/2759bdd153f293e0e6524d0170e861e51302caa4.tar.gz";
+      sha256 = "sha256:BGxZ1CQGIYP/gg/J9jua2/wSEH4qq7bW91qooNELUlI=";
+    }) {};
+  };
+
   nativeHaskellPkgs = pkgs.haskellPackages.override {
-    overrides = hpkgs;
+    overrides = pkgs.lib.composeExtensions unwitchOverride hpkgs;
   };
 
   ghc = nativeHaskellPkgs.ghc;
@@ -30,7 +37,11 @@ let
     haskellPkgs = nativeHaskellPkgs;
   };
 
+  # Hatter's own non-boot dependencies — always included so mkIOSLib's
+  # raw GHC invocation can find them even without a consumer cabal file.
+  hatterOwnDeps = [ nativeHaskellPkgs.unwitch ];
+
 in import ./collect-deps.nix {
   inherit pkgs ghc ghcPkgCmd;
-  deps = resolvedDeps;
+  deps = resolvedDeps ++ hatterOwnDeps;
 }

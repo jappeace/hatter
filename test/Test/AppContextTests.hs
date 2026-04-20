@@ -24,6 +24,7 @@ import Hatter
   , haskellOnLifecycle
   )
 import Hatter.AppContext (AppContext(..), newAppContext, freeAppContext, derefAppContext)
+import Unwitch.Convert.Int32 qualified as Int32
 import Hatter.Lifecycle
   ( LifecycleEvent(..)
   , MobileContext(..)
@@ -203,7 +204,7 @@ exceptionHandlerTests = testGroup "ExceptionHandler"
       -- First render to register the button callback
       haskellRenderUI ctxPtr
       -- Dispatch the button, which throws — handler overwrites view
-      haskellOnUIEvent ctxPtr (fromIntegral (actionId crashHandle))
+      haskellOnUIEvent ctxPtr (Int32.toCInt (actionId crashHandle))
       isError <- viewIsErrorWidget ctxPtr
       assertBool "view should be error widget after button callback exception" isError
       freeAppContext ctxPtr
@@ -232,7 +233,7 @@ exceptionHandlerTests = testGroup "ExceptionHandler"
       -- Dispatch the dismiss action (pre-registered during newAppContext).
       appCtx <- derefAppContext ctxPtr
       let dismissId = actionId (acDismissAction appCtx)
-      haskellOnUIEvent ctxPtr (fromIntegral dismissId)
+      haskellOnUIEvent ctxPtr (Int32.toCInt dismissId)
       isStillError <- viewIsErrorWidget ctxPtr
       assertBool "should no longer show error widget after dismiss" (not isStillError)
       freeAppContext ctxPtr

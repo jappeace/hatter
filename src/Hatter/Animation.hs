@@ -31,6 +31,7 @@ import Data.List (sortBy)
 import Data.Ord (comparing)
 import Data.Time.Clock (NominalDiffTime)
 import Foreign.Ptr (Ptr)
+import Unwitch.Convert.Int32 qualified as Int32
 import Hatter.Widget
   ( Keyframe(..)
   , WidgetStyle(..)
@@ -86,7 +87,7 @@ registerTween animState nodeId keyframes duration = do
         , atNodeId     = nodeId
         , atDuration   = duration
         }
-  modifyIORef' (ansTweens animState) (IntMap.insert (fromIntegral nodeId) tween)
+  modifyIORef' (ansTweens animState) (IntMap.insert (Int32.toInt nodeId) tween)
   ensureLoopStarted animState
 
 -- | Start the platform animation loop if not already active.

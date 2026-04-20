@@ -130,6 +130,7 @@ import Foreign.C.Types (CDouble(..), CInt(..))
 import Foreign.Ptr (Ptr, castPtr, nullPtr)
 import Data.ByteString qualified as BS
 import Data.Word (Word8)
+import Unwitch.Convert.CInt qualified as CInt
 import Hatter.Action
   ( Action(..)
   , OnChange(..)
@@ -316,7 +317,7 @@ haskellOnUIEvent :: Ptr AppContext -> CInt -> IO ()
 haskellOnUIEvent ctxPtr callbackId =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
-    dispatchEvent (acRenderState appCtx) (fromIntegral callbackId)
+    dispatchEvent (acRenderState appCtx) (CInt.toInt32 callbackId)
     renderView ctxPtr
 
 foreign export ccall haskellOnUIEvent :: Ptr AppContext -> CInt -> IO ()
@@ -332,7 +333,7 @@ haskellOnUITextChange ctxPtr callbackId cstr =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
     str <- peekCString cstr
-    dispatchTextEvent (acRenderState appCtx) (fromIntegral callbackId) (pack str)
+    dispatchTextEvent (acRenderState appCtx) (CInt.toInt32 callbackId) (pack str)
     renderView ctxPtr
 
 foreign export ccall haskellOnUITextChange :: Ptr AppContext -> CInt -> CString -> IO ()
@@ -452,7 +453,7 @@ haskellOnCameraResult ctxPtr requestId statusCode
     appCtx <- derefAppContext ctxPtr
     maybeImageData <- if imageDataPtr == nullPtr || imageDataLen <= 0
       then pure Nothing
-      else Just <$> BS.packCStringLen (castPtr imageDataPtr, fromIntegral imageDataLen)
+      else Just <$> BS.packCStringLen (castPtr imageDataPtr, CInt.toInt imageDataLen)
     dispatchCameraResult (acCameraState appCtx) requestId statusCode
       maybeImageData width height
 
@@ -467,7 +468,7 @@ haskellOnVideoFrame :: Ptr AppContext -> CInt
 haskellOnVideoFrame ctxPtr requestId frameDataPtr frameDataLen width height =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
-    frameBytes <- BS.packCStringLen (castPtr frameDataPtr, fromIntegral frameDataLen)
+    frameBytes <- BS.packCStringLen (castPtr frameDataPtr, CInt.toInt frameDataLen)
     dispatchVideoFrame (acCameraState appCtx) requestId frameBytes width height
 
 foreign export ccall haskellOnVideoFrame
@@ -480,7 +481,7 @@ haskellOnAudioChunk :: Ptr AppContext -> CInt
 haskellOnAudioChunk ctxPtr requestId audioDataPtr audioDataLen =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
-    audioBytes <- BS.packCStringLen (castPtr audioDataPtr, fromIntegral audioDataLen)
+    audioBytes <- BS.packCStringLen (castPtr audioDataPtr, CInt.toInt audioDataLen)
     dispatchAudioChunk (acCameraState appCtx) requestId audioBytes
 
 foreign export ccall haskellOnAudioChunk
@@ -508,7 +509,7 @@ haskellOnHttpResult ctxPtr requestId resultCode httpStatus
     maybeHeaders <- peekOptionalCString cHeaders
     responseBody <- if bodyPtr == nullPtr || bodyLen <= 0
       then pure BS.empty
-      else BS.packCStringLen (castPtr bodyPtr, fromIntegral bodyLen)
+      else BS.packCStringLen (castPtr bodyPtr, CInt.toInt bodyLen)
     dispatchHttpResult (acHttpState appCtx) requestId resultCode httpStatus
       maybeHeaders responseBody
 
