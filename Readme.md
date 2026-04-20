@@ -1,4 +1,5 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/jappeace/hatter/ci.yaml?branch=master)](https://github.com/jappeace/hatter/actions)
+[![Hackage version](https://img.shields.io/hackage/v/hatter.svg?label=Hackage)](https://hackage.haskell.org/package/hatter) 
 
 >  Why is a raven like a writing-desk?
 
