@@ -131,7 +131,7 @@ parseHeaders headerText =
 performRequest :: HttpState -> HttpRequest -> (Either HttpError HttpResponse -> IO ()) -> IO ()
 performRequest httpState request callback = do
   requestId <- readIORef (hsNextId httpState)
-  modifyIORef' (hsCallbacks httpState) (IntMap.insert (int32ToIntKey requestId) callback)
+  modifyIORef' (hsCallbacks httpState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (hsNextId httpState) (requestId + 1)
   ctx <- readIORef (hsContextPtr httpState)
   let methodInt = httpMethodToInt (hrMethod request)
@@ -164,11 +164,6 @@ dispatchHttpResult httpState requestId resultCode httpStatus maybeHeaders respon
       callback result
     Nothing -> hPutStrLn stderr $
       "dispatchHttpResult: unknown request ID " ++ show requestId
-
--- | Convert Int32 to Int for use as IntMap key.
--- Total on all GHC-supported platforms (Int >= 32 bits).
-int32ToIntKey :: Int32 -> Int
-int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: send an HTTP request via the C bridge.
 foreign import ccall "http_request"

@@ -90,7 +90,7 @@ authSessionResultFromInt _ _                  _          = Nothing
 startAuthSession :: AuthSessionState -> Text -> Text -> (AuthSessionResult -> IO ()) -> IO ()
 startAuthSession authSessionState authUrl callbackScheme callback = do
   requestId <- readIORef (asNextId authSessionState)
-  modifyIORef' (asCallbacks authSessionState) (IntMap.insert (int32ToIntKey requestId) callback)
+  modifyIORef' (asCallbacks authSessionState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (asNextId authSessionState) (requestId + 1)
   ctx <- readIORef (asContextPtr authSessionState)
   withCString (Text.unpack authUrl) $ \cUrl ->
@@ -114,11 +114,6 @@ dispatchAuthSessionResult authSessionState requestId statusCode maybeRedirectUrl
           callback result
         Nothing -> hPutStrLn stderr $
           "dispatchAuthSessionResult: unknown request ID " ++ show requestId
-
--- | Convert Int32 to Int for use as IntMap key.
--- Total on all GHC-supported platforms (Int >= 32 bits).
-int32ToIntKey :: Int32 -> Int
-int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: start an auth session via the C bridge.
 foreign import ccall "auth_session_start"

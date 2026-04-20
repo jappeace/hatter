@@ -88,7 +88,7 @@ bottomSheetActionFromInt code
 showBottomSheet :: BottomSheetState -> BottomSheetConfig -> (BottomSheetAction -> IO ()) -> IO ()
 showBottomSheet bottomSheetState config callback = do
   requestId <- readIORef (bssNextId bottomSheetState)
-  modifyIORef' (bssCallbacks bottomSheetState) (IntMap.insert (int32ToIntKey requestId) callback)
+  modifyIORef' (bssCallbacks bottomSheetState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (bssNextId bottomSheetState) (requestId + 1)
   ctx <- readIORef (bssContextPtr bottomSheetState)
   let joinedItems = Text.unpack (Text.intercalate "\n" (bscItems config))
@@ -113,11 +113,6 @@ dispatchBottomSheetResult bottomSheetState requestId actionCode =
           callback action
         Nothing -> hPutStrLn stderr $
           "dispatchBottomSheetResult: unknown request ID " ++ show requestId
-
--- | Convert Int32 to Int for use as IntMap key.
--- Total on all GHC-supported platforms (Int >= 32 bits).
-int32ToIntKey :: Int32 -> Int
-int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: show a bottom sheet via the C bridge.
 foreign import ccall "bottom_sheet_show"

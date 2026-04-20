@@ -128,7 +128,7 @@ signInResultFromInt _ _ _ _ _ _ = Nothing
 startPlatformSignIn :: PlatformSignInState -> SignInProvider -> (SignInResult -> IO ()) -> IO ()
 startPlatformSignIn signInState provider callback = do
   requestId <- readIORef (psiNextId signInState)
-  modifyIORef' (psiCallbacks signInState) (IntMap.insert (int32ToIntKey requestId) callback)
+  modifyIORef' (psiCallbacks signInState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (psiNextId signInState) (requestId + 1)
   ctx <- readIORef (psiContextPtr signInState)
   c_platformSignInStart ctx (Int32.toCInt requestId) (providerToInt provider)
@@ -150,11 +150,6 @@ dispatchPlatformSignInResult signInState requestId statusCode maybeToken maybeUs
           callback result
         Nothing -> hPutStrLn stderr $
           "dispatchPlatformSignInResult: unknown request ID " ++ show requestId
-
--- | Convert Int32 to Int for use as IntMap key.
--- Total on all GHC-supported platforms (Int >= 32 bits).
-int32ToIntKey :: Int32 -> Int
-int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: start a platform sign-in via the C bridge.
 foreign import ccall "platform_sign_in_start"

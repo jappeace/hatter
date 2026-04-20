@@ -146,7 +146,7 @@ stopCameraSession _cameraState =
 capturePhoto :: CameraState -> (CameraResult -> IO ()) -> IO ()
 capturePhoto cameraState callback = do
   requestId <- readIORef (csNextId cameraState)
-  modifyIORef' (csCallbacks cameraState) (IntMap.insert (int32ToIntKey requestId) callback)
+  modifyIORef' (csCallbacks cameraState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (csNextId cameraState) (requestId + 1)
   ctx <- readIORef (csContextPtr cameraState)
   c_cameraCapturePhoto ctx (Int32.toCInt requestId)
@@ -165,7 +165,7 @@ startVideoCapture :: CameraState
                   -> IO ()
 startVideoCapture cameraState frameCallback audioCallback completionCallback = do
   requestId <- readIORef (csNextId cameraState)
-  let reqKey = int32ToIntKey requestId
+  let reqKey = Int32.toInt requestId
   modifyIORef' (csCallbacks cameraState) (IntMap.insert reqKey completionCallback)
   modifyIORef' (csFrameCallbacks cameraState) (IntMap.insert reqKey frameCallback)
   modifyIORef' (csAudioCallbacks cameraState) (IntMap.insert reqKey audioCallback)
@@ -245,11 +245,6 @@ dispatchAudioChunk cameraState requestId audioBytes = do
     Just callback -> callback audioBytes
     Nothing -> hPutStrLn stderr $
       "dispatchAudioChunk: unknown request ID " ++ show requestId
-
--- | Convert Int32 to Int for use as IntMap key.
--- Total on all GHC-supported platforms (Int >= 32 bits).
-int32ToIntKey :: Int32 -> Int
-int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: start a camera session via the C bridge.
 foreign import ccall "camera_start_session"

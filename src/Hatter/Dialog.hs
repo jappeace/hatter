@@ -93,7 +93,7 @@ dialogActionFromInt _ = Nothing
 showDialog :: DialogState -> DialogConfig -> (DialogAction -> IO ()) -> IO ()
 showDialog dialogState config callback = do
   requestId <- readIORef (dsNextId dialogState)
-  modifyIORef' (dsCallbacks dialogState) (IntMap.insert (int32ToIntKey requestId) callback)
+  modifyIORef' (dsCallbacks dialogState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (dsNextId dialogState) (requestId + 1)
   ctx <- readIORef (dsContextPtr dialogState)
   withCString (Text.unpack (dcTitle config)) $ \cTitle ->
@@ -125,11 +125,6 @@ dispatchDialogResult dialogState requestId actionCode =
 withOptionalCString :: Maybe Text -> (CString -> IO a) -> IO a
 withOptionalCString Nothing  action = action nullPtr
 withOptionalCString (Just t) action = withCString (Text.unpack t) action
-
--- | Convert Int32 to Int for use as IntMap key.
--- Total on all GHC-supported platforms (Int >= 32 bits).
-int32ToIntKey :: Int32 -> Int
-int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: show a dialog via the C bridge.
 foreign import ccall "dialog_show"

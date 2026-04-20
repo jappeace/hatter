@@ -31,7 +31,6 @@ import Data.List (sortBy)
 import Data.Ord (comparing)
 import Data.Time.Clock (NominalDiffTime)
 import Foreign.Ptr (Ptr)
-import Unwitch.Convert.CInt qualified as CInt
 import Unwitch.Convert.Int32 qualified as Int32
 import Hatter.Widget
   ( Keyframe(..)
@@ -88,7 +87,7 @@ registerTween animState nodeId keyframes duration = do
         , atNodeId     = nodeId
         , atDuration   = duration
         }
-  modifyIORef' (ansTweens animState) (IntMap.insert (int32ToIntKey nodeId) tween)
+  modifyIORef' (ansTweens animState) (IntMap.insert (Int32.toInt nodeId) tween)
   ensureLoopStarted animState
 
 -- | Start the platform animation loop if not already active.
@@ -256,12 +255,6 @@ interpolateStyle nodeId fromStyle toStyle progress = do
         (if enabled then 1.0 else 0.0)
     (Just _fromEnabled, Nothing) -> pure ()
     (Nothing, Nothing) -> pure ()
-
--- | Convert Int32 to Int for use as IntMap key.
--- Total on all GHC-supported platforms (Int >= 32 bits).
--- Uses the total chain Int32 -> CInt -> Int.
-int32ToIntKey :: Int32 -> Int
-int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI imports for the C animation bridge.
 foreign import ccall "animation_start_loop" c_animationStartLoop :: Ptr () -> IO ()

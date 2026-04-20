@@ -100,7 +100,7 @@ permissionStatusFromInt _ = Nothing
 requestPermission :: PermissionState -> Permission -> (PermissionStatus -> IO ()) -> IO ()
 requestPermission permissionState permission callback = do
   requestId <- readIORef (psNextId permissionState)
-  modifyIORef' (psCallbacks permissionState) (IntMap.insert (int32ToIntKey requestId) callback)
+  modifyIORef' (psCallbacks permissionState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (psNextId permissionState) (requestId + 1)
   ctx <- readIORef (psContextPtr permissionState)
   c_permissionRequest ctx (permissionToInt permission) (Int32.toCInt requestId)
@@ -131,11 +131,6 @@ dispatchPermissionResult permissionState requestId statusCode =
         Just callback -> do
           modifyIORef' (psCallbacks permissionState) (IntMap.delete (CInt.toInt requestId))
           callback status
-
--- | Convert Int32 to Int for use as IntMap key.
--- Total on all GHC-supported platforms (Int >= 32 bits).
-int32ToIntKey :: Int32 -> Int
-int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: request a permission via the C bridge.
 -- Takes an opaque context pointer, permission code, and request ID.

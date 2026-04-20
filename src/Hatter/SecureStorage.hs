@@ -91,7 +91,7 @@ storageStatusFromInt _ = Nothing
 secureStorageWrite :: SecureStorageState -> Text -> Text -> (SecureStorageStatus -> IO ()) -> IO ()
 secureStorageWrite storageState key value callback = do
   requestId <- readIORef (ssNextId storageState)
-  modifyIORef' (ssWriteCallbacks storageState) (IntMap.insert (int32ToIntKey requestId) callback)
+  modifyIORef' (ssWriteCallbacks storageState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (ssNextId storageState) (requestId + 1)
   ctx <- readIORef (ssContextPtr storageState)
   withCString (Text.unpack key) $ \cKey ->
@@ -104,7 +104,7 @@ secureStorageWrite storageState key value callback = do
 secureStorageRead :: SecureStorageState -> Text -> (SecureStorageStatus -> Maybe Text -> IO ()) -> IO ()
 secureStorageRead storageState key callback = do
   requestId <- readIORef (ssNextId storageState)
-  modifyIORef' (ssReadCallbacks storageState) (IntMap.insert (int32ToIntKey requestId) callback)
+  modifyIORef' (ssReadCallbacks storageState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (ssNextId storageState) (requestId + 1)
   ctx <- readIORef (ssContextPtr storageState)
   withCString (Text.unpack key) $ \cKey ->
@@ -115,7 +115,7 @@ secureStorageRead storageState key callback = do
 secureStorageDelete :: SecureStorageState -> Text -> (SecureStorageStatus -> IO ()) -> IO ()
 secureStorageDelete storageState key callback = do
   requestId <- readIORef (ssNextId storageState)
-  modifyIORef' (ssDeleteCallbacks storageState) (IntMap.insert (int32ToIntKey requestId) callback)
+  modifyIORef' (ssDeleteCallbacks storageState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (ssNextId storageState) (requestId + 1)
   ctx <- readIORef (ssContextPtr storageState)
   withCString (Text.unpack key) $ \cKey ->
@@ -157,11 +157,6 @@ dispatchSecureStorageResult storageState requestId statusCode maybeValue =
                   return ()
                 Nothing -> hPutStrLn stderr $
                   "dispatchSecureStorageResult: unknown request ID " ++ show requestId
-
--- | Convert Int32 to Int for use as IntMap key.
--- Total on all GHC-supported platforms (Int >= 32 bits).
-int32ToIntKey :: Int32 -> Int
-int32ToIntKey = CInt.toInt . Int32.toCInt
 
 -- | FFI import: write a key-value pair via the C bridge.
 foreign import ccall "secure_storage_write"

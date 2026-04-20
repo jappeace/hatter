@@ -40,7 +40,6 @@ import Data.Int (Int32)
 import Data.IntMap.Strict (IntMap)
 import Data.IntMap.Strict qualified as IntMap
 import Data.Text (Text)
-import Unwitch.Convert.CInt qualified as CInt
 import Unwitch.Convert.Int32 qualified as Int32
 
 -- | An opaque handle to a click / tap callback.
@@ -88,7 +87,7 @@ newtype ActionM a = ActionM (ActionState -> IO a)
 createAction :: IO () -> ActionM Action
 createAction callback = ActionM $ \state -> do
   handleId <- readIORef (asNextId state)
-  modifyIORef' (asCallbacks state) (IntMap.insert (int32ToIntKey handleId) callback)
+  modifyIORef' (asCallbacks state) (IntMap.insert (Int32.toInt handleId) callback)
   modifyIORef' (asNextId state) (+ 1)
   pure (Action handleId)
 
@@ -96,7 +95,7 @@ createAction callback = ActionM $ \state -> do
 createOnChange :: (Text -> IO ()) -> ActionM OnChange
 createOnChange callback = ActionM $ \state -> do
   handleId <- readIORef (asNextId state)
-  modifyIORef' (asTextCallbacks state) (IntMap.insert (int32ToIntKey handleId) callback)
+  modifyIORef' (asTextCallbacks state) (IntMap.insert (Int32.toInt handleId) callback)
   modifyIORef' (asNextId state) (+ 1)
   pure (OnChange handleId)
 
@@ -109,17 +108,11 @@ runActionM state (ActionM f) = f state
 lookupAction :: ActionState -> Int32 -> IO (Maybe (IO ()))
 lookupAction state handleId = do
   callbacks <- readIORef (asCallbacks state)
-  pure (IntMap.lookup (int32ToIntKey handleId) callbacks)
+  pure (IntMap.lookup (Int32.toInt handleId) callbacks)
 
 -- | Look up a text-change callback by handle ID.
 -- Returns 'Nothing' if the ID is not registered.
 lookupTextAction :: ActionState -> Int32 -> IO (Maybe (Text -> IO ()))
 lookupTextAction state handleId = do
   callbacks <- readIORef (asTextCallbacks state)
-  pure (IntMap.lookup (int32ToIntKey handleId) callbacks)
-
--- | Convert Int32 to Int for use as IntMap key.
--- Total on all GHC-supported platforms (Int >= 32 bits).
--- Uses the total chain Int32 -> CInt -> Int.
-int32ToIntKey :: Int32 -> Int
-int32ToIntKey = CInt.toInt . Int32.toCInt
+  pure (IntMap.lookup (Int32.toInt handleId) callbacks)
