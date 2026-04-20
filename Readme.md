@@ -370,14 +370,30 @@ The desktop build uses stub C bridges that simulate platform responses
 (e.g. permissions always granted, location returns fixed coordinates).
 This lets you develop and test your app logic without a device.
 
-## CI
+# Contributing
 
-Five CI jobs run on every push:
+Always make sure to include tests.
+If we deal with platform integration or add native code
+we need tests in the simulator / emulator
+as well to ensure new builds don't crash.
 
-| Job | Platform | What it does |
-|-----|----------|--------------|
-| `nix-build` | Linux | Full nix-build + cabal test |
-| `android` | Linux | Cross-compile aarch64, build APK |
-| `android-armv7a-emulator` | Linux | Cross-compile armv7a, run in emulator |
-| `ios` | macOS | Cross-compile to iOS static lib |
-| `watchos` | macOS | Cross-compile to watchOS static lib |
+Sometimes we're able to make some rudmentary tests
+on screen as well.
+
+In general we can assume if something doesn't
+have tests it may as well not exist.
+
+## Integration requests
+
+Please find or make issues about integration requests.
+I can prioritize adding these first.
+The real time sink for these is usually testing
+out if the integration works.
+Animations for example required several iterations,
+whereas HTTP worked on first try.
+
+The claudes should be able to mostly implement this stuff
+especially if you use [vibes](https://github.com/jappeace/vibes).
+
+I think you can implement this stuff by hand
+as well but I find it way to tedious.
