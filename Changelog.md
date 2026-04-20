@@ -1,22 +1,82 @@
 # Change log for hatter
 
-## Version 0.3.0 2026.04.19 
-We used advanced sciences and made hatter even better!
+## Version 0.3.0 2026.04.19
 
-Science was used to make the animations work!
+### Breaking changes
 
+- `Column` and `Row` constructors now take `LayoutSettings` instead of
+  `[Widget]`.  Use the `column`, `row`, `scrollColumn`, `scrollRow`
+  smart constructors for the old behaviour.
+- `ScrollView` constructor removed.  Scrolling is now a property of
+  `Column`/`Row` via the `lsScrollable` field in `LayoutSettings`,
+  or use `scrollColumn`/`scrollRow`.
+- Container children are now wrapped in `LayoutItem` (with optional
+  `WidgetKey`) for key-based diffing.
+- `Easing`-based tween animations replaced with CSS-like keyframe
+  animations.  Use `linearAnimation`, `easeIn`, `easeOut`,
+  `easeInOut`, `andThen`, and `lerpStyle` for the new API.
+- Removed configurable `soName` from `mkAndroidLib`.
 
-Also we used science to get IOS to run and install !!!
+### Added
 
-We had some science left and use that to
-kill all bugs with pesticides.
+- `Hatter.Widget.Stack` — z-order overlay container (maps to
+  FrameLayout on Android, UIView overlay on iOS, ZStack on watchOS).
+  Includes `wsTouchPassthrough` style field for controlling touch
+  interception on overlay layers.
+- Smart constructors: `column`, `row`, `scrollColumn`, `scrollRow`,
+  `stack`, `item`, `keyedItem`.
+- `LayoutSettings`, `LayoutItem`, `WidgetKey` types for keyed
+  container children with key-based child matching in `diffContainer`.
+- Keyframe animation API: `linearAnimation`, `easeIn`, `easeOut`,
+  `easeInOut`, `andThen`, `lerpStyle` for composable CSS-like
+  animation sequences.
+- `requestRedraw` API (`Hatter.Render`) for triggering UI re-renders
+  from background threads.  Uses C pthread timer on Android
+  (non-threaded RTS safe) and platform-native dispatch elsewhere.
+- `tiAutoFocus` field on `TextInputConfig` — auto-focus on render
+  (deferred on Android via `View.post` for attachment safety).
+- `Hatter.DeviceInfo` — query device model, OS version, and screen
+  dimensions on all platforms.
+- Re-render UI automatically after `TextInput` value changes.
+- `hatter_hs_init` with `RtsConfig` for reliable RTS initialisation
+  on iOS/watchOS (fixes `hs_init` hang).
+- RTS heap limit (`-xr`) on iOS/watchOS real devices to avoid 1TB
+  `mmap` rejection.
+- Build hatter as a normal cross-compiled Haskell package via
+  `collect-deps.nix` / `cross-deps.nix`.
+- Share pre-compiled hatter objects across all Android ABI builds.
+- `-split-sections` + `--gc-sections` for smaller Android `.so` files.
+- Node ID reclamation via free stack on all platforms.
 
-very good.
+### Fixed
 
-I can make ask claudes to make a nice overview in here.
-but fuck that,
-
-better to make u laugh traveler.
+- First-render animation bug: tweens now register from zero origin
+  on initial render, not only on re-render.
+- Animated widget toggle-back bug: animation config preserved when
+  toggling an `Animated` wrapper off then back on.
+- Key-based child diffing prevents cascading native view destruction
+  when inserting/removing children mid-list.
+- Index-based default keys replace content-based `inferKey`, avoiding
+  hash collisions for identical widgets.
+- `Styled` wrapper now reapplies style when the child widget changes
+  type (e.g. `Text` to `Button`).
+- Android `destroy_node` detaches view from parent before freeing JNI
+  refs (fixes orphaned native views).
+- ScrollView SIGABRT on Android when mixing `TextInput` with other
+  widgets — children now wrapped in inner `LinearLayout`.
+- Android `TextWatcher` re-entry crash prevented by guarding against
+  redundant `setText` calls.
+- In-place diff for `Text`/`Button` widgets preserves native IME
+  connection on Android.
+- armv7a OOM from duplicated `registerForeignExports` `.init_array`
+  entries.
+- iOS/watchOS cross-build: drop `deriving stock` on `WidgetKey`.
+- iOS `hs_init` hang resolved via `hatter_hs_init` with explicit
+  `RtsConfig` and null-terminated argv.
+- Swift type inference errors on Xcode 16.4.
+- `os_log` `CVarArg` conformance on iOS — use `String(describing:)`
+  for pointer values.
+- GNU `libffi` built from source for static iOS/watchOS bundling.
 
 ## Version 0.2.0
 
