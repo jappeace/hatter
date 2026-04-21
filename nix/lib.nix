@@ -552,7 +552,7 @@ in {
     , simulator ? false
     , pname ? "hatter-ios"
     , extraModuleCopy ? ""
-    , crossDeps ? null          # output of ios-deps.nix (lib/, hi/, pkgdb/)
+    , crossDeps ? null          # output of ios-deps.nix (lib/, pkgdb/)
     }:
     let
       iosPkgs = import sources.nixpkgs {};
@@ -584,6 +584,46 @@ in {
       buildInputs = [ libffiStatic gmpStatic ];
 
       buildPhase = ''
+        ${if crossDeps != null then ''
+        # Hatter is pre-built in crossDeps — only compile per-app files.
+        cp ${mainModule} Main.hs
+
+        # run_main.c is not in cabal c-sources (references per-app ZCMain_main_closure)
+        mkdir -p cbits
+        cp ${hatterSrc}/cbits/run_main.c cbits/
+
+        # Extra module copies (consumer overrides)
+        ${extraModuleCopy}
+
+        ghc -staticlib \
+          -O2 \
+          -o libHatter.a \
+          -I${hatterSrc}/include \
+          -package-db ${crossDeps}/pkgdb \
+          -optl-lffi \
+          -optl-Wl,-u,_haskellRunMain \
+          -optl-Wl,-u,_haskellOnLifecycle \
+          -optl-Wl,-u,_haskellRenderUI \
+          -optl-Wl,-u,_haskellOnUIEvent \
+          -optl-Wl,-u,_haskellOnPermissionResult \
+          -optl-Wl,-u,_haskellOnSecureStorageResult \
+          -optl-Wl,-u,_haskellOnBleScanResult \
+          -optl-Wl,-u,_haskellOnDialogResult \
+          -optl-Wl,-u,_haskellOnLocationUpdate \
+          -optl-Wl,-u,_haskellOnAuthSessionResult \
+          -optl-Wl,-u,_haskellOnPlatformSignInResult \
+          -optl-Wl,-u,_haskellOnCameraResult \
+          -optl-Wl,-u,_haskellOnVideoFrame \
+          -optl-Wl,-u,_haskellOnAudioChunk \
+          -optl-Wl,-u,_haskellOnBottomSheetResult \
+          -optl-Wl,-u,_haskellOnHttpResult \
+          -optl-Wl,-u,_haskellOnNetworkStatusChange \
+          -optl-Wl,-u,_haskellLogLocale \
+          -optl-Wl,-u,_haskellLogDeviceInfo \
+          cbits/run_main.c \
+          Main.hs
+        '' else ''
+        # Standalone build — compile hatter from source.
         mkdir -p Hatter
         cp ${hatterSrc}/src/Hatter/Types.hs Hatter/
         cp ${hatterSrc}/src/Hatter/Lifecycle.hs Hatter/
@@ -640,7 +680,6 @@ in {
           -O2 \
           -o libHatter.a \
           -I${hatterSrc}/include \
-          ${if crossDeps != null then "-package-db ${crossDeps}/pkgdb -i${crossDeps}/hi" else ""} \
           -optl-lffi \
           -optl-Wl,-u,_haskellRunMain \
           -optl-Wl,-u,_haskellOnLifecycle \
@@ -682,6 +721,7 @@ in {
           cbits/device_info.c \
           Main.hs \
           Hatter.hs
+        ''}
       '';
 
       installPhase = ''
@@ -790,7 +830,7 @@ open(sys.argv[1], "w").write(yml)
     , simulator ? false
     , pname ? "hatter-watchos"
     , extraModuleCopy ? ""
-    , crossDeps ? null          # output of ios-deps.nix (lib/, hi/, pkgdb/)
+    , crossDeps ? null          # output of ios-deps.nix (lib/, pkgdb/)
     }:
     let
       iosPkgs = import sources.nixpkgs {};
@@ -821,6 +861,46 @@ open(sys.argv[1], "w").write(yml)
       buildInputs = [ libffiStatic gmpStatic ];
 
       buildPhase = ''
+        ${if crossDeps != null then ''
+        # Hatter is pre-built in crossDeps — only compile per-app files.
+        cp ${mainModule} Main.hs
+
+        # run_main.c is not in cabal c-sources (references per-app ZCMain_main_closure)
+        mkdir -p cbits
+        cp ${hatterSrc}/cbits/run_main.c cbits/
+
+        # Extra module copies (consumer overrides)
+        ${extraModuleCopy}
+
+        ghc -staticlib \
+          -O2 \
+          -o libHatter.a \
+          -I${hatterSrc}/include \
+          -package-db ${crossDeps}/pkgdb \
+          -optl-lffi \
+          -optl-Wl,-u,_haskellRunMain \
+          -optl-Wl,-u,_haskellOnLifecycle \
+          -optl-Wl,-u,_haskellRenderUI \
+          -optl-Wl,-u,_haskellOnUIEvent \
+          -optl-Wl,-u,_haskellOnPermissionResult \
+          -optl-Wl,-u,_haskellOnSecureStorageResult \
+          -optl-Wl,-u,_haskellOnBleScanResult \
+          -optl-Wl,-u,_haskellOnDialogResult \
+          -optl-Wl,-u,_haskellOnLocationUpdate \
+          -optl-Wl,-u,_haskellOnAuthSessionResult \
+          -optl-Wl,-u,_haskellOnPlatformSignInResult \
+          -optl-Wl,-u,_haskellOnCameraResult \
+          -optl-Wl,-u,_haskellOnVideoFrame \
+          -optl-Wl,-u,_haskellOnAudioChunk \
+          -optl-Wl,-u,_haskellOnBottomSheetResult \
+          -optl-Wl,-u,_haskellOnHttpResult \
+          -optl-Wl,-u,_haskellOnNetworkStatusChange \
+          -optl-Wl,-u,_haskellLogLocale \
+          -optl-Wl,-u,_haskellLogDeviceInfo \
+          cbits/run_main.c \
+          Main.hs
+        '' else ''
+        # Standalone build — compile hatter from source.
         mkdir -p Hatter
         cp ${hatterSrc}/src/Hatter/Types.hs Hatter/
         cp ${hatterSrc}/src/Hatter/Lifecycle.hs Hatter/
@@ -877,7 +957,6 @@ open(sys.argv[1], "w").write(yml)
           -O2 \
           -o libHatter.a \
           -I${hatterSrc}/include \
-          ${if crossDeps != null then "-package-db ${crossDeps}/pkgdb -i${crossDeps}/hi" else ""} \
           -optl-lffi \
           -optl-Wl,-u,_haskellRunMain \
           -optl-Wl,-u,_haskellOnLifecycle \
@@ -919,6 +998,7 @@ open(sys.argv[1], "w").write(yml)
           cbits/device_info.c \
           Main.hs \
           Hatter.hs
+        ''}
       '';
 
       installPhase = ''
