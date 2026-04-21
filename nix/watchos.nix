@@ -10,6 +10,7 @@ let
   lib = import ./lib.nix { inherit sources; };
   iosDeps = import ./ios-deps.nix {
     inherit sources consumerCabalFile consumerCabal2Nix hpkgs;
+    hatterSrc = ../.;
   };
 in
 lib.mkWatchOSLib {

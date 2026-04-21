@@ -69,6 +69,264 @@ let
   buildTools = "${androidSdk}/libexec/android-sdk/build-tools/34.0.0";
   platform = "${androidSdk}/libexec/android-sdk/platforms/android-34";
 
+  # --- Apple (iOS/watchOS) shared infrastructure ---
+  applePkgs = import sources.nixpkgs {};
+  appleGhc = applePkgs.haskellPackages.ghc;
+  gmpStatic = applePkgs.gmp.overrideAttrs (old: {
+    dontDisableStatic = true;
+  });
+  # Apple's libffi (v40) only ships .dylib — no static archive.
+  # Build GNU libffi from source with --enable-static for bundling
+  # into the iOS fat archive (mac2ios patches the platform tag).
+  libffiStatic = applePkgs.stdenv.mkDerivation {
+    pname = "libffi-static";
+    version = "3.5.2";
+    src = applePkgs.fetchurl {
+      url = "https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz";
+      hash = "sha256-86MIKiOzfCk6T80QUxR7Nx8v+R+n6hsqUuM1Z2usgtw=";
+    };
+    configureFlags = [ "--enable-static" "--disable-shared" ];
+  };
+
+  # -------------------------------------------------------------------------
+  # Shared data lists — single source of truth for modules, sources, headers
+  # -------------------------------------------------------------------------
+
+  # Haskell source modules copied for Apple static builds
+  hatterModules = [
+    "Types" "Lifecycle" "Widget" "UIBridge" "Render" "Locale" "I18n"
+    "Permission" "SecureStorage" "Ble" "Dialog" "Location" "AuthSession"
+    "PlatformSignIn" "Camera" "BottomSheet" "Http" "NetworkStatus"
+    "AppContext" "Animation" "FilesDir" "DeviceInfo"
+  ];
+
+  # C source files for Apple static builds
+  appleCbitsSources = [
+    "platform_log" "ui_bridge" "run_main" "locale"
+    "permission_bridge" "secure_storage_bridge" "ble_bridge"
+    "dialog_bridge" "location_bridge" "auth_session_bridge"
+    "platform_sign_in_bridge" "camera_bridge" "bottom_sheet_bridge"
+    "http_bridge" "network_status_bridge" "animation_bridge"
+    "redraw_bridge" "files_dir" "device_info"
+  ];
+
+  # Bridge headers shipped in output include/
+  bridgeHeaders = [
+    "Hatter.h" "UIBridge.h" "PermissionBridge.h" "SecureStorageBridge.h"
+    "BleBridge.h" "DialogBridge.h" "LocationBridge.h" "AuthSessionBridge.h"
+    "PlatformSignInBridge.h" "CameraBridge.h" "BottomSheetBridge.h"
+    "HttpBridge.h" "NetworkStatusBridge.h" "AnimationBridge.h" "RedrawBridge.h"
+  ];
+
+  # Android C files with identical NDK compile pattern (JNI_PACKAGE=me_jappie_hatter)
+  androidJniBridgeFiles = [
+    "jni_bridge" "permission_bridge_android" "secure_storage_android"
+    "ble_bridge_android" "dialog_bridge_android" "location_bridge_android"
+    "auth_session_android" "platform_sign_in_android" "camera_bridge_android"
+    "bottom_sheet_android" "http_bridge_android" "network_status_android"
+    "animation_bridge_android" "redraw_bridge_android"
+  ];
+
+  # Haskell symbols kept alive via -u linker flags.
+  # Android uses bare names; Apple prefixes with _.
+  commonExportedSymbols = [
+    "haskellRunMain" "haskellOnLifecycle" "haskellRenderUI" "haskellOnUIEvent"
+    "haskellOnPermissionResult" "haskellOnSecureStorageResult"
+    "haskellOnBleScanResult" "haskellOnDialogResult" "haskellOnLocationUpdate"
+    "haskellOnAuthSessionResult" "haskellOnPlatformSignInResult"
+    "haskellOnCameraResult" "haskellOnVideoFrame" "haskellOnAudioChunk"
+    "haskellOnBottomSheetResult" "haskellOnHttpResult"
+    "haskellOnNetworkStatusChange" "haskellLogLocale"
+  ];
+  androidOnlySymbols = [ "haskellOnUITextChange" ];
+  appleOnlySymbols = [ "haskellLogDeviceInfo" ];
+
+  # -------------------------------------------------------------------------
+  # Helper functions — generate repetitive shell/nix fragments
+  # -------------------------------------------------------------------------
+
+  # NDK compile one C file with JNI_PACKAGE and standard includes
+  ndkCompileJni = hatterSrc: cName:
+    ''
+      ${ndkCc} -c -fPIC \
+        -DJNI_PACKAGE=me_jappie_hatter \
+        -I${sysroot}/usr/include \
+        -I$RTS_INCLUDE \
+        -I${hatterSrc}/include \
+        -o ${cName}.o \
+        ${hatterSrc}/cbits/${cName}.c
+    '';
+
+  # Generate -optl-Wl,-u,<prefix><sym> flags
+  undefinedSymbolFlags = prefix: symbols:
+    builtins.concatStringsSep " \\\n          "
+      (map (s: "-optl-Wl,-u,${prefix}${s}") symbols);
+
+  # Generate header copy commands: cp <src>/<h> <dst>/<h>
+  copyBridgeHeaders = src: dst:
+    builtins.concatStringsSep "\n"
+      (map (h: "cp ${src}/${h} ${dst}/${h}") bridgeHeaders);
+
+  # Copy Hatter/*.hs modules from source tree
+  copyHatterModules = hatterSrc:
+    builtins.concatStringsSep "\n"
+      (map (m: "cp ${hatterSrc}/src/Hatter/${m}.hs Hatter/") hatterModules);
+
+  # Copy C source files to writable build dir
+  copyCbitsSources = hatterSrc:
+    builtins.concatStringsSep "\n"
+      (map (f: "cp ${hatterSrc}/cbits/${f}.c cbits/") appleCbitsSources);
+
+  # Generate cbits/*.c arguments for ghc -staticlib
+  cbitsSourceArgs =
+    builtins.concatStringsSep " \\\n          "
+      (map (f: "cbits/${f}.c") appleCbitsSources);
+
+  # -------------------------------------------------------------------------
+  # Internal: mkAppleStaticLib — shared implementation for iOS and watchOS
+  # -------------------------------------------------------------------------
+  mkAppleStaticLib =
+    { hatterSrc
+    , mainModule
+    , platform      # "ios" or "watchos"
+    , simulator ? false
+    , pname ? "hatter-${platform}"
+    , extraModuleCopy ? ""
+    , crossDeps ? null          # output of ios-deps.nix (lib/, pkgdb/)
+    }:
+    let
+      mac2tool = import (hatterSrc + "/nix/mac2${platform}.nix") {
+        inherit sources; pkgs = applePkgs;
+      };
+      toolBin = "mac2${platform}";
+    in
+    applePkgs.stdenv.mkDerivation {
+      inherit pname;
+      version = "0.1.0.0";
+
+      src = hatterSrc + "/src";
+
+      nativeBuildInputs = [ appleGhc applePkgs.cctools ];
+      buildInputs = [ libffiStatic gmpStatic ];
+
+      buildPhase = ''
+        ${if crossDeps != null then ''
+        # Hatter is pre-built in crossDeps — only compile per-app files.
+        cp ${mainModule} Main.hs
+
+        # run_main.c is not in cabal c-sources (references per-app ZCMain_main_closure)
+        mkdir -p cbits
+        cp ${hatterSrc}/cbits/run_main.c cbits/
+
+        # Extra module copies (consumer overrides)
+        ${extraModuleCopy}
+
+        ghc -staticlib \
+          -O2 \
+          -o libHatter.a \
+          -I${hatterSrc}/include \
+          -package-db ${crossDeps}/pkgdb \
+          -optl-lffi \
+          ${undefinedSymbolFlags "_" (commonExportedSymbols ++ appleOnlySymbols)} \
+          cbits/run_main.c \
+          Main.hs
+        '' else ''
+        # Standalone build — compile hatter from source.
+        mkdir -p Hatter
+        ${copyHatterModules hatterSrc}
+        cp ${hatterSrc}/src/Hatter.hs .
+
+        # Extra module copies
+        ${extraModuleCopy}
+
+        cp ${mainModule} Main.hs
+
+        # Copy C sources into writable build dir (GHC writes .o next to them)
+        mkdir -p cbits
+        ${copyCbitsSources hatterSrc}
+
+        ghc -staticlib \
+          -O2 \
+          -o libHatter.a \
+          -I${hatterSrc}/include \
+          -optl-lffi \
+          ${undefinedSymbolFlags "_" (commonExportedSymbols ++ appleOnlySymbols)} \
+          ${cbitsSourceArgs} \
+          Main.hs \
+          Hatter.hs
+        ''}
+      '';
+
+      installPhase = ''
+        mkdir -p $out/lib $out/include
+
+        echo "Merging static archives into libHatter.a"
+        libtool -static -o libCombined.a libHatter.a \
+          ${gmpStatic}/lib/libgmp.a \
+          ${libffiStatic}/lib/libffi.a \
+          ${if crossDeps != null then "${crossDeps}/lib/*.a" else ""}
+        mv libCombined.a libHatter.a
+
+        ${mac2tool}/bin/${toolBin} ${if simulator then "-s" else ""} libHatter.a
+        cp libHatter.a $out/lib/
+        ${copyBridgeHeaders "${hatterSrc}/include" "$out/include"}
+      '';
+    };
+
+  # -------------------------------------------------------------------------
+  # Internal: mkAppleSimulatorApp — shared implementation for simulator staging
+  # -------------------------------------------------------------------------
+  mkAppleSimulatorApp =
+    { platformLib      # pre-built .a library derivation
+    , platformSrc      # path to ios/ or watchos/ source directory
+    , platformName     # "ios" or "watchos"
+    , name
+    , maxNodes ? 256
+    , dynamicNodePool ? false
+    }:
+    let
+      nodePoolCFlags =
+        if dynamicNodePool then ["-DDYNAMIC_NODE_POOL"]
+        else if maxNodes != 256 then ["-DMAX_NODES=${toString maxNodes}"]
+        else [];
+      # Inject OTHER_CFLAGS into project.yml when non-default pool settings used.
+      # Uses single-quoted -c and argv to avoid shell quoting issues.
+      flagYaml = ''[${builtins.concatStringsSep ", " (map (f: ''"${f}"'') nodePoolCFlags)}]'';
+      patchProjectYml =
+        if nodePoolCFlags == [] then ""
+        else ''
+          ${pkgs.python3}/bin/python3 -c '
+import sys
+yml = open(sys.argv[1]).read()
+yml = yml.replace(
+    "OTHER_LDFLAGS:",
+    "OTHER_CFLAGS: " + sys.argv[2] + "\n        OTHER_LDFLAGS:"
+)
+open(sys.argv[1], "w").write(yml)
+' "$out/share/${platformName}/project.yml" '${flagYaml}'
+        '';
+    in
+    pkgs.stdenv.mkDerivation {
+      inherit name;
+
+      dontUnpack = true;
+
+      buildPhase = ''
+        mkdir -p $out/share/${platformName}/lib $out/share/${platformName}/include
+
+        cp -r ${platformSrc}/Hatter $out/share/${platformName}/
+        cp -r ${platformSrc}/HatterUITests $out/share/${platformName}/
+        cp ${platformSrc}/project.yml $out/share/${platformName}/project.yml
+        ${if nodePoolCFlags != [] then ''chmod u+w $out/share/${platformName}/project.yml'' else ""}
+
+        cp ${platformLib}/lib/libHatter.a $out/share/${platformName}/lib/
+        ${copyBridgeHeaders "${platformLib}/include" "$out/share/${platformName}/include"}
+        ${patchProjectYml}
+      '';
+
+      installPhase = "true";
+    };
+
 in {
 
   # ---------------------------------------------------------------------------
@@ -131,13 +389,7 @@ in {
         # Core library C files always use me_jappie_hatter because
         # native methods are declared on HatterActivity (the library's
         # own class), not the consumer's subclass.
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o jni_bridge.o \
-          ${hatterSrc}/cbits/jni_bridge.c
+        ${builtins.concatStringsSep "\n" (map (ndkCompileJni hatterSrc) androidJniBridgeFiles)}
 
         ${ndkCc} -c -fPIC \
           ${if dynamicNodePool then "-DDYNAMIC_NODE_POOL"
@@ -148,110 +400,6 @@ in {
           -I${hatterSrc}/include \
           -o ui_bridge_android.o \
           ${hatterSrc}/cbits/ui_bridge_android.c
-
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o permission_bridge_android.o \
-          ${hatterSrc}/cbits/permission_bridge_android.c
-
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o secure_storage_android.o \
-          ${hatterSrc}/cbits/secure_storage_android.c
-
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o ble_bridge_android.o \
-          ${hatterSrc}/cbits/ble_bridge_android.c
-
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o dialog_bridge_android.o \
-          ${hatterSrc}/cbits/dialog_bridge_android.c
-
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o location_bridge_android.o \
-          ${hatterSrc}/cbits/location_bridge_android.c
-
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o auth_session_android.o \
-          ${hatterSrc}/cbits/auth_session_android.c
-
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o platform_sign_in_android.o \
-          ${hatterSrc}/cbits/platform_sign_in_android.c
-
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o camera_bridge_android.o \
-          ${hatterSrc}/cbits/camera_bridge_android.c
-
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o bottom_sheet_android.o \
-          ${hatterSrc}/cbits/bottom_sheet_android.c
-
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o http_bridge_android.o \
-          ${hatterSrc}/cbits/http_bridge_android.c
-
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o network_status_android.o \
-          ${hatterSrc}/cbits/network_status_android.c
-
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o animation_bridge_android.o \
-          ${hatterSrc}/cbits/animation_bridge_android.c
-
-        ${ndkCc} -c -fPIC \
-          -DJNI_PACKAGE=me_jappie_hatter \
-          -I${sysroot}/usr/include \
-          -I$RTS_INCLUDE \
-          -I${hatterSrc}/include \
-          -o redraw_bridge_android.o \
-          ${hatterSrc}/cbits/redraw_bridge_android.c
 
         # Compile extra JNI bridge sources (consumer-specific JNI methods)
         ${builtins.concatStringsSep "\n" (builtins.genList (i:
@@ -351,42 +499,12 @@ in {
           -optl-llog \
           -optl-Wl,-z,max-page-size=16384 \
           -optl-Wl,--gc-sections \
-          -optl$(pwd)/jni_bridge.o \
+          ${builtins.concatStringsSep " \\\n          "
+            (map (f: "-optl$(pwd)/${f}.o") androidJniBridgeFiles)} \
           -optl$(pwd)/ui_bridge_android.o \
-          -optl$(pwd)/permission_bridge_android.o \
-          -optl$(pwd)/secure_storage_android.o \
-          -optl$(pwd)/ble_bridge_android.o \
-          -optl$(pwd)/dialog_bridge_android.o \
-          -optl$(pwd)/location_bridge_android.o \
-          -optl$(pwd)/auth_session_android.o \
-          -optl$(pwd)/platform_sign_in_android.o \
-          -optl$(pwd)/camera_bridge_android.o \
-          -optl$(pwd)/bottom_sheet_android.o \
-          -optl$(pwd)/http_bridge_android.o \
-          -optl$(pwd)/network_status_android.o \
-          -optl$(pwd)/animation_bridge_android.o \
-          -optl$(pwd)/redraw_bridge_android.o \
           ${builtins.concatStringsSep " " (builtins.genList (i: "-optl$(pwd)/extra_jni_${toString i}.o") (builtins.length extraJniBridge))} \
           ${builtins.concatStringsSep " " (map (o: "-optl${o}") extraLinkObjects)} \
-          -optl-Wl,-u,haskellRunMain \
-          -optl-Wl,-u,haskellOnLifecycle \
-          -optl-Wl,-u,haskellRenderUI \
-          -optl-Wl,-u,haskellOnUIEvent \
-          -optl-Wl,-u,haskellOnUITextChange \
-          -optl-Wl,-u,haskellOnPermissionResult \
-          -optl-Wl,-u,haskellOnSecureStorageResult \
-          -optl-Wl,-u,haskellOnBleScanResult \
-          -optl-Wl,-u,haskellOnDialogResult \
-          -optl-Wl,-u,haskellOnLocationUpdate \
-          -optl-Wl,-u,haskellOnAuthSessionResult \
-          -optl-Wl,-u,haskellOnPlatformSignInResult \
-          -optl-Wl,-u,haskellOnCameraResult \
-          -optl-Wl,-u,haskellOnVideoFrame \
-          -optl-Wl,-u,haskellOnAudioChunk \
-          -optl-Wl,-u,haskellOnBottomSheetResult \
-          -optl-Wl,-u,haskellOnHttpResult \
-          -optl-Wl,-u,haskellOnNetworkStatusChange \
-          -optl-Wl,-u,haskellLogLocale \
+          ${undefinedSymbolFlags "" (commonExportedSymbols ++ androidOnlySymbols)} \
           -optl-Wl,--wrap=registerForeignExports \
           -optl-Wl,--no-undefined \
           -optl-Wl,--whole-archive \
@@ -546,173 +664,7 @@ in {
   # ---------------------------------------------------------------------------
   # mkIOSLib: Compile Haskell to static .a for iOS (device or simulator)
   # ---------------------------------------------------------------------------
-  mkIOSLib =
-    { hatterSrc
-    , mainModule
-    , simulator ? false
-    , pname ? "hatter-ios"
-    , extraModuleCopy ? ""
-    , crossDeps ? null          # output of ios-deps.nix (lib/, hi/, pkgdb/)
-    }:
-    let
-      iosPkgs = import sources.nixpkgs {};
-      iosGhc = iosPkgs.haskellPackages.ghc;
-      mac2ios = import (hatterSrc + "/nix/mac2ios.nix") { inherit sources; pkgs = iosPkgs; };
-      gmpStatic = iosPkgs.gmp.overrideAttrs (old: {
-        dontDisableStatic = true;
-      });
-      # Apple's libffi (v40) only ships .dylib — no static archive.
-      # Build GNU libffi from source with --enable-static for bundling
-      # into the iOS fat archive (mac2ios patches the platform tag).
-      libffiStatic = iosPkgs.stdenv.mkDerivation {
-        pname = "libffi-static";
-        version = "3.5.2";
-        src = iosPkgs.fetchurl {
-          url = "https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz";
-          hash = "sha256-86MIKiOzfCk6T80QUxR7Nx8v+R+n6hsqUuM1Z2usgtw=";
-        };
-        configureFlags = [ "--enable-static" "--disable-shared" ];
-      };
-    in
-    iosPkgs.stdenv.mkDerivation {
-      inherit pname;
-      version = "0.1.0.0";
-
-      src = hatterSrc + "/src";
-
-      nativeBuildInputs = [ iosGhc iosPkgs.cctools ];
-      buildInputs = [ libffiStatic gmpStatic ];
-
-      buildPhase = ''
-        mkdir -p Hatter
-        cp ${hatterSrc}/src/Hatter/Types.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Lifecycle.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Widget.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/UIBridge.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Render.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Locale.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/I18n.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Permission.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/SecureStorage.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Ble.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Dialog.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Location.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/AuthSession.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/PlatformSignIn.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Camera.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/BottomSheet.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Http.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/NetworkStatus.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/AppContext.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Animation.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/FilesDir.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/DeviceInfo.hs Hatter/
-        cp ${hatterSrc}/src/Hatter.hs .
-
-        # Extra module copies
-        ${extraModuleCopy}
-
-        cp ${mainModule} Main.hs
-
-        # Copy C sources into writable build dir (GHC writes .o next to them)
-        mkdir -p cbits
-        cp ${hatterSrc}/cbits/platform_log.c cbits/
-        cp ${hatterSrc}/cbits/ui_bridge.c cbits/
-        cp ${hatterSrc}/cbits/run_main.c cbits/
-        cp ${hatterSrc}/cbits/locale.c cbits/
-        cp ${hatterSrc}/cbits/permission_bridge.c cbits/
-        cp ${hatterSrc}/cbits/secure_storage_bridge.c cbits/
-        cp ${hatterSrc}/cbits/ble_bridge.c cbits/
-        cp ${hatterSrc}/cbits/dialog_bridge.c cbits/
-        cp ${hatterSrc}/cbits/location_bridge.c cbits/
-        cp ${hatterSrc}/cbits/auth_session_bridge.c cbits/
-        cp ${hatterSrc}/cbits/platform_sign_in_bridge.c cbits/
-        cp ${hatterSrc}/cbits/camera_bridge.c cbits/
-        cp ${hatterSrc}/cbits/bottom_sheet_bridge.c cbits/
-        cp ${hatterSrc}/cbits/http_bridge.c cbits/
-        cp ${hatterSrc}/cbits/network_status_bridge.c cbits/
-        cp ${hatterSrc}/cbits/animation_bridge.c cbits/
-        cp ${hatterSrc}/cbits/redraw_bridge.c cbits/
-        cp ${hatterSrc}/cbits/files_dir.c cbits/
-        cp ${hatterSrc}/cbits/device_info.c cbits/
-
-        ghc -staticlib \
-          -O2 \
-          -o libHatter.a \
-          -I${hatterSrc}/include \
-          ${if crossDeps != null then "-package-db ${crossDeps}/pkgdb -i${crossDeps}/hi" else ""} \
-          -optl-lffi \
-          -optl-Wl,-u,_haskellRunMain \
-          -optl-Wl,-u,_haskellOnLifecycle \
-          -optl-Wl,-u,_haskellRenderUI \
-          -optl-Wl,-u,_haskellOnUIEvent \
-          -optl-Wl,-u,_haskellOnPermissionResult \
-          -optl-Wl,-u,_haskellOnSecureStorageResult \
-          -optl-Wl,-u,_haskellOnBleScanResult \
-          -optl-Wl,-u,_haskellOnDialogResult \
-          -optl-Wl,-u,_haskellOnLocationUpdate \
-          -optl-Wl,-u,_haskellOnAuthSessionResult \
-          -optl-Wl,-u,_haskellOnPlatformSignInResult \
-          -optl-Wl,-u,_haskellOnCameraResult \
-          -optl-Wl,-u,_haskellOnVideoFrame \
-          -optl-Wl,-u,_haskellOnAudioChunk \
-          -optl-Wl,-u,_haskellOnBottomSheetResult \
-          -optl-Wl,-u,_haskellOnHttpResult \
-          -optl-Wl,-u,_haskellOnNetworkStatusChange \
-          -optl-Wl,-u,_haskellLogLocale \
-          -optl-Wl,-u,_haskellLogDeviceInfo \
-          cbits/platform_log.c \
-          cbits/ui_bridge.c \
-          cbits/run_main.c \
-          cbits/locale.c \
-          cbits/permission_bridge.c \
-          cbits/secure_storage_bridge.c \
-          cbits/ble_bridge.c \
-          cbits/dialog_bridge.c \
-          cbits/location_bridge.c \
-          cbits/auth_session_bridge.c \
-          cbits/platform_sign_in_bridge.c \
-          cbits/camera_bridge.c \
-          cbits/bottom_sheet_bridge.c \
-          cbits/http_bridge.c \
-          cbits/network_status_bridge.c \
-          cbits/animation_bridge.c \
-          cbits/redraw_bridge.c \
-          cbits/files_dir.c \
-          cbits/device_info.c \
-          Main.hs \
-          Hatter.hs
-      '';
-
-      installPhase = ''
-        mkdir -p $out/lib $out/include
-
-        echo "Merging static archives into libHatter.a"
-        libtool -static -o libCombined.a libHatter.a \
-          ${gmpStatic}/lib/libgmp.a \
-          ${libffiStatic}/lib/libffi.a \
-          ${if crossDeps != null then "${crossDeps}/lib/*.a" else ""}
-        mv libCombined.a libHatter.a
-
-        ${mac2ios}/bin/mac2ios ${if simulator then "-s" else ""} libHatter.a
-        cp libHatter.a $out/lib/
-        cp ${hatterSrc}/include/Hatter.h $out/include/Hatter.h
-        cp ${hatterSrc}/include/UIBridge.h $out/include/UIBridge.h
-        cp ${hatterSrc}/include/PermissionBridge.h $out/include/PermissionBridge.h
-        cp ${hatterSrc}/include/SecureStorageBridge.h $out/include/SecureStorageBridge.h
-        cp ${hatterSrc}/include/BleBridge.h $out/include/BleBridge.h
-        cp ${hatterSrc}/include/DialogBridge.h $out/include/DialogBridge.h
-        cp ${hatterSrc}/include/LocationBridge.h $out/include/LocationBridge.h
-        cp ${hatterSrc}/include/AuthSessionBridge.h $out/include/AuthSessionBridge.h
-        cp ${hatterSrc}/include/PlatformSignInBridge.h $out/include/PlatformSignInBridge.h
-        cp ${hatterSrc}/include/CameraBridge.h $out/include/CameraBridge.h
-        cp ${hatterSrc}/include/BottomSheetBridge.h $out/include/BottomSheetBridge.h
-        cp ${hatterSrc}/include/HttpBridge.h $out/include/HttpBridge.h
-        cp ${hatterSrc}/include/NetworkStatusBridge.h $out/include/NetworkStatusBridge.h
-        cp ${hatterSrc}/include/AnimationBridge.h $out/include/AnimationBridge.h
-        cp ${hatterSrc}/include/RedrawBridge.h $out/include/RedrawBridge.h
-      '';
-    };
+  mkIOSLib = args: mkAppleStaticLib (args // { platform = "ios"; });
 
   # ---------------------------------------------------------------------------
   # mkSimulatorApp: Stage iOS sources + pre-built library for xcodebuild
@@ -721,235 +673,20 @@ in {
     { iosLib
     , iosSrc
     , name ? "simulator-app"
-    , maxNodes ? 256            # static pool size (ignored when dynamicNodePool=true)
-    , dynamicNodePool ? false   # use malloc/realloc instead of fixed array
+    , maxNodes ? 256
+    , dynamicNodePool ? false
     }:
-    let
-      nodePoolCFlags =
-        if dynamicNodePool then ["-DDYNAMIC_NODE_POOL"]
-        else if maxNodes != 256 then ["-DMAX_NODES=${toString maxNodes}"]
-        else [];
-      # Inject OTHER_CFLAGS into project.yml when non-default pool settings used.
-      # Uses single-quoted -c and argv to avoid shell quoting issues.
-      flagYaml = ''[${builtins.concatStringsSep ", " (map (f: ''"${f}"'') nodePoolCFlags)}]'';
-      patchProjectYml =
-        if nodePoolCFlags == [] then ""
-        else ''
-          ${pkgs.python3}/bin/python3 -c '
-import sys
-yml = open(sys.argv[1]).read()
-yml = yml.replace(
-    "OTHER_LDFLAGS:",
-    "OTHER_CFLAGS: " + sys.argv[2] + "\n        OTHER_LDFLAGS:"
-)
-open(sys.argv[1], "w").write(yml)
-' "$out/share/ios/project.yml" '${flagYaml}'
-        '';
-    in
-    pkgs.stdenv.mkDerivation {
-      inherit name;
-
-      dontUnpack = true;
-
-      buildPhase = ''
-        mkdir -p $out/share/ios/lib $out/share/ios/include
-
-        cp -r ${iosSrc}/Hatter $out/share/ios/
-        cp -r ${iosSrc}/HatterUITests $out/share/ios/
-        cp ${iosSrc}/project.yml $out/share/ios/project.yml
-        chmod u+w $out/share/ios/project.yml
-
-        cp ${iosLib}/lib/libHatter.a $out/share/ios/lib/
-        cp ${iosLib}/include/Hatter.h $out/share/ios/include/
-        cp ${iosLib}/include/UIBridge.h $out/share/ios/include/
-        cp ${iosLib}/include/PermissionBridge.h $out/share/ios/include/
-        cp ${iosLib}/include/SecureStorageBridge.h $out/share/ios/include/
-        cp ${iosLib}/include/BleBridge.h $out/share/ios/include/
-        cp ${iosLib}/include/DialogBridge.h $out/share/ios/include/
-        cp ${iosLib}/include/LocationBridge.h $out/share/ios/include/
-        cp ${iosLib}/include/AuthSessionBridge.h $out/share/ios/include/
-        cp ${iosLib}/include/PlatformSignInBridge.h $out/share/ios/include/
-        cp ${iosLib}/include/CameraBridge.h $out/share/ios/include/
-        cp ${iosLib}/include/BottomSheetBridge.h $out/share/ios/include/
-        cp ${iosLib}/include/HttpBridge.h $out/share/ios/include/
-        cp ${iosLib}/include/NetworkStatusBridge.h $out/share/ios/include/
-        cp ${iosLib}/include/AnimationBridge.h $out/share/ios/include/
-        cp ${iosLib}/include/RedrawBridge.h $out/share/ios/include/
-        ${patchProjectYml}
-      '';
-
-      installPhase = "true";
+    mkAppleSimulatorApp {
+      platformLib = iosLib;
+      platformSrc = iosSrc;
+      platformName = "ios";
+      inherit name maxNodes dynamicNodePool;
     };
 
   # ---------------------------------------------------------------------------
   # mkWatchOSLib: Compile Haskell to static .a for watchOS (device or simulator)
   # ---------------------------------------------------------------------------
-  mkWatchOSLib =
-    { hatterSrc
-    , mainModule
-    , simulator ? false
-    , pname ? "hatter-watchos"
-    , extraModuleCopy ? ""
-    , crossDeps ? null          # output of ios-deps.nix (lib/, hi/, pkgdb/)
-    }:
-    let
-      iosPkgs = import sources.nixpkgs {};
-      iosGhc = iosPkgs.haskellPackages.ghc;
-      mac2watchos = import (hatterSrc + "/nix/mac2watchos.nix") {
-        inherit sources; pkgs = iosPkgs;
-      };
-      gmpStatic = iosPkgs.gmp.overrideAttrs (old: {
-        dontDisableStatic = true;
-      });
-      libffiStatic = iosPkgs.stdenv.mkDerivation {
-        pname = "libffi-static";
-        version = "3.5.2";
-        src = iosPkgs.fetchurl {
-          url = "https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz";
-          hash = "sha256-86MIKiOzfCk6T80QUxR7Nx8v+R+n6hsqUuM1Z2usgtw=";
-        };
-        configureFlags = [ "--enable-static" "--disable-shared" ];
-      };
-    in
-    iosPkgs.stdenv.mkDerivation {
-      inherit pname;
-      version = "0.1.0.0";
-
-      src = hatterSrc + "/src";
-
-      nativeBuildInputs = [ iosGhc iosPkgs.cctools ];
-      buildInputs = [ libffiStatic gmpStatic ];
-
-      buildPhase = ''
-        mkdir -p Hatter
-        cp ${hatterSrc}/src/Hatter/Types.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Lifecycle.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Widget.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/UIBridge.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Render.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Locale.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/I18n.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Permission.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/SecureStorage.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Ble.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Dialog.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Location.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/AuthSession.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/PlatformSignIn.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Camera.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/BottomSheet.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Http.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/NetworkStatus.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/AppContext.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/Animation.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/FilesDir.hs Hatter/
-        cp ${hatterSrc}/src/Hatter/DeviceInfo.hs Hatter/
-        cp ${hatterSrc}/src/Hatter.hs .
-
-        # Extra module copies
-        ${extraModuleCopy}
-
-        cp ${mainModule} Main.hs
-
-        # Copy C sources into writable build dir (GHC writes .o next to them)
-        mkdir -p cbits
-        cp ${hatterSrc}/cbits/platform_log.c cbits/
-        cp ${hatterSrc}/cbits/ui_bridge.c cbits/
-        cp ${hatterSrc}/cbits/run_main.c cbits/
-        cp ${hatterSrc}/cbits/locale.c cbits/
-        cp ${hatterSrc}/cbits/permission_bridge.c cbits/
-        cp ${hatterSrc}/cbits/secure_storage_bridge.c cbits/
-        cp ${hatterSrc}/cbits/ble_bridge.c cbits/
-        cp ${hatterSrc}/cbits/dialog_bridge.c cbits/
-        cp ${hatterSrc}/cbits/location_bridge.c cbits/
-        cp ${hatterSrc}/cbits/auth_session_bridge.c cbits/
-        cp ${hatterSrc}/cbits/platform_sign_in_bridge.c cbits/
-        cp ${hatterSrc}/cbits/camera_bridge.c cbits/
-        cp ${hatterSrc}/cbits/bottom_sheet_bridge.c cbits/
-        cp ${hatterSrc}/cbits/http_bridge.c cbits/
-        cp ${hatterSrc}/cbits/network_status_bridge.c cbits/
-        cp ${hatterSrc}/cbits/animation_bridge.c cbits/
-        cp ${hatterSrc}/cbits/redraw_bridge.c cbits/
-        cp ${hatterSrc}/cbits/files_dir.c cbits/
-        cp ${hatterSrc}/cbits/device_info.c cbits/
-
-        ghc -staticlib \
-          -O2 \
-          -o libHatter.a \
-          -I${hatterSrc}/include \
-          ${if crossDeps != null then "-package-db ${crossDeps}/pkgdb -i${crossDeps}/hi" else ""} \
-          -optl-lffi \
-          -optl-Wl,-u,_haskellRunMain \
-          -optl-Wl,-u,_haskellOnLifecycle \
-          -optl-Wl,-u,_haskellRenderUI \
-          -optl-Wl,-u,_haskellOnUIEvent \
-          -optl-Wl,-u,_haskellOnPermissionResult \
-          -optl-Wl,-u,_haskellOnSecureStorageResult \
-          -optl-Wl,-u,_haskellOnBleScanResult \
-          -optl-Wl,-u,_haskellOnDialogResult \
-          -optl-Wl,-u,_haskellOnLocationUpdate \
-          -optl-Wl,-u,_haskellOnAuthSessionResult \
-          -optl-Wl,-u,_haskellOnPlatformSignInResult \
-          -optl-Wl,-u,_haskellOnCameraResult \
-          -optl-Wl,-u,_haskellOnVideoFrame \
-          -optl-Wl,-u,_haskellOnAudioChunk \
-          -optl-Wl,-u,_haskellOnBottomSheetResult \
-          -optl-Wl,-u,_haskellOnHttpResult \
-          -optl-Wl,-u,_haskellOnNetworkStatusChange \
-          -optl-Wl,-u,_haskellLogLocale \
-          -optl-Wl,-u,_haskellLogDeviceInfo \
-          cbits/platform_log.c \
-          cbits/ui_bridge.c \
-          cbits/run_main.c \
-          cbits/locale.c \
-          cbits/permission_bridge.c \
-          cbits/secure_storage_bridge.c \
-          cbits/ble_bridge.c \
-          cbits/dialog_bridge.c \
-          cbits/location_bridge.c \
-          cbits/auth_session_bridge.c \
-          cbits/platform_sign_in_bridge.c \
-          cbits/camera_bridge.c \
-          cbits/bottom_sheet_bridge.c \
-          cbits/http_bridge.c \
-          cbits/network_status_bridge.c \
-          cbits/animation_bridge.c \
-          cbits/redraw_bridge.c \
-          cbits/files_dir.c \
-          cbits/device_info.c \
-          Main.hs \
-          Hatter.hs
-      '';
-
-      installPhase = ''
-        mkdir -p $out/lib $out/include
-
-        echo "Merging static archives into libHatter.a"
-        libtool -static -o libCombined.a libHatter.a \
-          ${gmpStatic}/lib/libgmp.a \
-          ${libffiStatic}/lib/libffi.a \
-          ${if crossDeps != null then "${crossDeps}/lib/*.a" else ""}
-        mv libCombined.a libHatter.a
-
-        ${mac2watchos}/bin/mac2watchos ${if simulator then "-s" else ""} libHatter.a
-        cp libHatter.a $out/lib/
-        cp ${hatterSrc}/include/Hatter.h $out/include/Hatter.h
-        cp ${hatterSrc}/include/UIBridge.h $out/include/UIBridge.h
-        cp ${hatterSrc}/include/PermissionBridge.h $out/include/PermissionBridge.h
-        cp ${hatterSrc}/include/SecureStorageBridge.h $out/include/SecureStorageBridge.h
-        cp ${hatterSrc}/include/BleBridge.h $out/include/BleBridge.h
-        cp ${hatterSrc}/include/DialogBridge.h $out/include/DialogBridge.h
-        cp ${hatterSrc}/include/LocationBridge.h $out/include/LocationBridge.h
-        cp ${hatterSrc}/include/AuthSessionBridge.h $out/include/AuthSessionBridge.h
-        cp ${hatterSrc}/include/PlatformSignInBridge.h $out/include/PlatformSignInBridge.h
-        cp ${hatterSrc}/include/CameraBridge.h $out/include/CameraBridge.h
-        cp ${hatterSrc}/include/BottomSheetBridge.h $out/include/BottomSheetBridge.h
-        cp ${hatterSrc}/include/HttpBridge.h $out/include/HttpBridge.h
-        cp ${hatterSrc}/include/NetworkStatusBridge.h $out/include/NetworkStatusBridge.h
-        cp ${hatterSrc}/include/AnimationBridge.h $out/include/AnimationBridge.h
-        cp ${hatterSrc}/include/RedrawBridge.h $out/include/RedrawBridge.h
-      '';
-    };
+  mkWatchOSLib = args: mkAppleStaticLib (args // { platform = "watchos"; });
 
   # ---------------------------------------------------------------------------
   # mkWatchOSSimulatorApp: Stage watchOS sources + pre-built library for xcodebuild
@@ -959,37 +696,11 @@ open(sys.argv[1], "w").write(yml)
     , watchosSrc
     , name ? "watchos-simulator-app"
     }:
-    pkgs.stdenv.mkDerivation {
+    mkAppleSimulatorApp {
+      platformLib = watchosLib;
+      platformSrc = watchosSrc;
+      platformName = "watchos";
       inherit name;
-
-      dontUnpack = true;
-
-      buildPhase = ''
-        mkdir -p $out/share/watchos/lib $out/share/watchos/include
-
-        cp -r ${watchosSrc}/Hatter $out/share/watchos/
-        cp -r ${watchosSrc}/HatterUITests $out/share/watchos/
-        cp ${watchosSrc}/project.yml $out/share/watchos/project.yml
-
-        cp ${watchosLib}/lib/libHatter.a $out/share/watchos/lib/
-        cp ${watchosLib}/include/Hatter.h $out/share/watchos/include/
-        cp ${watchosLib}/include/UIBridge.h $out/share/watchos/include/
-        cp ${watchosLib}/include/PermissionBridge.h $out/share/watchos/include/
-        cp ${watchosLib}/include/SecureStorageBridge.h $out/share/watchos/include/
-        cp ${watchosLib}/include/BleBridge.h $out/share/watchos/include/
-        cp ${watchosLib}/include/DialogBridge.h $out/share/watchos/include/
-        cp ${watchosLib}/include/LocationBridge.h $out/share/watchos/include/
-        cp ${watchosLib}/include/AuthSessionBridge.h $out/share/watchos/include/
-        cp ${watchosLib}/include/PlatformSignInBridge.h $out/share/watchos/include/
-        cp ${watchosLib}/include/CameraBridge.h $out/share/watchos/include/
-        cp ${watchosLib}/include/BottomSheetBridge.h $out/share/watchos/include/
-        cp ${watchosLib}/include/HttpBridge.h $out/share/watchos/include/
-        cp ${watchosLib}/include/NetworkStatusBridge.h $out/share/watchos/include/
-        cp ${watchosLib}/include/AnimationBridge.h $out/share/watchos/include/
-        cp ${watchosLib}/include/RedrawBridge.h $out/share/watchos/include/
-      '';
-
-      installPhase = "true";
     };
 
 }
