@@ -193,12 +193,28 @@ let
     , pname ? "hatter-${platform}"
     , extraModuleCopy ? ""
     , crossDeps ? null          # output of ios-deps.nix (lib/, pkgdb/)
+    , deviceCpu ? "apple-a12"   # minimum CPU target for device builds (issue #216)
     }:
     let
       mac2tool = import (hatterSrc + "/nix/mac2${platform}.nix") {
         inherit sources; pkgs = applePkgs;
       };
       toolBin = "mac2${platform}";
+
+      # Issue #216: Constrain instruction set to deviceCpu on device builds
+      # to avoid ARMv8.4+ instructions (UDOT/SDOT) that crash on pre-A13.
+      useCpuFlag = !simulator && deviceCpu != null;
+      cpuFlag = if useCpuFlag then "-optc -mcpu=${deviceCpu}" else "";
+      deviceGmpStatic = if useCpuFlag
+        then gmpStatic.overrideAttrs (old: {
+          NIX_CFLAGS_COMPILE = (old.NIX_CFLAGS_COMPILE or "") + " -mcpu=${deviceCpu}";
+        })
+        else gmpStatic;
+      deviceLibffiStatic = if useCpuFlag
+        then libffiStatic.overrideAttrs (old: {
+          NIX_CFLAGS_COMPILE = (old.NIX_CFLAGS_COMPILE or "") + " -mcpu=${deviceCpu}";
+        })
+        else libffiStatic;
     in
     applePkgs.stdenv.mkDerivation {
       inherit pname;
@@ -207,7 +223,7 @@ let
       src = hatterSrc + "/src";
 
       nativeBuildInputs = [ appleGhc applePkgs.cctools ];
-      buildInputs = [ libffiStatic gmpStatic ];
+      buildInputs = [ deviceLibffiStatic deviceGmpStatic ];
 
       buildPhase = ''
         ${if crossDeps != null then ''
@@ -223,6 +239,7 @@ let
 
         ghc -staticlib \
           -O2 \
+          ${cpuFlag} \
           -o libHatter.a \
           -I${hatterSrc}/include \
           -package-db ${crossDeps}/pkgdb \
@@ -247,6 +264,7 @@ let
 
         ghc -staticlib \
           -O2 \
+          ${cpuFlag} \
           -o libHatter.a \
           -I${hatterSrc}/include \
           -optl-lffi \
@@ -262,8 +280,8 @@ let
 
         echo "Merging static archives into libHatter.a"
         libtool -static -o libCombined.a libHatter.a \
-          ${gmpStatic}/lib/libgmp.a \
-          ${libffiStatic}/lib/libffi.a \
+          ${deviceGmpStatic}/lib/libgmp.a \
+          ${deviceLibffiStatic}/lib/libffi.a \
           ${if crossDeps != null then "${crossDeps}/lib/*.a" else ""}
         mv libCombined.a libHatter.a
 
