@@ -15,6 +15,7 @@
 , consumerCabal2Nix ? null
 , hpkgs ? (_: _: {})       # consumer haskellPackages overrides
 , hatterSrc ? null          # hatter source tree (builds hatter as a normal dep)
+, deviceCpu ? "apple-a12"  # minimum CPU target for C compilations (issue #216)
 }:
 let
   pkgs = import sources.nixpkgs {};
@@ -41,10 +42,22 @@ let
         });
     } else {};
 
+  # Issue #216: Inject -mcpu into C compilations of Haskell dependencies
+  # (e.g. sqlite3.c in direct-sqlite) to avoid ARMv8.4+ instructions.
+  deviceCpuOverride = self: super:
+    if deviceCpu != null then {
+      mkDerivation = args: super.mkDerivation (args // {
+        configureFlags = (args.configureFlags or []) ++ [
+          "--ghc-option=-optc-mcpu=${deviceCpu}"
+        ];
+      });
+    } else {};
+
   nativeHaskellPkgs = pkgs.haskellPackages.override {
     overrides = pkgs.lib.composeManyExtensions [
       unwitchOverride
       hatterOverride
+      deviceCpuOverride
       hpkgs
     ];
   };

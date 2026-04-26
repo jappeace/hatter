@@ -31,9 +31,77 @@ let
           license = lib.licenses.mit;
         };
     };
-  } // (if isDarwin then {
-    ios-lib = import ./ios.nix { inherit sources; };
-    watchos-lib = import ./watchos.nix { inherit sources; };
+  } // (if isDarwin then let
+    isAppleSilicon = builtins.currentSystem == "aarch64-darwin";
+    iosLib = import ./ios.nix { inherit sources; };
+    watchosLib = import ./watchos.nix { inherit sources; };
+    canary = ../test/ios/sigill_canary.c;
+  in {
+    ios-lib = iosLib;
+    watchos-lib = watchosLib;
+
+    # Issue #216: Regression guard for SIGILL on pre-A13 iOS devices.
+    # Verifies that -mcpu=apple-a12 suppresses ARMv8.4+ instructions
+    # (UDOT/SDOT) that -mcpu=apple-m1 emits.  The build now defaults
+    # to deviceCpu="apple-a12", so this test confirms the fix works.
+    # Fails if A12 target unexpectedly produces UDOT.
+    ios-sigill-check = pkgs.runCommand "ios-sigill-check" {
+      nativeBuildInputs = [ pkgs.stdenv.cc pkgs.cctools ];
+    } (
+      if isAppleSilicon then ''
+        echo "=== Compile targeting Apple M1 (simulates host-CPU targeting) ==="
+        cc -c -O2 -mcpu=apple-m1 -o canary_m1.o ${canary}
+        otool -tv canary_m1.o > disasm_m1.txt
+        cat disasm_m1.txt
+
+        echo ""
+        echo "=== Compile targeting Apple A12 (minimum for iOS 17+) ==="
+        cc -c -O2 -mcpu=apple-a12 -o canary_a12.o ${canary}
+        otool -tv canary_a12.o > disasm_a12.txt
+        cat disasm_a12.txt
+
+        echo ""
+        echo "=== Results ==="
+
+        # Detect UDOT/SDOT: either as a mnemonic or as a raw .long
+        # encoding (otool prints .long when it doesn't know the opcode).
+        # UDOT vector: 0x6E8x94xx, SDOT vector: 0x0E8x94xx
+        has_dotprod() {
+          grep -qi 'udot\|sdot' "$1" && return 0
+          grep -qE '\.long\s+0x[06]e8[0-9a-f]94' "$1" && return 0
+          return 1
+        }
+
+        M1_HAS_UDOT=false
+        A12_HAS_UDOT=false
+        if has_dotprod disasm_m1.txt; then M1_HAS_UDOT=true; fi
+        if has_dotprod disasm_a12.txt; then A12_HAS_UDOT=true; fi
+
+        echo "M1 target produces UDOT/SDOT: $M1_HAS_UDOT"
+        echo "A12 target produces UDOT/SDOT: $A12_HAS_UDOT"
+
+        if [ "$M1_HAS_UDOT" = "true" ] && [ "$A12_HAS_UDOT" = "false" ]; then
+          echo ""
+          echo "VERIFIED: -mcpu=apple-m1 emits UDOT (would crash on A12),"
+          echo "          -mcpu=apple-a12 does not (safe for A12)."
+          echo "The deviceCpu=apple-a12 build flag protects against this."
+          echo "See https://github.com/jappeace/hatter/issues/216"
+          touch $out
+        elif [ "$M1_HAS_UDOT" = "false" ]; then
+          echo ""
+          echo "INCONCLUSIVE: M1 target did not produce UDOT."
+          echo "Canary may need updating for this clang version."
+          touch $out
+        else
+          echo ""
+          echo "FAIL: A12 target also produces UDOT — fix is ineffective."
+          exit 1
+        fi
+      '' else ''
+        echo "SKIP: not Apple Silicon (${builtins.currentSystem}), UDOT not relevant."
+        touch $out
+      ''
+    );
   } else {});
 
   # Emulator/simulator test runners — heavy (include system images),
