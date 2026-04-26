@@ -31,6 +31,7 @@ import Foreign.C.String (CString, peekCString)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
+import Unwitch.Convert.CInt qualified as CInt
 
 -- | Status of the platform's BLE adapter.
 data BleAdapterStatus
@@ -136,7 +137,7 @@ dispatchBleScanResult bleState cName cAddr cRssi = do
       let scanResult = BleScanResult
             { bsrDeviceName    = nameStr
             , bsrDeviceAddress = addrStr
-            , bsrRssi          = fromIntegral cRssi
+            , bsrRssi          = CInt.toInt cRssi
             }
       callback scanResult
 

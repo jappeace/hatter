@@ -36,6 +36,8 @@ import Foreign.C.String (CString, withCString)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
+import Unwitch.Convert.CInt qualified as CInt
+import Unwitch.Convert.Int32 qualified as Int32
 
 -- | Result of an authentication session.
 data AuthSessionResult
@@ -88,12 +90,12 @@ authSessionResultFromInt _ _                  _          = Nothing
 startAuthSession :: AuthSessionState -> Text -> Text -> (AuthSessionResult -> IO ()) -> IO ()
 startAuthSession authSessionState authUrl callbackScheme callback = do
   requestId <- readIORef (asNextId authSessionState)
-  modifyIORef' (asCallbacks authSessionState) (IntMap.insert (fromIntegral requestId) callback)
+  modifyIORef' (asCallbacks authSessionState) (IntMap.insert (Int32.toInt requestId) callback)
   writeIORef (asNextId authSessionState) (requestId + 1)
   ctx <- readIORef (asContextPtr authSessionState)
   withCString (Text.unpack authUrl) $ \cUrl ->
     withCString (Text.unpack callbackScheme) $ \cScheme ->
-      c_authSessionStart ctx (fromIntegral requestId) cUrl cScheme
+      c_authSessionStart ctx (Int32.toCInt requestId) cUrl cScheme
 
 -- | Dispatch an auth session result from the platform back to the
 -- registered Haskell callback. Removes the callback after firing.
@@ -104,7 +106,7 @@ dispatchAuthSessionResult authSessionState requestId statusCode maybeRedirectUrl
     Nothing -> hPutStrLn stderr $
       "dispatchAuthSessionResult: unknown status code " ++ show statusCode
     Just result -> do
-      let reqKey = fromIntegral requestId
+      let reqKey = CInt.toInt requestId
       callbacks <- readIORef (asCallbacks authSessionState)
       case IntMap.lookup reqKey callbacks of
         Just callback -> do

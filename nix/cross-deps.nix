@@ -228,10 +228,18 @@ WRAPPER
         });
     } else {};
 
+  unwitchOverride = self: super: {
+    unwitch = self.callCabal2nix "unwitch" (builtins.fetchTarball {
+      url = "https://github.com/jappeace/unwitch/archive/2759bdd153f293e0e6524d0170e861e51302caa4.tar.gz";
+      sha256 = "sha256:BGxZ1CQGIYP/gg/J9jua2/wSEH4qq7bW91qooNELUlI=";
+    }) {};
+  };
+
   defaultOverrides =
     let
       common = pkgs.lib.composeManyExtensions [
         vectorOverride
+        unwitchOverride
         thPackageDbOverride
         thIservOverride
         hatterOverride
@@ -284,9 +292,13 @@ WRAPPER
   # so its .a and .conf are available for linking.
   hatterDep = if hatterSrc != null then [ crossHaskellPkgs.hatter ] else [];
 
+  # Hatter's own non-boot dependencies — must be collected so hatter's
+  # .conf can resolve them (collect-deps doesn't follow propagatedBuildInputs).
+  hatterOwnDeps = [ crossHaskellPkgs.unwitch ];
+
 in import ./collect-deps.nix {
   inherit pkgs ghc ghcPkgCmd;
-  deps = resolvedDeps ++ hatterDep;
+  deps = resolvedDeps ++ hatterDep ++ hatterOwnDeps;
   mainLibPnames = if hatterSrc != null then [ "hatter" ] else [];
   iservProxy = iservWrapper;
 }
