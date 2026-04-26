@@ -31,9 +31,50 @@ let
           license = lib.licenses.mit;
         };
     };
-  } // (if isDarwin then {
-    ios-lib = import ./ios.nix { inherit sources; };
-    watchos-lib = import ./watchos.nix { inherit sources; };
+  } // (if isDarwin then let
+    isAppleSilicon = builtins.currentSystem == "aarch64-darwin";
+    iosLib = import ./ios.nix { inherit sources; };
+    watchosLib = import ./watchos.nix { inherit sources; };
+    canary = ../test/ios/sigill_canary.c;
+  in {
+    ios-lib = iosLib;
+    watchos-lib = watchosLib;
+
+    # Issue #216: On Apple Silicon, GHC invokes clang without -mcpu,
+    # so clang targets the host CPU (M1/M2/M3) and emits ARMv8.4+
+    # instructions like UDOT that crash on pre-A13 iOS devices.
+    #
+    # This test compiles a canary C function (uint8 dot-product that
+    # auto-vectorizes into UDOT at -O2) using the same toolchain as
+    # the iOS build, then checks the disassembly for UDOT/SDOT.
+    #
+    # Expected: FAILS on Apple Silicon (proving the vulnerability),
+    # SKIPS on Intel Macs (x86_64 doesn't emit ARM instructions).
+    ios-sigill-check = pkgs.runCommand "ios-sigill-check" {} (
+      if isAppleSilicon then ''
+        # Compile canary with default -O2 (no -mcpu), same as GHC does.
+        cc -c -O2 -o canary.o ${canary}
+        otool -tv canary.o > disasm.txt
+
+        echo "=== Disassembly ==="
+        cat disasm.txt
+
+        if grep -qi 'udot\|sdot' disasm.txt; then
+          echo ""
+          echo "REPRODUCED: clang emitted UDOT/SDOT (ARMv8.4+) without -mcpu."
+          echo "These instructions cause SIGILL on pre-A13 iOS devices (A12/A12X)."
+          echo "See https://github.com/jappeace/hatter/issues/216"
+          exit 1
+        else
+          echo "No UDOT/SDOT found — host clang did not auto-vectorize the canary."
+          echo "The canary may need updating, or the compiler version changed."
+          touch $out
+        fi
+      '' else ''
+        echo "SKIP: not Apple Silicon (${builtins.currentSystem}), UDOT not relevant."
+        touch $out
+      ''
+    );
   } else {});
 
   # Emulator/simulator test runners — heavy (include system images),
