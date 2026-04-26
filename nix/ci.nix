@@ -40,36 +40,58 @@ let
     ios-lib = iosLib;
     watchos-lib = watchosLib;
 
-    # Issue #216: On Apple Silicon, GHC invokes clang without -mcpu,
-    # so clang targets the host CPU (M1/M2/M3) and emits ARMv8.4+
-    # instructions like UDOT that crash on pre-A13 iOS devices.
+    # Issue #216: On Apple Silicon, clang targeting M1+ CPUs emits
+    # ARMv8.4+ instructions (UDOT/SDOT) that crash on pre-A13 iOS
+    # devices (A12/A12X).  This test proves the vulnerability exists
+    # by compiling a canary with -mcpu=apple-m1 (what happens when
+    # code targets Apple Silicon) and verifying UDOT appears in the
+    # output.  It also verifies -mcpu=apple-a12 suppresses UDOT,
+    # confirming that flag is the correct fix.
     #
-    # This test compiles a canary C function (uint8 dot-product that
-    # auto-vectorizes into UDOT at -O2) using the same toolchain as
-    # the iOS build, then checks the disassembly for UDOT/SDOT.
-    #
-    # Expected: FAILS on Apple Silicon (proving the vulnerability),
-    # SKIPS on Intel Macs (x86_64 doesn't emit ARM instructions).
+    # The nix CC wrapper uses a generic aarch64 target, so we must
+    # explicitly pass -mcpu to demonstrate the issue.
     ios-sigill-check = pkgs.runCommand "ios-sigill-check" {
       nativeBuildInputs = [ pkgs.stdenv.cc pkgs.cctools ];
     } (
       if isAppleSilicon then ''
-        # Compile canary with default -O2 (no -mcpu), same as GHC does.
-        cc -c -O2 -o canary.o ${canary}
-        otool -tv canary.o > disasm.txt
+        echo "=== Compile targeting Apple M1 (simulates host-CPU targeting) ==="
+        cc -c -O2 -mcpu=apple-m1 -o canary_m1.o ${canary}
+        otool -tv canary_m1.o > disasm_m1.txt
+        cat disasm_m1.txt
 
-        echo "=== Disassembly ==="
-        cat disasm.txt
+        echo ""
+        echo "=== Compile targeting Apple A12 (minimum for iOS 17+) ==="
+        cc -c -O2 -mcpu=apple-a12 -o canary_a12.o ${canary}
+        otool -tv canary_a12.o > disasm_a12.txt
+        cat disasm_a12.txt
 
-        if grep -qi 'udot\|sdot' disasm.txt; then
+        echo ""
+        echo "=== Results ==="
+
+        M1_HAS_UDOT=false
+        A12_HAS_UDOT=false
+        if grep -qi 'udot\|sdot' disasm_m1.txt; then M1_HAS_UDOT=true; fi
+        if grep -qi 'udot\|sdot' disasm_a12.txt; then A12_HAS_UDOT=true; fi
+
+        echo "M1 target produces UDOT/SDOT: $M1_HAS_UDOT"
+        echo "A12 target produces UDOT/SDOT: $A12_HAS_UDOT"
+
+        if [ "$M1_HAS_UDOT" = "true" ] && [ "$A12_HAS_UDOT" = "false" ]; then
           echo ""
-          echo "REPRODUCED: clang emitted UDOT/SDOT (ARMv8.4+) without -mcpu."
-          echo "These instructions cause SIGILL on pre-A13 iOS devices (A12/A12X)."
+          echo "REPRODUCED: -mcpu=apple-m1 emits UDOT (crashes on A12),"
+          echo "            -mcpu=apple-a12 does not (safe for A12)."
+          echo "Any C code compiled targeting Apple Silicon without -mcpu"
+          echo "constraint will SIGILL on pre-A13 iOS devices."
           echo "See https://github.com/jappeace/hatter/issues/216"
           exit 1
+        elif [ "$M1_HAS_UDOT" = "false" ]; then
+          echo ""
+          echo "INCONCLUSIVE: M1 target did not produce UDOT."
+          echo "Canary may need updating for this clang version."
+          touch $out
         else
-          echo "No UDOT/SDOT found — host clang did not auto-vectorize the canary."
-          echo "The canary may need updating, or the compiler version changed."
+          echo ""
+          echo "UNEXPECTED: A12 target also produces UDOT — bug in test or clang."
           touch $out
         fi
       '' else ''
