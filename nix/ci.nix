@@ -68,10 +68,19 @@ let
         echo ""
         echo "=== Results ==="
 
+        # Detect UDOT/SDOT: either as a mnemonic or as a raw .long
+        # encoding (otool prints .long when it doesn't know the opcode).
+        # UDOT vector: 0x6E8x94xx, SDOT vector: 0x0E8x94xx
+        has_dotprod() {
+          grep -qi 'udot\|sdot' "$1" && return 0
+          grep -qE '\.long\s+0x[06]e8[0-9a-f]94' "$1" && return 0
+          return 1
+        }
+
         M1_HAS_UDOT=false
         A12_HAS_UDOT=false
-        if grep -qi 'udot\|sdot' disasm_m1.txt; then M1_HAS_UDOT=true; fi
-        if grep -qi 'udot\|sdot' disasm_a12.txt; then A12_HAS_UDOT=true; fi
+        if has_dotprod disasm_m1.txt; then M1_HAS_UDOT=true; fi
+        if has_dotprod disasm_a12.txt; then A12_HAS_UDOT=true; fi
 
         echo "M1 target produces UDOT/SDOT: $M1_HAS_UDOT"
         echo "A12 target produces UDOT/SDOT: $A12_HAS_UDOT"
