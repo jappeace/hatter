@@ -100,7 +100,6 @@ jobs:
     - name: Run combined simulator test (lifecycle + UI + buttons + scroll)
       run: nix-build nix/ci.nix -A simulator-all -o result-simulator-all && ./result-simulator-all/bin/test-all-ios
     - name: "Repro #216: detect SIGILL-prone instructions in default clang output"
-      continue-on-error: true
       run: nix-build nix/ci.nix -A ios-sigill-check
     - name: Cancel workflow on failure
       if: failure()
