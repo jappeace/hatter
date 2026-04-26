@@ -50,7 +50,9 @@ let
     #
     # Expected: FAILS on Apple Silicon (proving the vulnerability),
     # SKIPS on Intel Macs (x86_64 doesn't emit ARM instructions).
-    ios-sigill-check = pkgs.runCommand "ios-sigill-check" {} (
+    ios-sigill-check = pkgs.runCommand "ios-sigill-check" {
+      nativeBuildInputs = [ pkgs.stdenv.cc pkgs.cctools ];
+    } (
       if isAppleSilicon then ''
         # Compile canary with default -O2 (no -mcpu), same as GHC does.
         cc -c -O2 -o canary.o ${canary}
