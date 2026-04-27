@@ -35,38 +35,19 @@ let
     isAppleSilicon = builtins.currentSystem == "aarch64-darwin";
     iosLib = import ./ios.nix { inherit sources; };
     watchosLib = import ./watchos.nix { inherit sources; };
+    lib = import ./lib.nix { inherit sources; };
     canary = ../test/ios/sigill_canary.c;
   in {
     ios-lib = iosLib;
     watchos-lib = watchosLib;
 
-    # Issue #216: On Apple Silicon, clang targeting M1+ CPUs emits
-    # ARMv8.4+ instructions (UDOT/SDOT) that crash on pre-A13 iOS
-    # devices (A12/A12X).  This test proves the vulnerability exists
-    # by compiling a canary with -mcpu=apple-m1 (what happens when
-    # code targets Apple Silicon) and verifying UDOT appears in the
-    # output.  It also verifies -mcpu=apple-a12 suppresses UDOT,
-    # confirming that flag is the correct fix.
-    #
-    # The nix CC wrapper uses a generic aarch64 target, so we must
-    # explicitly pass -mcpu to demonstrate the issue.
-    ios-sigill-check = pkgs.runCommand "ios-sigill-check" {
-      nativeBuildInputs = [ pkgs.stdenv.cc pkgs.cctools ];
-    } (
+    # Issue #216: Verify iOS device C compilation doesn't emit ARMv8.4+
+    # instructions (UDOT/SDOT) that crash on pre-A13 devices (A12/A12X).
+    # Compiles a canary through the same GHC + flags as mkAppleStaticLib.
+    ios-sigill-check = pkgs.runCommand "ios-sigill-check" {} (
       if isAppleSilicon then ''
-        echo "=== Compile targeting Apple M1 (simulates host-CPU targeting) ==="
-        cc -c -O2 -mcpu=apple-m1 -o canary_m1.o ${canary}
-        otool -tv canary_m1.o > disasm_m1.txt
-        cat disasm_m1.txt
-
-        echo ""
-        echo "=== Compile targeting Apple A12 (minimum for iOS 17+) ==="
-        cc -c -O2 -mcpu=apple-a12 -o canary_a12.o ${canary}
-        otool -tv canary_a12.o > disasm_a12.txt
-        cat disasm_a12.txt
-
-        echo ""
-        echo "=== Results ==="
+        echo "=== Disassembly of canary compiled for iOS device ==="
+        cat ${lib.compileIOSDeviceC canary}
 
         # Detect UDOT/SDOT: either as a mnemonic or as a raw .long
         # encoding (otool prints .long when it doesn't know the opcode).
@@ -77,32 +58,17 @@ let
           return 1
         }
 
-        M1_HAS_UDOT=false
-        A12_HAS_UDOT=false
-        if has_dotprod disasm_m1.txt; then M1_HAS_UDOT=true; fi
-        if has_dotprod disasm_a12.txt; then A12_HAS_UDOT=true; fi
-
-        echo "M1 target produces UDOT/SDOT: $M1_HAS_UDOT"
-        echo "A12 target produces UDOT/SDOT: $A12_HAS_UDOT"
-
-        if [ "$M1_HAS_UDOT" = "true" ] && [ "$A12_HAS_UDOT" = "false" ]; then
+        if has_dotprod ${lib.compileIOSDeviceC canary}; then
           echo ""
-          echo "REPRODUCED: -mcpu=apple-m1 emits UDOT (crashes on A12),"
-          echo "            -mcpu=apple-a12 does not (safe for A12)."
-          echo "Any C code compiled targeting Apple Silicon without -mcpu"
-          echo "constraint will SIGILL on pre-A13 iOS devices."
+          echo "FAIL: iOS device C compilation emits UDOT/SDOT."
+          echo "These crash on pre-A13 devices (A12/A12X)."
           echo "See https://github.com/jappeace/hatter/issues/216"
           exit 1
-        elif [ "$M1_HAS_UDOT" = "false" ]; then
-          echo ""
-          echo "INCONCLUSIVE: M1 target did not produce UDOT."
-          echo "Canary may need updating for this clang version."
-          touch $out
-        else
-          echo ""
-          echo "UNEXPECTED: A12 target also produces UDOT — bug in test or clang."
-          touch $out
         fi
+
+        echo ""
+        echo "OK: No UDOT/SDOT detected in iOS device C compilation."
+        touch $out
       '' else ''
         echo "SKIP: not Apple Silicon (${builtins.currentSystem}), UDOT not relevant."
         touch $out
