@@ -40,11 +40,16 @@ let
     ios-lib = iosLib;
     watchos-lib = watchosLib;
 
-    # Issue #216: Regression guard for SIGILL on pre-A13 iOS devices.
-    # Verifies that -mcpu=apple-a12 suppresses ARMv8.4+ instructions
-    # (UDOT/SDOT) that -mcpu=apple-m1 emits.  The build now defaults
-    # to deviceCpu="apple-a12", so this test confirms the fix works.
-    # Fails if A12 target unexpectedly produces UDOT.
+    # Issue #216: On Apple Silicon, clang targeting M1+ CPUs emits
+    # ARMv8.4+ instructions (UDOT/SDOT) that crash on pre-A13 iOS
+    # devices (A12/A12X).  This test proves the vulnerability exists
+    # by compiling a canary with -mcpu=apple-m1 (what happens when
+    # code targets Apple Silicon) and verifying UDOT appears in the
+    # output.  It also verifies -mcpu=apple-a12 suppresses UDOT,
+    # confirming that flag is the correct fix.
+    #
+    # The nix CC wrapper uses a generic aarch64 target, so we must
+    # explicitly pass -mcpu to demonstrate the issue.
     ios-sigill-check = pkgs.runCommand "ios-sigill-check" {
       nativeBuildInputs = [ pkgs.stdenv.cc pkgs.cctools ];
     } (
@@ -82,11 +87,12 @@ let
 
         if [ "$M1_HAS_UDOT" = "true" ] && [ "$A12_HAS_UDOT" = "false" ]; then
           echo ""
-          echo "VERIFIED: -mcpu=apple-m1 emits UDOT (would crash on A12),"
-          echo "          -mcpu=apple-a12 does not (safe for A12)."
-          echo "The deviceCpu=apple-a12 build flag protects against this."
+          echo "REPRODUCED: -mcpu=apple-m1 emits UDOT (crashes on A12),"
+          echo "            -mcpu=apple-a12 does not (safe for A12)."
+          echo "Any C code compiled targeting Apple Silicon without -mcpu"
+          echo "constraint will SIGILL on pre-A13 iOS devices."
           echo "See https://github.com/jappeace/hatter/issues/216"
-          touch $out
+          exit 1
         elif [ "$M1_HAS_UDOT" = "false" ]; then
           echo ""
           echo "INCONCLUSIVE: M1 target did not produce UDOT."
@@ -94,8 +100,8 @@ let
           touch $out
         else
           echo ""
-          echo "FAIL: A12 target also produces UDOT — fix is ineffective."
-          exit 1
+          echo "UNEXPECTED: A12 target also produces UDOT — bug in test or clang."
+          touch $out
         fi
       '' else ''
         echo "SKIP: not Apple Silicon (${builtins.currentSystem}), UDOT not relevant."

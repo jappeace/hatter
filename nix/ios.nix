@@ -9,17 +9,16 @@
 , consumerCabalFile ? null
 , consumerCabal2Nix ? null
 , hpkgs ? (_: _: {})       # consumer haskellPackages overrides
-, deviceCpu ? "apple-a12"  # minimum CPU target for device builds (issue #216)
 }:
 let
   lib = import ./lib.nix { inherit sources; };
   iosDeps = import ./ios-deps.nix {
-    inherit sources consumerCabalFile consumerCabal2Nix hpkgs deviceCpu;
+    inherit sources consumerCabalFile consumerCabal2Nix hpkgs;
     hatterSrc = ../.;
   };
 in
 lib.mkIOSLib {
   hatterSrc = ../.;
-  inherit mainModule simulator deviceCpu;
+  inherit mainModule simulator;
   crossDeps = iosDeps;
 }
