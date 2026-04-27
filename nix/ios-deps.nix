@@ -15,7 +15,7 @@
 , consumerCabal2Nix ? null
 , hpkgs ? (_: _: {})       # consumer haskellPackages overrides
 , hatterSrc ? null          # hatter source tree (builds hatter as a normal dep)
-, deviceCpu ? "apple-a12"  # minimum CPU target for C compilations (issue #216)
+, deviceCpu ? null          # optional CPU target for C compilations (issue #216)
 }:
 let
   pkgs = import sources.nixpkgs {};

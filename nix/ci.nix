@@ -36,6 +36,8 @@ let
     iosLib = import ./ios.nix { inherit sources; };
     watchosLib = import ./watchos.nix { inherit sources; };
     lib = import ./lib.nix { inherit sources; };
+    # lib with deviceCpu set — only used by ios-sigill-check to prove the fix works
+    libWithCpuFlag = import ./lib.nix { inherit sources; deviceCpu = "apple-a12"; };
     canary = ../test/ios/sigill_canary.c;
   in {
     ios-lib = iosLib;
@@ -46,8 +48,8 @@ let
     # Compiles a canary through the same GHC + flags as mkAppleStaticLib.
     ios-sigill-check = pkgs.runCommand "ios-sigill-check" {} (
       if isAppleSilicon then ''
-        echo "=== Disassembly of canary compiled for iOS device ==="
-        cat ${lib.compileIOSDeviceC canary}
+        echo "=== Disassembly of canary compiled for iOS device (with deviceCpu=apple-a12) ==="
+        cat ${libWithCpuFlag.compileIOSDeviceC canary}
 
         # Detect UDOT/SDOT: either as a mnemonic or as a raw .long
         # encoding (otool prints .long when it doesn't know the opcode).
@@ -58,16 +60,16 @@ let
           return 1
         }
 
-        if has_dotprod ${lib.compileIOSDeviceC canary}; then
+        if has_dotprod ${libWithCpuFlag.compileIOSDeviceC canary}; then
           echo ""
-          echo "FAIL: iOS device C compilation emits UDOT/SDOT."
+          echo "FAIL: iOS device C compilation emits UDOT/SDOT even with deviceCpu=apple-a12."
           echo "These crash on pre-A13 devices (A12/A12X)."
           echo "See https://github.com/jappeace/hatter/issues/216"
           exit 1
         fi
 
         echo ""
-        echo "OK: No UDOT/SDOT detected in iOS device C compilation."
+        echo "OK: No UDOT/SDOT detected when deviceCpu=apple-a12 is set."
         touch $out
       '' else ''
         echo "SKIP: not Apple Silicon (${builtins.currentSystem}), UDOT not relevant."

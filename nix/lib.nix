@@ -11,7 +11,7 @@
 # Usage:
 #   let lib = import ./lib.nix { sources = import ../npins; };
 #   in lib.mkAndroidLib { hatterSrc = ../.; mainModule = ../test/ScrollDemoMain.hs; }
-{ sources, androidArch ? "aarch64", deviceCpu ? "apple-a12" }:
+{ sources, androidArch ? "aarch64", deviceCpu ? null }:
 let
   archConfig = {
     aarch64 = {
