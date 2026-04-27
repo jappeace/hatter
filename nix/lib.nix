@@ -11,7 +11,7 @@
 # Usage:
 #   let lib = import ./lib.nix { sources = import ../npins; };
 #   in lib.mkAndroidLib { hatterSrc = ../.; mainModule = ../test/ScrollDemoMain.hs; }
-{ sources, androidArch ? "aarch64" }:
+{ sources, androidArch ? "aarch64", deviceCpu ? null }:
 let
   archConfig = {
     aarch64 = {
@@ -72,13 +72,21 @@ let
   # --- Apple (iOS/watchOS) shared infrastructure ---
   applePkgs = import sources.nixpkgs {};
   appleGhc = applePkgs.haskellPackages.ghc;
+
+  # Issue #216: Constrain instruction set to deviceCpu on device builds
+  # to prevent ARMv8.4+ instructions (UDOT/SDOT) that crash on pre-A13.
+  iosDeviceCpuFlag = if deviceCpu != null then "-optc -mcpu=${deviceCpu}" else "";
+  iosCFlags = if deviceCpu != null then "-mcpu=${deviceCpu}" else "";
+
   gmpStatic = applePkgs.gmp.overrideAttrs (old: {
     dontDisableStatic = true;
-  });
+  } // (if iosCFlags != "" then {
+    NIX_CFLAGS_COMPILE = (old.NIX_CFLAGS_COMPILE or "") + " ${iosCFlags}";
+  } else {}));
   # Apple's libffi (v40) only ships .dylib — no static archive.
   # Build GNU libffi from source with --enable-static for bundling
   # into the iOS fat archive (mac2ios patches the platform tag).
-  libffiStatic = applePkgs.stdenv.mkDerivation {
+  libffiStatic = applePkgs.stdenv.mkDerivation ({
     pname = "libffi-static";
     version = "3.5.2";
     src = applePkgs.fetchurl {
@@ -86,7 +94,9 @@ let
       hash = "sha256-86MIKiOzfCk6T80QUxR7Nx8v+R+n6hsqUuM1Z2usgtw=";
     };
     configureFlags = [ "--enable-static" "--disable-shared" ];
-  };
+  } // (if iosCFlags != "" then {
+    NIX_CFLAGS_COMPILE = "${iosCFlags}";
+  } else {}));
 
   # -------------------------------------------------------------------------
   # Shared data lists — single source of truth for modules, sources, headers
@@ -223,6 +233,7 @@ let
 
         ghc -staticlib \
           -O2 \
+          ${if !simulator then iosDeviceCpuFlag else ""} \
           -o libHatter.a \
           -I${hatterSrc}/include \
           -package-db ${crossDeps}/pkgdb \
@@ -247,6 +258,7 @@ let
 
         ghc -staticlib \
           -O2 \
+          ${if !simulator then iosDeviceCpuFlag else ""} \
           -o libHatter.a \
           -I${hatterSrc}/include \
           -optl-lffi \
@@ -702,5 +714,16 @@ in {
       platformName = "watchos";
       inherit name;
     };
+
+  # ---------------------------------------------------------------------------
+  # compileIOSDeviceC: Compile a C file the same way mkAppleStaticLib does for
+  # device cbits.  Used by ios-sigill-check to verify no UDOT/SDOT appears.
+  # ---------------------------------------------------------------------------
+  compileIOSDeviceC = src: applePkgs.runCommand "ios-device-c-obj" {
+    nativeBuildInputs = [ appleGhc applePkgs.cctools ];
+  } ''
+    ghc -c -O2 ${iosDeviceCpuFlag} -o compiled.o ${src}
+    otool -tv compiled.o > $out
+  '';
 
 }

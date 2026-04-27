@@ -31,9 +31,51 @@ let
           license = lib.licenses.mit;
         };
     };
-  } // (if isDarwin then {
-    ios-lib = import ./ios.nix { inherit sources; };
-    watchos-lib = import ./watchos.nix { inherit sources; };
+  } // (if isDarwin then let
+    isAppleSilicon = builtins.currentSystem == "aarch64-darwin";
+    iosLib = import ./ios.nix { inherit sources; };
+    watchosLib = import ./watchos.nix { inherit sources; };
+    lib = import ./lib.nix { inherit sources; };
+    # lib with deviceCpu set — only used by ios-sigill-check to prove the fix works
+    libWithCpuFlag = import ./lib.nix { inherit sources; deviceCpu = "apple-a12"; };
+    canary = ../test/ios/sigill_canary.c;
+  in {
+    ios-lib = iosLib;
+    watchos-lib = watchosLib;
+
+    # Issue #216: Verify iOS device C compilation doesn't emit ARMv8.4+
+    # instructions (UDOT/SDOT) that crash on pre-A13 devices (A12/A12X).
+    # Compiles a canary through the same GHC + flags as mkAppleStaticLib.
+    ios-sigill-check = pkgs.runCommand "ios-sigill-check" {} (
+      if isAppleSilicon then ''
+        echo "=== Disassembly of canary compiled for iOS device (with deviceCpu=apple-a12) ==="
+        cat ${libWithCpuFlag.compileIOSDeviceC canary}
+
+        # Detect UDOT/SDOT: either as a mnemonic or as a raw .long
+        # encoding (otool prints .long when it doesn't know the opcode).
+        # UDOT vector: 0x6E8x94xx, SDOT vector: 0x0E8x94xx
+        has_dotprod() {
+          grep -qi 'udot\|sdot' "$1" && return 0
+          grep -qE '\.long\s+0x[06]e8[0-9a-f]94' "$1" && return 0
+          return 1
+        }
+
+        if has_dotprod ${libWithCpuFlag.compileIOSDeviceC canary}; then
+          echo ""
+          echo "FAIL: iOS device C compilation emits UDOT/SDOT even with deviceCpu=apple-a12."
+          echo "These crash on pre-A13 devices (A12/A12X)."
+          echo "See https://github.com/jappeace/hatter/issues/216"
+          exit 1
+        fi
+
+        echo ""
+        echo "OK: No UDOT/SDOT detected when deviceCpu=apple-a12 is set."
+        touch $out
+      '' else ''
+        echo "SKIP: not Apple Silicon (${builtins.currentSystem}), UDOT not relevant."
+        touch $out
+      ''
+    );
   } else {});
 
   # Emulator/simulator test runners — heavy (include system images),
