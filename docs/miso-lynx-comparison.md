@@ -17,7 +17,7 @@ Hatter and miso-lynx take fundamentally different approaches to putting Haskell 
 | UI toolkit | Platform-native (UIKit, Android Views, SwiftUI) | LynxJS native views via Element PAPI |
 | Language boundary | C FFI (direct function calls) | GHC JS backend → LynxJS PAPI |
 | Layout engine | Platform-native (Auto Layout, LinearLayout) | LynxJS CSS engine (flexbox/grid/linear) |
-| Device APIs | 10+ working (BLE, Camera, Location, HTTP, etc.) | None yet (blocked on dual-thread PR) |
+| Device APIs | 10+ working (BLE, Camera, Location, HTTP, etc.) | In progress — requires dual-thread architecture (PR #70) |
 | Platforms | Android, iOS, watchOS, Wear OS | iOS, Android, HarmonyOS, Web |
 | Build system | Nix cross-compilation | Nix + patched GHC 9.12 JS backend (BigInt polyfill for LynxJS) |
 | Maturity | Working apps deployed | Experimental, under heavy development |
@@ -77,7 +77,7 @@ The key architectural abstraction is miso's `DrawingContext<T>` and `EventContex
 | Concurrency | GHC green threads, STM, MVars | JS event loop (single-threaded per interpreter) |
 | Numeric types | Native machine integers | BigInt polyfill required (LynxJS lacks native BigInt) |
 
-Hatter's native execution means the full power of GHC is available: green threads, STM, unboxed arrays, direct memory access. miso-lynx is constrained by what the GHC JS backend can express and what the LynxJS JS interpreter supports.
+Hatter's native execution means the full power of GHC is available: green threads, STM, unboxed arrays, direct memory access. miso-lynx's capabilities are shaped by what the GHC JS backend can express and what the LynxJS JS interpreter supports.
 
 ### 1.4 Threading
 
@@ -229,9 +229,9 @@ The callback comes back through: native BLE callback → C bridge → `foreign e
 
 Desktop builds (where `g_check_adapter_impl` is NULL) log to stderr and return safe defaults, so `cabal test` works without a phone.
 
-### 3.2 What It Would Take in miso-lynx
+### 3.2 miso-lynx's Path to Device API Access
 
-BLE access in miso-lynx is tracked in issue #42. It is not implemented. Here is every step that would be required:
+BLE access in miso-lynx is tracked in issue #42 and is part of the project's roadmap. The architecture requires several infrastructure pieces to land first:
 
 #### Step 1: Write Native Modules (per platform)
 
@@ -325,7 +325,7 @@ declare const NativeModules: {
 }
 ```
 
-#### Step 4: Wait for Dual-Thread Architecture (PR #70)
+#### Step 4: Dual-Thread Architecture (PR #70)
 
 LynxJS native modules are **only callable from the Background Thread Script (BTS)**. The miso virtual DOM runs on the **Main Thread Script (MTS)**. These are separate JS interpreters in separate OS threads.
 
@@ -355,7 +355,7 @@ Native BLE callback (platform thread)
     → PAPI calls back to native views
 ```
 
-Every hop in this chain adds latency and requires correct serialization/deserialization. For BLE scanning, which can produce many results per second, this is non-trivial.
+Each hop in this chain adds latency and requires correct serialization/deserialization. For BLE scanning, which can produce many results per second, the performance characteristics will need careful attention.
 
 #### Step 6: Haskell JS FFI Bindings
 
@@ -376,15 +376,15 @@ startBleScan toAction = withSink $ \sink -> do
     js_startBleScan (jsval callback)
 ```
 
-This code is hypothetical. The `syncCallback1`, `fromJSVal`, and `getProp` functions would need to work correctly across the BTS/MTS boundary, which is uncharted territory.
+This code is illustrative — the exact API surface will depend on how the dual-thread architecture stabilizes.
 
 #### Step 7: Permissions
 
-BLE scanning requires runtime permissions (`ACCESS_FINE_LOCATION` on Android, `CBManagerAuthorization` on iOS). Each permission request needs its own native module, its own cross-thread callback routing, and its own Haskell FFI wrapper — the same six-step pipeline again.
+BLE scanning requires runtime permissions (`ACCESS_FINE_LOCATION` on Android, `CBManagerAuthorization` on iOS). Each permission request would follow the same native module pattern — its own module, cross-thread callback routing, and Haskell FFI wrapper.
 
 #### Step 8: Testing
 
-Desktop testing is unclear. LynxJS's native module system is tied to the LynxJS runtime. There is no obvious equivalent to Hatter's "return safe defaults when no platform is registered" pattern that would allow `cabal test` on a developer machine.
+A desktop testing story is still to be determined. LynxJS's native module system is tied to the LynxJS runtime, so an equivalent to Hatter's "return safe defaults when no platform is registered" pattern would need to be designed.
 
 ### 3.3 Comparison Summary
 
@@ -395,9 +395,9 @@ Desktop testing is unclear. LynxJS's native module system is tied to the LynxJS 
 | Thread model | Direct FFI call, same process | BTS→MTS cross-thread serialization |
 | Haskell binding | `foreign import ccall` | `foreign import javascript` (hypothetical) |
 | Callback routing | `foreign export ccall` → direct Haskell call | JS callback → PATCH message → deserialize → miso action |
-| Desktop testing | Null dispatcher returns safe defaults | No known mechanism |
-| Permissions | Same bridge pattern, already implemented | Same pipeline, not implemented |
-| Status | **Working** | **Blocked on PR #70 + unsolved research** |
+| Desktop testing | Null dispatcher returns safe defaults | To be determined |
+| Permissions | Same bridge pattern, already implemented | Same pipeline, not yet implemented |
+| Status | **Working** | **Pending infrastructure (PR #70)** |
 | Languages touched | Haskell, C, Java/Kotlin, ObjC/Swift | Haskell, TypeScript, Kotlin, Swift, ArkTS |
 | Hops per callback | 3 (native → C → Haskell) | 6+ (native → LynxJS → BTS JS → PATCH → MTS JS → GHC JS → miso) |
 
@@ -407,13 +407,13 @@ Desktop testing is unclear. LynxJS's native module system is tied to the LynxJS 
 
 ### 4.1 Where Hatter Wins
 
-**Device API access**: 10+ subsystems working today (BLE, Camera, Location, HTTP, Permissions, SecureStorage, NetworkStatus, AuthSession, PlatformSignIn, Dialog). miso-lynx has zero, blocked on infrastructure.
+**Device API access**: 10+ subsystems working today (BLE, Camera, Location, HTTP, Permissions, SecureStorage, NetworkStatus, AuthSession, PlatformSignIn, Dialog). miso-lynx is working toward this but requires the dual-thread architecture to land first.
 
 **Execution performance**: Native ARM binary vs. JS interpreter. GHC's RTS gives green threads, STM, unboxed types, and direct memory access. The JS runtime constrains concurrency to an event loop and requires a BigInt polyfill.
 
 **Callback simplicity**: Hatter's FFI callbacks are direct C function calls — the shortest possible path between native code and Haskell. miso-lynx callbacks must traverse JS interpreter boundaries, thread boundaries, and a serialization protocol.
 
-**Desktop development**: Hatter's platform-agnostic C dispatchers return safe defaults when no platform is registered, making `cabal test` work on any machine. miso-lynx has no equivalent mechanism for testing without the LynxJS runtime.
+**Desktop development**: Hatter's platform-agnostic C dispatchers return safe defaults when no platform is registered, making `cabal test` work on any machine. miso-lynx does not yet have an equivalent mechanism for testing without the LynxJS runtime.
 
 **Fewer moving parts**: Hatter's dependency chain is GHC + Nix cross-compilation. miso-lynx requires a patched GHC 9.12 JS backend (BigInt polyfill because LynxJS's PrimJS interpreter lacks native BigInt), LynxJS, and the PATCH protocol — more things that can break.
 
@@ -437,13 +437,13 @@ Both projects are young and not widely adopted. Neither has a large contributor 
 
 **Hatter's risk**: The C FFI bridge is manual and per-subsystem. Each new device API requires writing C bridge code, JNI bindings, Objective-C bindings, and optionally Swift bindings. This is labor-intensive but well-understood.
 
-**miso-lynx's risk**: The dual-thread architecture (PR #70) is a prerequisite for all device API access. If this design proves difficult to stabilize, or if the PATCH protocol introduces unacceptable latency for high-frequency callbacks (BLE scanning, sensor data, audio), the entire device API story is compromised. This is a deeper architectural risk because the problem sits in infrastructure that the project does not fully control (LynxJS's threading model).
+**miso-lynx's risk**: The dual-thread architecture (PR #70) is a prerequisite for all device API access. If this design proves difficult to stabilize, or if the PATCH protocol introduces unacceptable latency for high-frequency callbacks (BLE scanning, sensor data, audio), the device API story would need to be reworked. This is a meaningful architectural dependency — the timeline depends partly on LynxJS's threading model, which is outside the project's direct control.
 
 ---
 
 ## Part 5: Available Device APIs
 
-Hatter ships working bindings for the following subsystems. miso-lynx has none.
+Hatter ships working bindings for the following subsystems. miso-lynx's device API bindings are planned but depend on the dual-thread infrastructure.
 
 | Module | Haskell API | Android Implementation | iOS Implementation |
 |---|---|---|---|
