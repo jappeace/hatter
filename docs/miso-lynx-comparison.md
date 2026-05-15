@@ -19,7 +19,7 @@ Hatter and miso-lynx take fundamentally different approaches to putting Haskell 
 | Layout engine | Platform-native (Auto Layout, LinearLayout) | LynxJS CSS engine (flexbox/grid/linear) |
 | Device APIs | 10+ working (BLE, Camera, Location, HTTP, etc.) | None yet (blocked on dual-thread PR) |
 | Platforms | Android, iOS, watchOS, Wear OS | iOS, Android, HarmonyOS, Web |
-| Build system | Nix cross-compilation | Nix + forked GHC JS backend + BigInt polyfill |
+| Build system | Nix cross-compilation | Nix + patched GHC 9.12 JS backend (BigInt polyfill for LynxJS) |
 | Maturity | Working apps deployed | Experimental, under heavy development |
 
 ---
@@ -60,7 +60,9 @@ LynxJS Element PAPI (C++ engine)
 Native UIView (iOS) / View (Android) / HarmonyOS views
 ```
 
-Haskell code compiles to JavaScript. The miso framework's virtual DOM runs in JS, producing diff patches. A TypeScript adapter layer (`lynx.ts`) translates miso's abstract drawing operations into LynxJS Element PAPI calls. The PAPI is a C++ engine that creates actual native views on each platform.
+Haskell code compiles to JavaScript using GHC 9.12.2's built-in JS code generation backend (not the old standalone GHCJS compiler, which was last based on GHC 8.10). The nixpkgs cross target is named `javascript-unknown-ghcjs` which causes naming confusion, but the actual compiler is mainline GHC. miso-lynx's cabal file only supports the new backend (`arch(javascript)` / `-DGHCJS_NEW`), not old GHCJS.
+
+The miso framework's virtual DOM runs in JS, producing diff patches. A TypeScript adapter layer (`lynx.ts`) translates miso's abstract drawing operations into LynxJS Element PAPI calls. The PAPI is a C++ engine that creates actual native views on each platform.
 
 The key architectural abstraction is miso's `DrawingContext<T>` and `EventContext<T>` interfaces. In a browser `T = HTMLElement`; in miso-lynx `T = Node` (a Lynx PAPI node reference). This allows miso to target LynxJS without modifying its core reconciliation logic.
 
@@ -413,7 +415,7 @@ Desktop testing is unclear. LynxJS's native module system is tied to the LynxJS 
 
 **Desktop development**: Hatter's platform-agnostic C dispatchers return safe defaults when no platform is registered, making `cabal test` work on any machine. miso-lynx has no equivalent mechanism for testing without the LynxJS runtime.
 
-**Fewer moving parts**: Hatter's dependency chain is GHC + Nix cross-compilation. miso-lynx requires a forked GHC JS backend, a BigInt polyfill, LynxJS, and the PATCH protocol — more things that can break.
+**Fewer moving parts**: Hatter's dependency chain is GHC + Nix cross-compilation. miso-lynx requires a patched GHC 9.12 JS backend (BigInt polyfill because LynxJS's PrimJS interpreter lacks native BigInt), LynxJS, and the PATCH protocol — more things that can break.
 
 ### 4.2 Where miso-lynx Wins
 
