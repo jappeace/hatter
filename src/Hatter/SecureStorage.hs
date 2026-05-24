@@ -121,10 +121,22 @@ secureStorageDelete storageState key callback = do
   withCString (Text.unpack key) $ \cKey ->
     c_secureStorageDelete ctx (Int32.toCInt requestId) cKey
 
+-- | Look up and remove a callback from an 'IORef' 'IntMap'.
+-- Returns 'Just' the callback if found (and removes it), 'Nothing' otherwise.
+popCallback :: IORef (IntMap a) -> Int -> IO (Maybe a)
+popCallback ref reqKey = do
+  callbacks <- readIORef ref
+  case IntMap.lookup reqKey callbacks of
+    Just callback -> do
+      modifyIORef' ref (IntMap.delete reqKey)
+      pure (Just callback)
+    Nothing -> pure Nothing
+
 -- | Dispatch a secure storage result from the platform back to the
 -- registered Haskell callback.  Tries write callbacks first, then read,
--- then delete.  Removes the callback after firing.
--- Unknown request IDs or status codes are silently logged to stderr.
+-- then delete — exactly one map will contain the request ID since each
+-- operation type registers into its own map.
+-- Unknown request IDs or status codes are logged to stderr.
 dispatchSecureStorageResult :: SecureStorageState -> CInt -> CInt -> Maybe Text -> IO ()
 dispatchSecureStorageResult storageState requestId statusCode maybeValue =
   case storageStatusFromInt statusCode of
@@ -132,29 +144,17 @@ dispatchSecureStorageResult storageState requestId statusCode maybeValue =
       "dispatchSecureStorageResult: unknown status code " ++ show statusCode
     Just status -> do
       let reqKey = CInt.toInt requestId
-      -- Try write callbacks
-      writeCallbacks <- readIORef (ssWriteCallbacks storageState)
-      case IntMap.lookup reqKey writeCallbacks of
-        Just callback -> do
-          modifyIORef' (ssWriteCallbacks storageState) (IntMap.delete reqKey)
-          callback status
-          return ()
+      maybeWrite  <- popCallback (ssWriteCallbacks storageState) reqKey
+      case maybeWrite of
+        Just callback -> callback status
         Nothing -> do
-          -- Try read callbacks
-          readCallbacks <- readIORef (ssReadCallbacks storageState)
-          case IntMap.lookup reqKey readCallbacks of
-            Just callback -> do
-              modifyIORef' (ssReadCallbacks storageState) (IntMap.delete reqKey)
-              callback status maybeValue
-              return ()
+          maybeRead <- popCallback (ssReadCallbacks storageState) reqKey
+          case maybeRead of
+            Just callback -> callback status maybeValue
             Nothing -> do
-              -- Try delete callbacks
-              deleteCallbacks <- readIORef (ssDeleteCallbacks storageState)
-              case IntMap.lookup reqKey deleteCallbacks of
-                Just callback -> do
-                  modifyIORef' (ssDeleteCallbacks storageState) (IntMap.delete reqKey)
-                  callback status
-                  return ()
+              maybeDelete <- popCallback (ssDeleteCallbacks storageState) reqKey
+              case maybeDelete of
+                Just callback -> callback status
                 Nothing -> hPutStrLn stderr $
                   "dispatchSecureStorageResult: unknown request ID " ++ show requestId
 
