@@ -226,6 +226,27 @@ executable keyframe-demo
       text,
       time
 
+executable ble-demo
+  import: common-options
+  main-is: BleDemoMain.hs
+  ghc-options: -Wno-unused-packages -threaded
+  hs-source-dirs:
+      test
+  build-depends:
+      hatter,
+      text
+
+executable kbeacon-ota-demo
+  import: common-options
+  main-is: KBeaconOtaDemoMain.hs
+  ghc-options: -Wno-unused-packages -threaded
+  hs-source-dirs:
+      test
+  build-depends:
+      hatter,
+      text,
+      containers
+
 test-suite unit
   import: common-options
   type: exitcode-stdio-1.0
