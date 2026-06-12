@@ -21,6 +21,13 @@ assert_logcat "$LOGCAT_FILE" "Background tick: 2" "Background tick 2"
 assert_logcat "$LOGCAT_FILE" "view rebuilt: count=1" "View rebuilt after background tick 1"
 assert_logcat "$LOGCAT_FILE" "view rebuilt: count=2" "View rebuilt after background tick 2"
 
+# The asserts above only prove the Haskell view function re-ran. Assert the
+# screen actually reflects the latest background tick. After 3 ticks the demo's
+# counter is 3, so a correctly rendered screen shows "Count: 3". This is what
+# the logcat-only asserts miss: a redraw can re-run the view yet never update
+# the native widgets, leaving the screen frozen at the initial "Count: 0".
+assert_ui_text "Count: 3" "Screen reflects latest count after background redraws"
+
 # Verify no crash
 LOGCAT_ERR="$WORK_DIR/redraw_logcat_err.txt"
 "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:E' > "$LOGCAT_ERR" 2>&1 || true

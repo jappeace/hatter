@@ -177,6 +177,45 @@ assert_logcat() {
     fi
 }
 
+# assert_ui_text TEXT LABEL
+# Dumps the current uiautomator view hierarchy and asserts an on-screen node
+# with the given visible text exists. Unlike assert_logcat (which only proves
+# the Haskell view function ran), this checks what is actually rendered — so it
+# catches redraws that re-run the view but never reach the native widgets.
+# Sets EXIT_CODE=1 on failure (EXIT_CODE must be declared in caller).
+assert_ui_text() {
+    local text="$1"
+    local label="$2"
+    local dump_file="$WORK_DIR/ui_assert.xml"
+    local dump_ok=0
+
+    for attempt in 1 2 3; do
+        if "$ADB" -s "$EMULATOR_SERIAL" shell uiautomator dump /data/local/tmp/ui.xml 2>&1 | grep -q "dumped"; then
+            "$ADB" -s "$EMULATOR_SERIAL" pull /data/local/tmp/ui.xml "$dump_file" 2>/dev/null
+            dump_ok=1
+            break
+        fi
+        sleep 2
+    done
+
+    if [ $dump_ok -eq 0 ]; then
+        echo "FAIL: $label (could not dump UI hierarchy)"
+        # shellcheck disable=SC2034  # set for caller
+        EXIT_CODE=1
+        return
+    fi
+
+    if grep -qF "text=\"$text\"" "$dump_file" 2>/dev/null; then
+        echo "PASS: $label"
+    else
+        echo "FAIL: $label (no on-screen node with text=\"$text\")"
+        echo "  --- on-screen text nodes ---"
+        grep -o 'text="[^"]*"' "$dump_file" 2>/dev/null | sort -u | head -20
+        # shellcheck disable=SC2034  # set for caller
+        EXIT_CODE=1
+    fi
+}
+
 # start_app APK_PATH LABEL [EXTRAS...]
 # Installs APK, clears logcat, starts activity with optional intent extras.
 start_app() {
