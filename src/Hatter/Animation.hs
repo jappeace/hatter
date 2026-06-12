@@ -33,7 +33,8 @@ import Data.Time.Clock (NominalDiffTime)
 import Foreign.Ptr (Ptr)
 import Unwitch.Convert.Int32 qualified as Int32
 import Hatter.Widget
-  ( Keyframe(..)
+  ( Color
+  , Keyframe(..)
   , WidgetStyle(..)
   , colorToHex
   , interpolateColor
@@ -201,60 +202,47 @@ interpolateKeyframeAndApply nodeId keyframes progress = do
   interpolateStyle nodeId fromStyle toStyle segmentProgress
 
 -- | Interpolate 'WidgetStyle' properties and apply them to a native node.
+--
+-- For each style field, the behaviour depends on the (from, to) pair:
+--
+--   * @(Just, Just)@: interpolate between the two values.
+--   * @(Nothing, Just)@: snap to the target immediately (no 'from' to lerp from).
+--   * @(Just, Nothing)@ or @(Nothing, Nothing)@: do nothing — leave native value as-is.
 interpolateStyle :: Int32 -> WidgetStyle -> WidgetStyle -> Double -> IO ()
 interpolateStyle nodeId fromStyle toStyle progress = do
-  -- Padding
-  case (wsPadding fromStyle, wsPadding toStyle) of
-    (Just fromPad, Just toPad) ->
-      Bridge.setNumProp nodeId Bridge.PropPadding
-        (interpolateDouble fromPad toPad progress)
-    (Nothing, Just toPad) ->
-      Bridge.setNumProp nodeId Bridge.PropPadding toPad
-    (Just _fromPad, Nothing) -> pure ()
-    (Nothing, Nothing) -> pure ()
-  -- Text color
-  case (wsTextColor fromStyle, wsTextColor toStyle) of
-    (Just fromColor, Just toColor) ->
-      Bridge.setStrProp nodeId Bridge.PropColor
-        (colorToHex (interpolateColor fromColor toColor progress))
-    (Nothing, Just toColor) ->
-      Bridge.setStrProp nodeId Bridge.PropColor (colorToHex toColor)
-    (Just _fromColor, Nothing) -> pure ()
-    (Nothing, Nothing) -> pure ()
-  -- Background color
-  case (wsBackgroundColor fromStyle, wsBackgroundColor toStyle) of
-    (Just fromColor, Just toColor) ->
-      Bridge.setStrProp nodeId Bridge.PropBgColor
-        (colorToHex (interpolateColor fromColor toColor progress))
-    (Nothing, Just toColor) ->
-      Bridge.setStrProp nodeId Bridge.PropBgColor (colorToHex toColor)
-    (Just _fromColor, Nothing) -> pure ()
-    (Nothing, Nothing) -> pure ()
-  -- TranslateX
-  case (wsTranslateX fromStyle, wsTranslateX toStyle) of
-    (Just fromTx, Just toTx) ->
-      Bridge.setNumProp nodeId Bridge.PropTranslateX
-        (interpolateDouble fromTx toTx progress)
-    (Nothing, Just toTx) ->
-      Bridge.setNumProp nodeId Bridge.PropTranslateX toTx
-    (Just _fromTx, Nothing) -> pure ()
-    (Nothing, Nothing) -> pure ()
-  -- TranslateY
-  case (wsTranslateY fromStyle, wsTranslateY toStyle) of
-    (Just fromTy, Just toTy) ->
-      Bridge.setNumProp nodeId Bridge.PropTranslateY
-        (interpolateDouble fromTy toTy progress)
-    (Nothing, Just toTy) ->
-      Bridge.setNumProp nodeId Bridge.PropTranslateY toTy
-    (Just _fromTy, Nothing) -> pure ()
-    (Nothing, Nothing) -> pure ()
-  -- TouchPassthrough (boolean — snaps to target, no interpolation)
-  case (wsTouchPassthrough fromStyle, wsTouchPassthrough toStyle) of
-    (_, Just enabled) ->
+  lerpNumProp Bridge.PropPadding
+    (wsPadding fromStyle) (wsPadding toStyle)
+  lerpColorProp Bridge.PropColor
+    (wsTextColor fromStyle) (wsTextColor toStyle)
+  lerpColorProp Bridge.PropBgColor
+    (wsBackgroundColor fromStyle) (wsBackgroundColor toStyle)
+  lerpNumProp Bridge.PropTranslateX
+    (wsTranslateX fromStyle) (wsTranslateX toStyle)
+  lerpNumProp Bridge.PropTranslateY
+    (wsTranslateY fromStyle) (wsTranslateY toStyle)
+  -- TouchPassthrough is boolean — snaps to target, no interpolation.
+  case wsTouchPassthrough toStyle of
+    Just enabled ->
       Bridge.setNumProp nodeId Bridge.PropTouchPassthrough
         (if enabled then 1.0 else 0.0)
-    (Just _fromEnabled, Nothing) -> pure ()
-    (Nothing, Nothing) -> pure ()
+    Nothing -> pure ()
+  where
+    -- | Interpolate a numeric property and apply it to the native node.
+    lerpNumProp :: Bridge.PropId -> Maybe Double -> Maybe Double -> IO ()
+    lerpNumProp prop (Just fromVal) (Just toVal) =
+      Bridge.setNumProp nodeId prop (interpolateDouble fromVal toVal progress)
+    lerpNumProp prop Nothing (Just toVal) =
+      Bridge.setNumProp nodeId prop toVal
+    lerpNumProp _prop _ Nothing = pure ()
+
+    -- | Interpolate a color property and apply it as a hex string.
+    lerpColorProp :: Bridge.PropId -> Maybe Color -> Maybe Color -> IO ()
+    lerpColorProp prop (Just fromColor) (Just toColor) =
+      Bridge.setStrProp nodeId prop
+        (colorToHex (interpolateColor fromColor toColor progress))
+    lerpColorProp prop Nothing (Just toColor) =
+      Bridge.setStrProp nodeId prop (colorToHex toColor)
+    lerpColorProp _prop _ Nothing = pure ()
 
 -- | FFI imports for the C animation bridge.
 foreign import ccall "animation_start_loop" c_animationStartLoop :: Ptr () -> IO ()

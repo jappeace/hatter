@@ -175,6 +175,21 @@ applyStyle nodeId style = do
 -- Creating rendered nodes from scratch
 -- ---------------------------------------------------------------------------
 
+-- | Create a container native node, recursively rendering each child
+-- and attaching it via the bridge.  Used by Column, Row, and Stack which
+-- share identical child-processing logic.
+createContainerNode :: AnimationState -> Widget -> Bridge.NodeType
+                    -> [LayoutItem] -> IO RenderedNode
+createContainerNode animState widget nodeType layoutItems = do
+  nodeId <- Bridge.createNode nodeType
+  keyedChildren <- mapM (\(index, layoutItem) -> do
+    let keyVal = resolveKeyAtIndex index layoutItem
+    childNode <- createRenderedNode animState (liWidget layoutItem)
+    Bridge.addChild nodeId (renderedNodeId childNode)
+    pure (keyVal, childNode)
+    ) (zip [0..] layoutItems)
+  pure (RenderedContainer widget nodeId keyedChildren)
+
 -- | Create a native node from a 'Widget', returning a 'RenderedNode'
 -- snapshot. Used for fresh creation (no old node to diff against).
 createRenderedNode :: AnimationState -> Widget -> IO RenderedNode
@@ -203,35 +218,14 @@ createRenderedNode animState widget@(Column settings) = do
   let nodeType = if lsScrollable settings
         then Bridge.NodeScrollView
         else Bridge.NodeColumn
-  nodeId <- Bridge.createNode nodeType
-  keyedChildren <- mapM (\(index, layoutItem) -> do
-    let keyVal = resolveKeyAtIndex index layoutItem
-    childNode <- createRenderedNode animState (liWidget layoutItem)
-    Bridge.addChild nodeId (renderedNodeId childNode)
-    pure (keyVal, childNode)
-    ) (zip [0..] (lsWidgets settings))
-  pure (RenderedContainer widget nodeId keyedChildren)
+  createContainerNode animState widget nodeType (lsWidgets settings)
 createRenderedNode animState widget@(Row settings) = do
   let nodeType = if lsScrollable settings
         then Bridge.NodeHorizontalScrollView
         else Bridge.NodeRow
-  nodeId <- Bridge.createNode nodeType
-  keyedChildren <- mapM (\(index, layoutItem) -> do
-    let keyVal = resolveKeyAtIndex index layoutItem
-    childNode <- createRenderedNode animState (liWidget layoutItem)
-    Bridge.addChild nodeId (renderedNodeId childNode)
-    pure (keyVal, childNode)
-    ) (zip [0..] (lsWidgets settings))
-  pure (RenderedContainer widget nodeId keyedChildren)
-createRenderedNode animState widget@(Stack items) = do
-  nodeId <- Bridge.createNode Bridge.NodeStack
-  keyedChildren <- mapM (\(index, layoutItem) -> do
-    let keyVal = resolveKeyAtIndex index layoutItem
-    childNode <- createRenderedNode animState (liWidget layoutItem)
-    Bridge.addChild nodeId (renderedNodeId childNode)
-    pure (keyVal, childNode)
-    ) (zip [0..] items)
-  pure (RenderedContainer widget nodeId keyedChildren)
+  createContainerNode animState widget nodeType (lsWidgets settings)
+createRenderedNode animState widget@(Stack items) =
+  createContainerNode animState widget Bridge.NodeStack items
 createRenderedNode _animState widget@(Image config) = do
   nodeId <- Bridge.createNode Bridge.NodeImage
   case icSource config of
