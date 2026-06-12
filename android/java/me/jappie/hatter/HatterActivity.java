@@ -7,6 +7,7 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanRecord;
 import android.bluetooth.le.ScanResult;
 import android.content.Context;
 import android.content.Intent;
@@ -256,7 +257,15 @@ public class HatterActivity extends Activity implements View.OnClickListener {
             bleScanCallback = new ScanCallback() {
                 @Override
                 public void onScanResult(int callbackType, ScanResult result) {
-                    String name = result.getDevice().getName();
+                    // Read the advertised name from the scan record rather than
+                    // BluetoothDevice.getName(). getName() calls getRemoteName(),
+                    // which requires the BLUETOOTH_CONNECT runtime permission on
+                    // API 31+ and crashes a scan-only app with SecurityException.
+                    // The advertised name is carried in the scan packet itself and
+                    // needs only BLUETOOTH_SCAN; it is null when the device does
+                    // not advertise a name, which the Haskell side maps to "".
+                    ScanRecord record = result.getScanRecord();
+                    String name = record != null ? record.getDeviceName() : null;
                     String address = result.getDevice().getAddress();
                     int rssi = result.getRssi();
                     onBleScanResult(name, address, rssi);
