@@ -298,35 +298,20 @@ JNI_OnUnload(JavaVM *vm, void *reserved)
 JNIEXPORT void JNICALL
 JNI_METHOD(renderUI)(JNIEnv *env, jobject thiz)
 {
-    /* The bridge setups are one-time initialization: they resolve JNI method
-     * IDs, cache the activity, register callbacks, and (in
-     * setup_android_ui_bridge) reset the node pool to g_next_node_id = 1.
-     *
-     * renderUI() is called both for the initial render and for every
-     * subsequent redraw (Activity.requestRedraw -> renderUI). Re-running setup
-     * on each redraw wiped the native node pool while the Haskell render state
-     * kept the old node IDs, so setStrProp/addChild targeted freed nodes and
-     * callback-driven redraws never reached the screen. Initialise the bridges
-     * once, then only render — matching the iOS bridge, which sets up once at
-     * init and whose renderUI just calls haskellRenderUI. */
-    static int g_bridges_initialized = 0;
-    if (!g_bridges_initialized) {
-        setup_android_ui_bridge(env, thiz, g_haskell_ctx);
-        setup_android_permission_bridge(env, thiz, g_haskell_ctx);
-        setup_android_secure_storage_bridge(env, thiz, g_haskell_ctx);
-        setup_android_ble_bridge(env, thiz, g_haskell_ctx);
-        setup_android_dialog_bridge(env, thiz, g_haskell_ctx);
-        setup_android_location_bridge(env, thiz, g_haskell_ctx);
-        setup_android_auth_session_bridge(env, thiz, g_haskell_ctx);
-        setup_android_camera_bridge(env, thiz, g_haskell_ctx);
-        setup_android_bottom_sheet_bridge(env, thiz, g_haskell_ctx);
-        setup_android_http_bridge(env, thiz, g_haskell_ctx);
-        setup_android_network_status_bridge(env, thiz, g_haskell_ctx);
-        setup_android_animation_bridge(env, thiz, g_haskell_ctx);
-        setup_android_redraw_bridge(env, thiz, g_haskell_ctx);
-        setup_android_platform_sign_in_bridge(env, thiz, g_haskell_ctx);
-        g_bridges_initialized = 1;
-    }
+    setup_android_ui_bridge(env, thiz, g_haskell_ctx);
+    setup_android_permission_bridge(env, thiz, g_haskell_ctx);
+    setup_android_secure_storage_bridge(env, thiz, g_haskell_ctx);
+    setup_android_ble_bridge(env, thiz, g_haskell_ctx);
+    setup_android_dialog_bridge(env, thiz, g_haskell_ctx);
+    setup_android_location_bridge(env, thiz, g_haskell_ctx);
+    setup_android_auth_session_bridge(env, thiz, g_haskell_ctx);
+    setup_android_camera_bridge(env, thiz, g_haskell_ctx);
+    setup_android_bottom_sheet_bridge(env, thiz, g_haskell_ctx);
+    setup_android_http_bridge(env, thiz, g_haskell_ctx);
+    setup_android_network_status_bridge(env, thiz, g_haskell_ctx);
+    setup_android_animation_bridge(env, thiz, g_haskell_ctx);
+    setup_android_redraw_bridge(env, thiz, g_haskell_ctx);
+    setup_android_platform_sign_in_bridge(env, thiz, g_haskell_ctx);
     haskellRenderUI(g_haskell_ctx);
 }
 
