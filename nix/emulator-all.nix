@@ -748,7 +748,8 @@ run_with_retry() {
             # LOAD is deterministic, but a runtime SIGSEGV on the x86_64 emulator
             # is dominated by the ARM->x86 translation flake
             # (ndk_translation_HandleNoExec, issue #208) and passes on a re-run.
-            # retryable-crash.sh decides which case this is.
+            # retryable-crash.sh decides which case this is. $TEST_SCRIPTS is
+            # the test-tree root set near the top of this harness script.
             if bash "$TEST_SCRIPTS/android/retryable-crash.sh" "$output_file"; then
                 echo "[$label] transient crash, likely the ndk_translation ARM-emulation flake, retrying"
             else

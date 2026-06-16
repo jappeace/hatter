@@ -47,6 +47,16 @@ FATAL: App crashed before rendering, aborting node-pool
 EOF
 expect 1 "SIGABRT is not retryable" "$tmp/abort.log"
 
+# Both a deterministic load failure AND a SIGSEGV present: the deterministic
+# verdict must win (load failures are checked first), so this is not retryable.
+# Pins the grep precedence so a future reordering would fail this test.
+cat > "$tmp/mixed.log" <<'EOF'
+E AndroidRuntime: java.lang.UnsatisfiedLinkError: dlopen failed: library "libhatter.so" not found
+F libc    : Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR) in tid 100 (e.jappie.hatter)
+FATAL: App crashed, aborting
+EOF
+expect 1 "load failure wins over SIGSEGV" "$tmp/mixed.log"
+
 if [ "$failures" -ne 0 ]; then
     echo "retryable-crash classification test FAILED ($failures case(s))"
     exit 1
