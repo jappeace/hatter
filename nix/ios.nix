@@ -19,7 +19,7 @@ let
   };
 in
 lib.mkIOSLib {
-  hatterSrc = ../.;
+  hatterSrc = import ./hatter-src.nix { inherit sources; };
   inherit mainModule simulator;
   crossDeps = iosDeps;
 }

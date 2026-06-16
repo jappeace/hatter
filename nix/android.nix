@@ -10,15 +10,14 @@
 }:
 let
   lib = import ./lib.nix { inherit sources androidArch; };
+  hatterSrc = import ./hatter-src.nix { inherit sources; };
   # Hatter is built as a normal cross-compiled Haskell package through
   # haskellPackages.  Nix caches the result by (hatterSrc, androidArch),
   # so all apps sharing the same hatter source reuse the same compilation.
   crossDeps = import ./cross-deps.nix {
-    inherit sources androidArch consumerCabalFile consumerCabal2Nix hpkgs;
-    hatterSrc = ../.;
+    inherit sources androidArch consumerCabalFile consumerCabal2Nix hpkgs hatterSrc;
   };
 in
 lib.mkAndroidLib {
-  hatterSrc = ../.;
-  inherit mainModule crossDeps maxNodes dynamicNodePool;
+  inherit hatterSrc mainModule crossDeps maxNodes dynamicNodePool;
 }
