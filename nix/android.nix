@@ -10,6 +10,8 @@
 }:
 let
   lib = import ./lib.nix { inherit sources androidArch; };
+  # Filtered source, not ../. , so platform-file edits don't bust the
+  # cross-compile cache (see nix/hatter-src.nix and issue #208).
   hatterSrc = import ./hatter-src.nix { inherit sources; };
   # Hatter is built as a normal cross-compiled Haskell package through
   # haskellPackages.  Nix caches the result by (hatterSrc, androidArch),
