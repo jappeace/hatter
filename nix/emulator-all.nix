@@ -744,8 +744,17 @@ run_with_retry() {
             return 0
         fi
         if grep -q "^FATAL:" "$output_file" 2>/dev/null; then
-            echo "[$label] FATAL error detected — not retrying"
-            return 1
+            # Not every "FATAL:" is permanent. A native library that fails to
+            # LOAD is deterministic, but a runtime SIGSEGV on the x86_64 emulator
+            # is dominated by the ARM->x86 translation flake
+            # (ndk_translation_HandleNoExec, issue #208) and passes on a re-run.
+            # retryable-crash.sh decides which case this is.
+            if bash "$TEST_SCRIPTS/android/retryable-crash.sh" "$output_file"; then
+                echo "[$label] transient crash, likely the ndk_translation ARM-emulation flake, retrying"
+            else
+                echo "[$label] deterministic native failure, not retrying"
+                return 1
+            fi
         fi
         echo "[$label] attempt $attempt FAILED"
         attempt=$((attempt + 1))

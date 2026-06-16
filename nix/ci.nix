@@ -108,8 +108,18 @@ let
 
   testScripts = builtins.path { path = ../test; name = "test-scripts"; };
 
+  # Pure-bash check (no emulator) for the crash retry classifier that decides
+  # whether an emulator crash is the transient ndk_translation flake (issue
+  # #208, retry) or a deterministic native failure (give up).
+  retryClassificationTest = pkgs.runCommand "retry-classification-test" {} ''
+    bash ${testScripts}/android/retryable-crash-test.sh
+    touch $out
+  '';
+
 in
   buildTargets // testRunners // knownFailing // {
+    inherit retryClassificationTest;
+
     # Meta-target: builds every compilation/link-test target.
     # Excludes emulator/simulator runners (they have dedicated CI jobs).
     # Adding a new attr to buildTargets automatically includes it here.
@@ -119,6 +129,7 @@ in
         builtins.map (name: "ln -s ${buildTargets.${name}} $out/${name}")
           (builtins.attrNames buildTargets)
       )}
+      ln -s ${retryClassificationTest} $out/retry-classification-test
     '';
 
     # Lint all test shell scripts with shellcheck.
