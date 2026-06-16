@@ -15,6 +15,16 @@
 #   LICENSE                - the cabal declares license-file: LICENSE, so the
 #                            Setup copy phase fails without it; not Haskell, but
 #                            required for the build to succeed.
+#   nix/mac2ios.nix,       - mkIOSLib / mkWatchOSLib import these from hatterSrc
+#   nix/mac2watchos.nix      (lib.nix:560,798) to build the Mach-O platform-tag
+#                            patchers. Included as individual files, NOT the
+#                            whole nix/ dir, so editing lib.nix or any other nix
+#                            file still does not invalidate the cross cache.
+#                            mac2watchos.nix compiles cbits/mac2watchos.c (in
+#                            the cbits/ tree above); mac2ios.nix builds from
+#                            sources.mobile-core-tools. Both are imported with
+#                            sources and pkgs supplied, so their ../npins
+#                            defaults never resolve against this tree.
 # test/ is deliberately excluded: cross-deps.nix strips the executable and
 # test-suite stanzas (they cannot link on the target), and the iOS/watchOS
 # wrappers pass their entry module through mainModule, not this tree.
@@ -32,5 +42,7 @@ pkgs.lib.fileset.toSource {
     ../include
     ../hatter.cabal
     ../LICENSE
+    ../nix/mac2ios.nix
+    ../nix/mac2watchos.nix
   ];
 }
