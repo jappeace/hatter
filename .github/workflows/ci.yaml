@@ -36,7 +36,7 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
 
-  macos-native:
+  macos-apk:
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
@@ -50,11 +50,11 @@ jobs:
     - name: Nix store cache
       uses: nix-community/cache-nix-action@v7
       with:
-        primary-key: nix-macos-native-${{ hashFiles('npins/sources.json', 'nix/*.nix', '*.cabal') }}
-        restore-prefixes-first-match: nix-macos-native-
+        primary-key: nix-macos-apk-${{ hashFiles('npins/sources.json', 'nix/*.nix', '*.cabal') }}
+        restore-prefixes-first-match: nix-macos-apk-
         gc-max-store-size-macos: 8G
-    - name: Build the native library on macOS
-      run: nix-build nix/ci.nix -A native
+    - name: Build the Android APK on macOS
+      run: nix-build nix/ci.nix -A apk
     - name: Cancel workflow on failure
       if: failure()
       continue-on-error: true
