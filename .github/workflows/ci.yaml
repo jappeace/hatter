@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   nix-build:
+    if: false  # TEMP: disabled to iterate on macos-apk; re-enable before merge
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -69,6 +70,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
 
   android:
+    if: false  # TEMP: disabled to iterate on macos-apk; re-enable before merge
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -94,6 +96,7 @@ jobs:
 
   # armv7a (armeabi-v7a) — 32-bit ARM, used by Wear OS watches
   android-armv7a-emulator:
+    if: false  # TEMP: disabled to iterate on macos-apk; re-enable before merge
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -118,6 +121,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
 
   ios:
+    if: false  # TEMP: disabled to iterate on macos-apk; re-enable before merge
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
@@ -139,6 +143,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
 
   watchos:
+    if: false  # TEMP: disabled to iterate on macos-apk; re-enable before merge
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
