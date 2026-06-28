@@ -40,8 +40,10 @@ jobs:
   # supports x86_64-apple-darwin and x86_64-unknown-linux-gnu as build
   # hosts, so the APK cross-compile cannot evaluate on Apple Silicon
   # (macos-latest/macos-14 are aarch64-darwin, which the NDK rejects).
+  # macos-15-intel is the current Intel image; macos-13 was retired by
+  # GitHub on 2025-12-04 and its jobs queue forever instead of failing.
   macos-apk:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     timeout-minutes: 45
     steps:
     - uses: actions/checkout@v4
