@@ -37,15 +37,24 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
 
-  # Intel runner (x86_64-darwin) on purpose: nixpkgs' Android NDK only
-  # supports x86_64-apple-darwin and x86_64-unknown-linux-gnu as build
-  # hosts, so the APK cross-compile cannot evaluate on Apple Silicon
-  # (macos-latest/macos-14 are aarch64-darwin, which the NDK rejects).
-  # macos-15-intel is the current Intel image; macos-13 was retired by
-  # GitHub on 2025-12-04 and its jobs queue forever instead of failing.
+  # Building the Android APK is a Linux-host cross-compile that does not work
+  # natively on Darwin (see docs/android-apk-on-macos.md).  Instead we run it
+  # "Linux style" through pkgs.darwin.linux-builder: a NixOS VM on the macOS
+  # runner that registers as a remote x86_64-linux builder, so a single
+  # nix build on macOS produces the APK.  This job is the spike that proves
+  # the VM boots and can run a Linux build on a GitHub Intel runner; the APK
+  # is wired through it once that is confirmed.
+  #
+  # Intel runner (x86_64-darwin) on purpose: the runner must be x86_64 so the
+  # builder VM is x86_64-linux, and the Android NDK only supports
+  # x86_64-apple-darwin / x86_64-unknown-linux-gnu as build hosts anyway.
+  # macos-15-intel is the current Intel image; macos-13 was retired by GitHub
+  # on 2025-12-04 and its jobs queue forever instead of failing.  QEMU falls
+  # back to software emulation (accel=hvf:tcg) when the runner has no nested
+  # virtualisation, so the VM still boots, just slower.
   macos-apk:
     runs-on: macos-15-intel
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
     - uses: actions/checkout@v4
     - uses: cachix/install-nix-action@v31
@@ -60,8 +69,57 @@ jobs:
         primary-key: nix-macos-apk-${{ hashFiles('npins/sources.json', 'nix/*.nix', '*.cabal') }}
         restore-prefixes-first-match: nix-macos-apk-
         gc-max-store-size-macos: 8G
-    - name: Build the Android APK on macOS
-      run: nix-build nix/ci.nix -A apk
+    - name: Build the linux-builder VM (substitutes from cache.nixos.org)
+      run: nix-build nix/linux-builder.nix -o /tmp/linux-builder
+    - name: Launch the linux-builder VM
+      run: |
+        set -euo pipefail
+        sudo true  # prime passwordless sudo for credential install
+        mkdir -p /tmp/builder-state
+        cd /tmp/builder-state
+        # create-builder installs the SSH client key (via sudo) and boots the
+        # qemu VM in the foreground; background it for CI.
+        nohup /tmp/linux-builder/bin/create-builder > /tmp/builder-state/vm.log 2>&1 &
+        echo "linux-builder launching (pid $!)"
+    - name: Register the VM as a nix remote builder
+      run: |
+        set -euo pipefail
+        sudo mkdir -p /etc/ssh/ssh_config.d
+        sudo tee /etc/ssh/ssh_config.d/100-linux-builder.conf > /dev/null <<'EOF'
+        Host linux-builder
+          Hostname localhost
+          HostKeyAlias linux-builder
+          Port 31022
+          User builder
+          IdentityFile /etc/nix/builder_ed25519
+        EOF
+        # Last field is the darwin-builder image's publicly-known host public
+        # key (base64), so the daemon trusts the VM without an interactive
+        # known_hosts prompt.
+        echo 'builders = ssh-ng://builder@linux-builder x86_64-linux /etc/nix/builder_ed25519 4 - - - c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSUpCV2N4Yi9CbGFxdDFhdU90RStGOFFVV3JVb3RpQzVxQkorVXVFV2RWQ2Igcm9vdEBuaXhvcwo=' | sudo tee -a /etc/nix/nix.conf
+        echo 'builders-use-substitutes = true' | sudo tee -a /etc/nix/nix.conf
+        sudo launchctl kickstart -k system/org.nixos.nix-daemon
+    - name: Wait for the VM to accept SSH
+      run: |
+        set -euo pipefail
+        for i in $(seq 1 120); do
+          if sudo ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+               -i /etc/nix/builder_ed25519 -p 31022 builder@localhost 'echo ready' 2>/dev/null; then
+            echo "builder reachable after ~$((i*5))s"; exit 0
+          fi
+          sleep 5
+        done
+        echo "FATAL: linux-builder did not accept SSH in time"
+        tail -80 /tmp/builder-state/vm.log || true
+        exit 1
+    - name: Smoke test - force a Linux build on the VM
+      run: |
+        set -euo pipefail
+        # Unique derivation name -> not in any cache -> must build remotely.
+        # --max-jobs 0 forbids local builds, so success proves the VM built it.
+        nix-build --max-jobs 0 --system x86_64-linux --no-out-link \
+          -E 'let p = import (import ./npins).nixpkgs { system = "x86_64-linux"; };
+              in p.runCommand "vm-probe-${{ github.run_id }}" {} "uname -srm > $out; cat $out"'
     - name: Cancel workflow on failure
       if: failure()
       continue-on-error: true
