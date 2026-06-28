@@ -55,10 +55,18 @@ WRAPPER
     };
   };
 
+  # qemu-user runs the target's iserv-proxy-interpreter on the build host so
+  # GHC can evaluate Template Haskell while cross-compiling.  qemu user-mode
+  # emulation is Linux-only, so on a non-Linux build host (e.g. an
+  # x86_64-darwin runner building the Android APK) the qemu/iserv machinery
+  # is skipped entirely.  Code that needs TH then fails loudly (see the
+  # unsupported wrapper below) rather than mis-building.
+  buildHostIsLinux = builtins.match ".*-linux" builtins.currentSystem != null;
+
   pkgs = import nixpkgsSrc ({
     config.allowUnfree = true;
     config.android_sdk.accept_license = true;
-  } // (if androidArch == "aarch64"
+  } // (if androidArch == "aarch64" && buildHostIsLinux
         then { overlays = [ qemuOverlay ]; }
         else {}));
 
@@ -278,7 +286,7 @@ WRAPPER
     then "${pkgs.qemu-user}/bin/qemu-aarch64"   # overlay adds -B 0x4000000000
     else "${pkgs.qemu-user}/bin/qemu-arm";
 
-  iservWrapper = pkgs.writeShellScript "iserv-wrapper" ''
+  iservWrapperQemu = pkgs.writeShellScript "iserv-wrapper" ''
     set -euo pipefail
     PORT=$((5000 + RANDOM % 5000))
     (>&2 echo "---> Starting remote interpreter on port $PORT")
@@ -287,6 +295,21 @@ WRAPPER
     trap "kill $RISERV_PID" EXIT
     ${iservBuild}/bin/iserv-proxy "$@" 127.0.0.1 "$PORT"
   '';
+
+  # Non-Linux build host: no qemu, so the target interpreter cannot run.
+  # Fail loudly if GHC ever invokes this (i.e. cross-compiled code that
+  # actually needs Template Haskell), instead of producing a broken build.
+  iservWrapperUnsupported = pkgs.writeShellScript "iserv-wrapper-unsupported" ''
+    echo "FATAL: Template Haskell cross-compilation needs qemu-user to run the" >&2
+    echo "       target interpreter, but qemu user-mode is Linux-only and this" >&2
+    echo "       build host is ${pkgs.stdenv.buildPlatform.config}." >&2
+    echo "       Build the Android library on a Linux host, or remove the TH use." >&2
+    exit 1
+  '';
+
+  iservWrapper = if buildHostIsLinux
+    then iservWrapperQemu
+    else iservWrapperUnsupported;
 
   # When hatterSrc is provided, add the hatter package to the collected deps
   # so its .a and .conf are available for linking.
