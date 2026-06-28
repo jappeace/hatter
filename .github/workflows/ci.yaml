@@ -36,8 +36,12 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
 
+  # Intel runner (x86_64-darwin) on purpose: nixpkgs' Android NDK only
+  # supports x86_64-apple-darwin and x86_64-unknown-linux-gnu as build
+  # hosts, so the APK cross-compile cannot evaluate on Apple Silicon
+  # (macos-latest/macos-14 are aarch64-darwin, which the NDK rejects).
   macos-apk:
-    runs-on: macos-latest
+    runs-on: macos-13
     timeout-minutes: 45
     steps:
     - uses: actions/checkout@v4
