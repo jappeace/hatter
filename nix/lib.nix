@@ -104,6 +104,8 @@ in {
       # x86_64-darwin runner building the APK) we omit the flag.  Code that
       # actually needs TH then fails at compile time with a clear GHC error
       # rather than silently using an interpreter that cannot run.
+      # (cross-deps.nix gates the same way via builtins.currentSystem, which
+      # it must use because its check runs before nixpkgs is imported.)
       thFlags = if crossDeps != null && pkgs.stdenv.buildPlatform.isLinux
         then "-fexternal-interpreter -pgmi ${crossDeps}/bin/iserv-proxy-wrapper"
         else "";

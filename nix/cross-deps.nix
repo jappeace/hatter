@@ -61,6 +61,9 @@ WRAPPER
   # x86_64-darwin runner building the Android APK) the qemu/iserv machinery
   # is skipped entirely.  Code that needs TH then fails loudly (see the
   # unsupported wrapper below) rather than mis-building.
+  # NB: this decides whether `pkgs` below gets the qemu overlay, so it must
+  # be computed *before* `pkgs` exists -- hence builtins.currentSystem rather
+  # than pkgs.stdenv.buildPlatform.isLinux (which lib.nix uses, post-import).
   buildHostIsLinux = builtins.match ".*-linux" builtins.currentSystem != null;
 
   pkgs = import nixpkgsSrc ({
