@@ -71,19 +71,10 @@ jobs:
         gc-max-store-size-macos: 8G
     - name: Build the linux-builder VM (substitutes from cache.nixos.org)
       run: nix-build nix/linux-builder.nix -o /tmp/linux-builder
-    - name: Launch the linux-builder VM
+    - name: Configure nix for the remote builder
       run: |
         set -euo pipefail
-        sudo true  # prime passwordless sudo for credential install
-        mkdir -p /tmp/builder-state
-        cd /tmp/builder-state
-        # create-builder installs the SSH client key (via sudo) and boots the
-        # qemu VM in the foreground; background it for CI.
-        nohup /tmp/linux-builder/bin/create-builder > /tmp/builder-state/vm.log 2>&1 &
-        echo "linux-builder launching (pid $!)"
-    - name: Register the VM as a nix remote builder
-      run: |
-        set -euo pipefail
+        # SSH host alias the daemon (root) uses to reach the VM at localhost:31022.
         sudo mkdir -p /etc/ssh/ssh_config.d
         sudo tee /etc/ssh/ssh_config.d/100-linux-builder.conf > /dev/null <<'EOF'
         Host linux-builder
@@ -93,16 +84,42 @@ jobs:
           User builder
           IdentityFile /etc/nix/builder_ed25519
         EOF
-        # Last field is the darwin-builder image's publicly-known host public
-        # key (base64), so the daemon trusts the VM without an interactive
-        # known_hosts prompt.
+        # Last field is the darwin-builder image's publicly-known host public key
+        # (base64), so the daemon trusts the VM without a known_hosts prompt.
         echo 'builders = ssh-ng://builder@linux-builder x86_64-linux /etc/nix/builder_ed25519 4 - - - c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSUpCV2N4Yi9CbGFxdDFhdU90RStGOFFVV3JVb3RpQzVxQkorVXVFV2RWQ2Igcm9vdEBuaXhvcwo=' | sudo tee -a /etc/nix/nix.conf
         echo 'builders-use-substitutes = true' | sudo tee -a /etc/nix/nix.conf
+        # Reload the daemon so it picks up the builders config NOW, before
+        # create-builder launches -- restarting it afterwards races the
+        # credential install and leaves the VM key share empty.
         sudo launchctl kickstart -k system/org.nixos.nix-daemon
+        for i in $(seq 1 30); do
+          if nix store ping >/dev/null 2>&1; then echo "daemon back up after ~$((i*2))s"; break; fi
+          sleep 2
+        done
+    - name: Launch the linux-builder VM
+      run: |
+        set -euo pipefail
+        sudo true  # prime passwordless sudo for the credential install
+        mkdir -p /tmp/builder-state
+        cd /tmp/builder-state
+        # create-builder installs the SSH client key (sudo, via the running nix
+        # daemon) and boots the qemu VM in the foreground; background it for CI.
+        nohup /tmp/linux-builder/bin/create-builder > /tmp/builder-state/vm.log 2>&1 &
+        echo "linux-builder launching (pid $!)"
     - name: Wait for the VM to accept SSH
       run: |
         set -euo pipefail
-        for i in $(seq 1 120); do
+        # First wait for create-builder to install the client key.
+        for i in $(seq 1 60); do
+          [ -f /etc/nix/builder_ed25519 ] && { echo "client key installed"; break; }
+          sleep 2
+        done
+        if [ ! -f /etc/nix/builder_ed25519 ]; then
+          echo "FATAL: create-builder never installed /etc/nix/builder_ed25519"
+          tail -120 /tmp/builder-state/vm.log || true; exit 1
+        fi
+        # Then wait for the VM's sshd (slow under TCG software emulation).
+        for i in $(seq 1 180); do
           if sudo ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
                -i /etc/nix/builder_ed25519 -p 31022 builder@localhost 'echo ready' 2>/dev/null; then
             echo "builder reachable after ~$((i*5))s"; exit 0
@@ -110,13 +127,14 @@ jobs:
           sleep 5
         done
         echo "FATAL: linux-builder did not accept SSH in time"
-        tail -80 /tmp/builder-state/vm.log || true
+        tail -120 /tmp/builder-state/vm.log || true
         exit 1
     - name: Smoke test - force a Linux build on the VM
       run: |
         set -euo pipefail
         # Unique derivation name -> not in any cache -> must build remotely.
-        # --max-jobs 0 forbids local builds, so success proves the VM built it.
+        # --max-jobs 0 forbids local builds, so success proves the VM built it
+        # (builders come from /etc/nix/nix.conf, configured above).
         nix-build --max-jobs 0 --system x86_64-linux --no-out-link \
           -E 'let p = import (import ./npins).nixpkgs { system = "x86_64-linux"; };
               in p.runCommand "vm-probe-${{ github.run_id }}" {} "uname -srm > $out; cat $out"'
