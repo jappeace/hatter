@@ -54,7 +54,7 @@ jobs:
   # virtualisation, so the VM still boots, just slower.
   macos-apk:
     runs-on: macos-15-intel
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
     - uses: actions/checkout@v4
     - uses: cachix/install-nix-action@v31
@@ -148,6 +148,18 @@ jobs:
         nix-build --max-jobs 0 --system x86_64-linux --no-out-link \
           -E 'let p = import (import ./npins).nixpkgs { system = "x86_64-linux"; };
               in p.runCommand "vm-probe-${{ github.run_id }}" {} "uname -srm > $out; cat $out"'
+    - name: Build the Android APK via the linux-builder
+      run: |
+        set -euo pipefail
+        # Evaluate the APK as an x86_64-linux derivation; the daemon offloads
+        # the actual builds to the VM.  Cached deps (cross-GHC, NDK, ...)
+        # substitute from the jappie cache on the client and are copied to the
+        # VM; only the changed derivations (hatter, hatter-android, apk) build
+        # on the VM.  --max-jobs 0 forbids local (Darwin) builds.
+        nix-build nix/ci.nix -A apk --system x86_64-linux --max-jobs 0 -o result-apk
+        echo "=== APK built on macOS via the linux-builder VM ==="
+        ls -lL result-apk
+        find result-apk -name '*.apk' -exec ls -l {} +
     - name: Cancel workflow on failure
       if: failure()
       continue-on-error: true
