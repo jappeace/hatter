@@ -89,8 +89,9 @@ jobs:
         echo 'builders = ssh-ng://builder@linux-builder x86_64-linux /etc/nix/builder_ed25519 4 - - - c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSUpCV2N4Yi9CbGFxdDFhdU90RStGOFFVV3JVb3RpQzVxQkorVXVFV2RWQ2Igcm9vdEBuaXhvcwo=' | sudo tee -a /etc/nix/nix.conf
         echo 'builders-use-substitutes = true' | sudo tee -a /etc/nix/nix.conf
         # Reload the daemon so it picks up the builders config NOW, before
-        # create-builder launches -- restarting it afterwards races the
-        # credential install and leaves the VM key share empty.
+        # create-builder launches -- restarting it afterwards races
+        # run-builder's `nix-store --add` (which shares the key dir into the
+        # store for the VM) and leaves the VM key share empty.
         sudo launchctl kickstart -k system/org.nixos.nix-daemon
         for i in $(seq 1 30); do
           if nix store ping >/dev/null 2>&1; then echo "daemon back up after ~$((i*2))s"; break; fi
@@ -102,8 +103,17 @@ jobs:
         sudo true  # prime passwordless sudo for the credential install
         mkdir -p /tmp/builder-state
         cd /tmp/builder-state
-        # create-builder installs the SSH client key (sudo, via the running nix
-        # daemon) and boots the qemu VM in the foreground; background it for CI.
+        # create-builder installs the SSH client key (sudo + coreutils, no
+        # daemon) and then boots the qemu VM; the boot step shares the key dir
+        # into the store via `nix-store --add` (which needs the daemon, kept
+        # stable above). Foreground by default, so background it for CI.
+        #
+        # QEMU_KERNEL_PARAMS=noapic: GitHub runners have no nested virt, so QEMU
+        # falls back to TCG software emulation, under which the guest kernel
+        # panics at boot with "IO-APIC + timer doesn't work!". noapic is the
+        # kernel's own suggested workaround; QEMU_KERNEL_PARAMS is appended to
+        # the guest -append at runtime, so no VM rebuild is needed.
+        export QEMU_KERNEL_PARAMS="noapic"
         nohup /tmp/linux-builder/bin/create-builder > /tmp/builder-state/vm.log 2>&1 &
         echo "linux-builder launching (pid $!)"
     - name: Wait for the VM to accept SSH
