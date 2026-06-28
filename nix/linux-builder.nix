@@ -31,4 +31,18 @@
 #     cannot boot on GitHub's macOS runners.
 # Full analysis and sources: docs/android-apk-on-macos.md.
 { sources ? import ../npins }:
-(import sources.nixpkgs-linux-builder { }).darwin.linux-builder
+# diskSize/memorySize are host-side qemu parameters (the guest root fs
+# auto-resizes to fill the image), so overriding them only rebuilds the small
+# Darwin run-script, not the cached x86_64-linux guest closure -- no bootstrap
+# loop.  The default 20 GB disk is too small: streaming the cross-GHC + NDK
+# closure onto it drops free space below the VM's 1 GB min-free threshold, so
+# its garbage collector fires mid-build and deletes in-flight inputs
+# ("some dependencies are missing").  Give it room.
+(import sources.nixpkgs-linux-builder { }).darwin.linux-builder.override {
+  modules = [
+    {
+      virtualisation.darwin-builder.diskSize = 60 * 1024;  # MB
+      virtualisation.darwin-builder.memorySize = 6 * 1024; # MB
+    }
+  ];
+}
