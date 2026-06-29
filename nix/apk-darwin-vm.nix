@@ -49,6 +49,12 @@ let
   # knows cache.nixos.org by default).  builder is a trusted user in the VM,
   # so passing these via --option is honoured.
   jappieKey = "nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=";
+
+  # The minimal builder VM has no CA bundle, so the in-VM nix-build cannot
+  # fetch the nixpkgs tarball or NARs over HTTPS.  Ship one in and point both
+  # the evaluator (NIX_SSL_CERT_FILE) and the daemon (--option ssl-cert-file)
+  # at it.  PEM certs are platform-independent, so the Darwin cacert is fine.
+  caBundle = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
 in
 pkgs.stdenv.mkDerivation {
   name = "hatter-apk";
@@ -112,13 +118,14 @@ pkgs.stdenv.mkDerivation {
       exit 1
     fi
 
-    echo "Copying the source tree into the VM..."
+    echo "Copying the source tree and CA bundle into the VM..."
     ssh $ssh_opts $host 'rm -rf /tmp/src && mkdir -p /tmp/src'
     tar -C ${src} -cf - . | ssh $ssh_opts $host 'tar -C /tmp/src -xf -'
+    ssh $ssh_opts $host 'cat > /tmp/ca.pem' < ${caBundle}
 
     echo "Building the APK inside the VM (this is the real cross-compile)..."
     ssh $ssh_opts $host \
-      "nix-build /tmp/src/nix/apk.nix --option extra-substituters https://nix-cache.jappie.me --option extra-trusted-public-keys '${jappieKey}' -o /tmp/apk-result"
+      "NIX_SSL_CERT_FILE=/tmp/ca.pem nix-build /tmp/src/nix/apk.nix --option ssl-cert-file /tmp/ca.pem --option extra-substituters https://nix-cache.jappie.me --option extra-trusted-public-keys '${jappieKey}' -o /tmp/apk-result"
 
     echo "Copying the APK out of the VM..."
     mkdir -p "$out"
