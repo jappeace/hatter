@@ -73,31 +73,48 @@ pkgs.stdenv.mkDerivation {
     vmpid=$!
     trap 'kill "$vmpid" 2>/dev/null || true' EXIT
 
+    # accept-new + a throwaway known_hosts: the VM's host key is fixed and the
+    # keydir is per-build, so there is nothing to pre-seed.  127.0.0.1 (not
+    # "localhost") avoids ssh trying ::1 first against an IPv4-only forward.
     ssh_opts="-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$PWD/known_hosts -o ConnectTimeout=5 -i $keydir/builder_ed25519 -p 31022"
+    host="builder@127.0.0.1"
 
     echo "Waiting for the VM to accept SSH..."
     up=
-    for i in $(seq 1 240); do
-      if ssh $ssh_opts builder@localhost true 2>/dev/null; then
+    for i in $(seq 1 180); do
+      if ! kill -0 "$vmpid" 2>/dev/null; then
+        echo "FATAL: the qemu process exited before SSH came up"; echo "=== vm.log ==="; cat "$PWD/vm.log" || true; exit 1
+      fi
+      if ssh $ssh_opts $host true 2>/dev/null; then
         up=1; echo "VM reachable after ~$((i * 5))s"; break
+      fi
+      if [ $((i % 12)) -eq 0 ]; then
+        echo "  ...still waiting ($((i * 5))s); is port 31022 open?"
+        (exec 3<>/dev/tcp/127.0.0.1/31022 && echo "  port 31022 OPEN" && exec 3>&- ) 2>/dev/null || echo "  port 31022 not open yet"
+        tail -n 5 "$PWD/vm.log" 2>/dev/null || true
       fi
       sleep 5
     done
     if [ -z "$up" ]; then
-      echo "FATAL: the VM never accepted SSH"; tail -n 100 "$PWD/vm.log" || true; exit 1
+      echo "FATAL: the VM never accepted SSH"
+      echo "=== verbose ssh attempt ==="
+      ssh -v $ssh_opts $host true 2>&1 | tail -n 30 || true
+      echo "=== full vm.log ==="
+      cat "$PWD/vm.log" || true
+      exit 1
     fi
 
     echo "Copying the source tree into the VM..."
-    ssh $ssh_opts builder@localhost 'rm -rf /tmp/src && mkdir -p /tmp/src'
-    tar -C ${src} -cf - . | ssh $ssh_opts builder@localhost 'tar -C /tmp/src -xf -'
+    ssh $ssh_opts $host 'rm -rf /tmp/src && mkdir -p /tmp/src'
+    tar -C ${src} -cf - . | ssh $ssh_opts $host 'tar -C /tmp/src -xf -'
 
     echo "Building the APK inside the VM (this is the real cross-compile)..."
-    ssh $ssh_opts builder@localhost \
+    ssh $ssh_opts $host \
       "nix-build /tmp/src/nix/apk.nix --option extra-substituters https://nix-cache.jappie.me --option extra-trusted-public-keys '${jappieKey}' -o /tmp/apk-result"
 
     echo "Copying the APK out of the VM..."
     mkdir -p "$out"
-    ssh $ssh_opts builder@localhost 'tar -C "$(readlink -f /tmp/apk-result)" -cf - .' \
+    ssh $ssh_opts $host 'tar -C "$(readlink -f /tmp/apk-result)" -cf - .' \
       | tar --no-same-owner -C "$out" -xf -
 
     echo "APK built inside the VM and copied to $out"
