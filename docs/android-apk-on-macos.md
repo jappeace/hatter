@@ -1,16 +1,50 @@
 # Building the Android APK on macOS
 
-Status: investigation (2026-06-28). Tracks issue #228 ("Build android on
+Status: implemented (2026-06-29). Tracks issue #228 ("Build android on
 macOS"). The Linux CI already builds the APK; this document is about making
 the same APK reachable from a macOS host.
 
 ## TL;DR
 
 Native Android cross-compilation on a Darwin *build host* is not supported by
-our nixpkgs pin without patching nixpkgs internals (and this repo). The
-recommended path is instead to let a **Linux builder VM** do the build
-"Linux style" and drive it from macOS with a single `nix build`, reusing the
-already-cached `x86_64-linux` closure from `nix-cache.jappie.me`.
+our nixpkgs pin without patching nixpkgs internals (and this repo). Instead we
+let a **Linux builder VM** (`pkgs.darwin.linux-builder`) do the build "Linux
+style" and drive it from macOS with a single `nix build`, reusing the
+`x86_64-linux` closure from `nix-cache.jappie.me`.  This is implemented in the
+`macos-apk` CI job (option A below) and produces `hatter.apk` on a
+`macos-15-intel` runner.
+
+## Outcome (option A, implemented)
+
+The `macos-apk` job runs `nix-build nix/ci.nix -A apk --system x86_64-linux`
+on macOS; the nix daemon offloads the `x86_64-linux` build to a
+`darwin.linux-builder` VM.  Getting this working on a GitHub-hosted runner
+needed four fixes, each peeled off by a failing CI run:
+
+1. **Pin the VM to stable nixpkgs** (`nixpkgs-linux-builder`, nixos-25.05).
+   For the project's unstable pin the VM's guest closure is not on
+   cache.nixos.org, so realizing it on the Mac would need the very Linux
+   builder we are creating (bootstrap loop).  A stable release is cached.
+2. **Reload the nix daemon before launching the VM**, not after.  Restarting
+   it afterwards races `create-builder`'s `nix-store --add` (which shares the
+   SSH key dir into the store) and leaves the VM key share empty, so the VM
+   never boots.
+3. **`QEMU_KERNEL_PARAMS=noapic`.**  GitHub runners have no nested virt, so
+   QEMU falls back to TCG software emulation, under which the guest kernel
+   panics at boot with "IO-APIC + timer doesn't work!".  noapic (the kernel's
+   own suggested workaround) is appended to the guest cmdline at runtime, so
+   no VM rebuild is needed.
+4. **Enlarge the VM disk** (`diskSize = 60 GB`).  The default 20 GB fills as
+   the cross-GHC + NDK closure streams in, dropping below the VM's 1 GB
+   min-free threshold; its garbage collector then runs mid-build and deletes
+   in-flight inputs ("some dependencies are missing").  diskSize/memorySize
+   are host-side qemu params, so overriding them only rebuilds the small
+   Darwin run-script, not the cached guest closure.
+
+Caveat: the build runs under TCG software emulation, so it is slow (~1.5 h)
+and the job timeout is 120 min.  It is substitution-heavy (cached deps come
+from the jappie cache via the client); only hatter, hatter-android and the
+APK assembly actually compile on the VM.
 
 ## What works today, and the runner constraint
 
@@ -98,16 +132,15 @@ This is the one real unknown - it is about virtualization availability:
 | B | External Linux remote builder over SSH | low | high (no VM) | yes (offloaded) |
 | C | Deep native Darwin port (patch nixpkgs + repo) | high | uncertain it terminates | yes (truly native) |
 
-## Recommendation
+## Decision
 
-Spike **A** first; fall back to **B**. A matches the "single `nix build`, VM
+Implemented **A** (see Outcome above): it gives the "single `nix build`, VM
 does the Linux-style build" goal and reuses the cache and the already-green
-Linux derivation instead of porting a toolchain. The only thing to de-risk is
-whether a GitHub macOS runner will boot the `linux-builder` VM - a small,
-self-contained experiment on `macos-15-intel`. If the runner cannot
-virtualize, B (a real Linux builder reachable over SSH) is guaranteed and is
-still a single `nix build` from the Mac. C is the last resort: most pure, most
-code, least certain.
+Linux derivation instead of porting a toolchain. The VM does boot on
+`macos-15-intel` under TCG once given `noapic`. If A ever regresses (e.g. a
+runner image drops software virtualisation), **B** (a real Linux builder
+reachable over SSH) is the guaranteed fallback and is still a single
+`nix build` from the Mac; **C** (native Darwin port) remains the last resort.
 
 ## Sources
 
