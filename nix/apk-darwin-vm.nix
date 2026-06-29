@@ -19,8 +19,12 @@ let
 
   # The VM (a NixOS guest that runs on the Darwin host).  Its run-script is a
   # Darwin derivation; the x86_64-linux guest closure substitutes from cache.
+  # run-builder is the upstream wrapper that boots the VM after copying the
+  # keys dir into the store with `nix-store --add` -- we use it (rather than
+  # the raw vm runner) so the guest's /var/keys share is a store path with
+  # proper ownership, which sshd's StrictModes requires to accept the key.
   builder = import ./linux-builder.nix { inherit sources; };
-  vmExe = lib.getExe builder.nixosConfig.system.build.vm;
+  runBuilder = lib.getExe builder.run-builder;
 
   # The repo, copied into the VM and built there.  Exclude VCS noise and build
   # artifacts (including any qcow2 disk images this build itself produces).
@@ -65,11 +69,15 @@ pkgs.stdenv.mkDerivation {
     mkdir -p "$keydir"
     ssh-keygen -q -t ed25519 -N "" -C builder@localhost -f "$keydir/builder_ed25519"
 
+    # run-builder calls `nix-store --add` on the keys dir, which needs the
+    # daemon; __noChroot exposes the daemon socket, so point nix at it.
+    export NIX_REMOTE=daemon
+
     echo "Booting the linux-builder VM (TCG software emulation, noapic)..."
     KEYS="$keydir" \
     QEMU_KERNEL_PARAMS="noapic" \
     NIX_DISK_IMAGE="$PWD/builder.qcow2" \
-      ${vmExe} > "$PWD/vm.log" 2>&1 &
+      ${runBuilder} > "$PWD/vm.log" 2>&1 &
     vmpid=$!
     trap 'kill "$vmpid" 2>/dev/null || true' EXIT
 
