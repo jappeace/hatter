@@ -41,6 +41,10 @@
 (import sources.nixpkgs-linux-builder { }).darwin.linux-builder.override {
   modules = [
     {
+      # Conservative, not tuned: 60 GB is comfortably above the ~15 GB APK
+      # closure plus guest and slack (safe because the qcow2 is sparse, so it
+      # only consumes what is written); 6 GB RAM is a modest bump from the 3 GB
+      # default for GHC.  The APK build completes within these on macos-15-intel.
       virtualisation.darwin-builder.diskSize = 60 * 1024;  # MB
       virtualisation.darwin-builder.memorySize = 6 * 1024; # MB
     }

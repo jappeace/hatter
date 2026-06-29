@@ -13,7 +13,6 @@ concurrency:
 
 jobs:
   nix-build:
-    if: false  # TEMP: disabled to iterate on macos-apk; re-enable before merge
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -41,9 +40,9 @@ jobs:
   # natively on Darwin (see docs/android-apk-on-macos.md).  Instead we run it
   # "Linux style" through pkgs.darwin.linux-builder: a NixOS VM on the macOS
   # runner that registers as a remote x86_64-linux builder, so a single
-  # nix build on macOS produces the APK.  This job is the spike that proves
-  # the VM boots and can run a Linux build on a GitHub Intel runner; the APK
-  # is wired through it once that is confirmed.
+  # nix build on macOS produces the APK.  The steps below build and boot that
+  # VM, register it with the nix daemon, smoke-test a Linux build through it,
+  # then build the APK by evaluating it as x86_64-linux and offloading to the VM.
   #
   # Intel runner (x86_64-darwin) on purpose: the runner must be x86_64 so the
   # builder VM is x86_64-linux, and the Android NDK only supports
@@ -168,7 +167,6 @@ jobs:
         GH_TOKEN: ${{ github.token }}
 
   android:
-    if: false  # TEMP: disabled to iterate on macos-apk; re-enable before merge
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -194,7 +192,6 @@ jobs:
 
   # armv7a (armeabi-v7a) — 32-bit ARM, used by Wear OS watches
   android-armv7a-emulator:
-    if: false  # TEMP: disabled to iterate on macos-apk; re-enable before merge
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -219,7 +216,6 @@ jobs:
         GH_TOKEN: ${{ github.token }}
 
   ios:
-    if: false  # TEMP: disabled to iterate on macos-apk; re-enable before merge
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
@@ -241,7 +237,6 @@ jobs:
         GH_TOKEN: ${{ github.token }}
 
   watchos:
-    if: false  # TEMP: disabled to iterate on macos-apk; re-enable before merge
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
