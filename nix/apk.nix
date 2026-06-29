@@ -1,17 +1,19 @@
-# APK packaging — thin wrapper around lib.nix.
-# Builds a multi-arch APK containing both arm64-v8a and armeabi-v7a.
+# Android APK entry point.
+#
+# `nix-build nix/apk.nix` produces hatter.apk on any host:
+#   - Linux: build the cross-compiled APK natively (apk-linux.nix).
+#   - macOS: the Android cross-compile does not work on a Darwin build host
+#     (see docs/android-apk-on-macos.md), so build it inside a Linux VM that is
+#     spun up automatically by the derivation (apk-darwin-vm.nix).  No remote
+#     builder configuration is required -- a plain `nix-build nix/apk.nix` works.
+#
+# The Darwin wrapper copies this repo into the VM and runs `nix-build
+# nix/apk.nix` there; inside the VM the host is Linux, so it takes the native
+# branch -- there is no recursion.
 { sources ? import ../npins }:
 let
-  lib = import ./lib.nix { inherit sources; };
-  sharedLibAarch64 = import ./android.nix { inherit sources; androidArch = "aarch64"; };
-  sharedLibArmv7a  = import ./android.nix { inherit sources; androidArch = "armv7a"; };
+  pkgs = import sources.nixpkgs { };
 in
-lib.mkApk {
-  sharedLibs = [
-    { lib = sharedLibAarch64; abiDir = "arm64-v8a"; }
-    { lib = sharedLibArmv7a;  abiDir = "armeabi-v7a"; }
-  ];
-  androidSrc = ../android;
-  apkName = "hatter.apk";
-  name = "hatter-apk";
-}
+if pkgs.stdenv.isDarwin
+then import ./apk-darwin-vm.nix { inherit sources; }
+else import ./apk-linux.nix { inherit sources; }

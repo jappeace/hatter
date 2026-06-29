@@ -7,19 +7,28 @@ the same APK reachable from a macOS host.
 ## TL;DR
 
 Native Android cross-compilation on a Darwin *build host* is not supported by
-our nixpkgs pin without patching nixpkgs internals (and this repo). Instead we
-let a **Linux builder VM** (`pkgs.darwin.linux-builder`) do the build "Linux
-style" and drive it from macOS with a single `nix build`, reusing the
-`x86_64-linux` closure from `nix-cache.jappie.me`.  This is implemented in the
-`macos-apk` CI job (option A below) and produces `hatter.apk` on a
-`macos-15-intel` runner.
+our nixpkgs pin without patching nixpkgs internals (and this repo). Instead
+`nix-build nix/apk.nix` is self-contained: on Linux it builds natively, and on
+macOS the derivation **boots a Linux VM (`pkgs.darwin.linux-builder`), builds
+the APK inside it, and copies it out** -- no remote-builder or nix-darwin setup
+required.  A local Mac user and CI run the exact same command.
 
-## Outcome (option A, implemented)
+## Outcome (implemented)
 
-The `macos-apk` job runs `nix-build nix/ci.nix -A apk --system x86_64-linux`
-on macOS; the nix daemon offloads the `x86_64-linux` build to a
-`darwin.linux-builder` VM.  Getting this working on a GitHub-hosted runner
-needed four fixes, each peeled off by a failing CI run:
+`nix/apk.nix` dispatches on the build host:
+
+- **Linux** -> `nix/apk-linux.nix`, the real cross-compile.
+- **macOS** -> `nix/apk-darwin-vm.nix`, a `__noChroot` derivation that boots
+  the VM, copies the repo in, runs `nix-build nix/apk.nix` inside (where the
+  host is Linux, so it takes the native branch -- no recursion), and copies the
+  resulting `hatter.apk` back to `$out`.  The in-VM build pulls the cross
+  toolchain from `nix-cache.jappie.me`.
+
+The CI `macos-apk` job is therefore just `nix-build nix/apk.nix` on a
+`macos-15-intel` runner -- all the VM logic is in nix, not CI steps.
+
+Getting the VM to work on a GitHub-hosted runner needed four fixes, each peeled
+off by a failing CI run:
 
 1. **Pin the VM to stable nixpkgs** (`nixpkgs-linux-builder`, nixos-25.05).
    For the project's unstable pin the VM's guest closure is not on
@@ -134,13 +143,16 @@ This is the one real unknown - it is about virtualization availability:
 
 ## Decision
 
-Implemented **A** (see Outcome above): it gives the "single `nix build`, VM
-does the Linux-style build" goal and reuses the cache and the already-green
-Linux derivation instead of porting a toolchain. The VM does boot on
-`macos-15-intel` under TCG once given `noapic`. If A ever regresses (e.g. a
-runner image drops software virtualisation), **B** (a real Linux builder
-reachable over SSH) is the guaranteed fallback and is still a single
-`nix build` from the Mac; **C** (native Darwin port) remains the last resort.
+Implemented **A** as the *self-contained* variant: the VM is spun up by the
+derivation itself (`apk-darwin-vm.nix`), so `nix-build nix/apk.nix` works on a
+Mac with zero configuration -- no nix-darwin module, no nix.conf remote-builder
+entry. Chosen so the build is reproducible and identical for local users and
+CI, rather than living in GitHub Actions steps. Trade-off: the APK build is
+impure (`__noChroot`, runs qemu, needs the network).
+
+If this ever regresses (e.g. a runner image drops software virtualisation),
+the fallbacks remain: a Linux builder declared via nix-darwin / `nix.conf`
+(still a single `nix-build`), or a native Darwin port (most work, last resort).
 
 ## Sources
 

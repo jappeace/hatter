@@ -36,21 +36,19 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
 
-  # Building the Android APK is a Linux-host cross-compile that does not work
-  # natively on Darwin (see docs/android-apk-on-macos.md).  Instead we run it
-  # "Linux style" through pkgs.darwin.linux-builder: a NixOS VM on the macOS
-  # runner that registers as a remote x86_64-linux builder, so a single
-  # nix build on macOS produces the APK.  The steps below build and boot that
-  # VM, register it with the nix daemon, smoke-test a Linux build through it,
-  # then build the APK by evaluating it as x86_64-linux and offloading to the VM.
+  # The Android APK is a Linux-host cross-compile that does not work natively on
+  # Darwin (see docs/android-apk-on-macos.md).  All the VM orchestration lives
+  # in nix/apk.nix: on macOS it boots a Linux VM, builds the APK inside, and
+  # copies it out, so this job is just `nix-build nix/apk.nix` -- the same
+  # command a local Mac user runs.  This keeps the build reproducible instead of
+  # encoding it in CI steps.
   #
-  # Intel runner (x86_64-darwin) on purpose: the runner must be x86_64 so the
-  # builder VM is x86_64-linux, and the Android NDK only supports
-  # x86_64-apple-darwin / x86_64-unknown-linux-gnu as build hosts anyway.
-  # macos-15-intel is the current Intel image; macos-13 was retired by GitHub
-  # on 2025-12-04 and its jobs queue forever instead of failing.  QEMU falls
-  # back to software emulation (accel=hvf:tcg) when the runner has no nested
-  # virtualisation, so the VM still boots, just slower.
+  # Intel runner (x86_64-darwin) on purpose: the VM must be x86_64-linux, and
+  # the Android NDK only supports x86_64-apple-darwin / x86_64-unknown-linux-gnu
+  # as build hosts anyway.  macos-15-intel is the current Intel image (macos-13
+  # was retired 2025-12-04 and its jobs queue forever).  The VM runs under QEMU
+  # TCG software emulation (no nested virt on hosted runners), so it is slow;
+  # hence the long timeout.
   macos-apk:
     runs-on: macos-15-intel
     timeout-minutes: 120
@@ -62,103 +60,21 @@ jobs:
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
           extra-substituters = https://nix-cache.jappie.me
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
+          # apk.nix boots a qemu VM, so its build is __noChroot; relaxed permits
+          # that while still sandboxing everything else.
+          sandbox = relaxed
     - name: Nix store cache
       uses: nix-community/cache-nix-action@v7
       with:
         primary-key: nix-macos-apk-${{ hashFiles('npins/sources.json', 'nix/*.nix', '*.cabal') }}
         restore-prefixes-first-match: nix-macos-apk-
         gc-max-store-size-macos: 8G
-    - name: Build the linux-builder VM (substitutes from cache.nixos.org)
-      run: nix-build nix/linux-builder.nix -o /tmp/linux-builder
-    - name: Configure nix for the remote builder
+    - name: Build the Android APK (apk.nix boots a Linux VM)
       run: |
         set -euo pipefail
-        # SSH host alias the daemon (root) uses to reach the VM at localhost:31022.
-        sudo mkdir -p /etc/ssh/ssh_config.d
-        sudo tee /etc/ssh/ssh_config.d/100-linux-builder.conf > /dev/null <<'EOF'
-        Host linux-builder
-          Hostname localhost
-          HostKeyAlias linux-builder
-          Port 31022
-          User builder
-          IdentityFile /etc/nix/builder_ed25519
-        EOF
-        # Last field is the darwin-builder image's publicly-known host public key
-        # (base64), so the daemon trusts the VM without a known_hosts prompt.
-        echo 'builders = ssh-ng://builder@linux-builder x86_64-linux /etc/nix/builder_ed25519 4 - - - c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSUpCV2N4Yi9CbGFxdDFhdU90RStGOFFVV3JVb3RpQzVxQkorVXVFV2RWQ2Igcm9vdEBuaXhvcwo=' | sudo tee -a /etc/nix/nix.conf
-        echo 'builders-use-substitutes = true' | sudo tee -a /etc/nix/nix.conf
-        # Reload the daemon so it picks up the builders config NOW, before
-        # create-builder launches -- restarting it afterwards races
-        # run-builder's `nix-store --add` (which shares the key dir into the
-        # store for the VM) and leaves the VM key share empty.
-        sudo launchctl kickstart -k system/org.nixos.nix-daemon
-        for i in $(seq 1 30); do
-          if nix store ping >/dev/null 2>&1; then echo "daemon back up after ~$((i*2))s"; break; fi
-          sleep 2
-        done
-    - name: Launch the linux-builder VM
-      run: |
-        set -euo pipefail
-        sudo true  # prime passwordless sudo for the credential install
-        mkdir -p /tmp/builder-state
-        cd /tmp/builder-state
-        # create-builder installs the SSH client key (sudo + coreutils, no
-        # daemon) and then boots the qemu VM; the boot step shares the key dir
-        # into the store via `nix-store --add` (which needs the daemon, kept
-        # stable above). Foreground by default, so background it for CI.
-        #
-        # QEMU_KERNEL_PARAMS=noapic: GitHub runners have no nested virt, so QEMU
-        # falls back to TCG software emulation, under which the guest kernel
-        # panics at boot with "IO-APIC + timer doesn't work!". noapic is the
-        # kernel's own suggested workaround; QEMU_KERNEL_PARAMS is appended to
-        # the guest -append at runtime, so no VM rebuild is needed.
-        export QEMU_KERNEL_PARAMS="noapic"
-        nohup /tmp/linux-builder/bin/create-builder > /tmp/builder-state/vm.log 2>&1 &
-        echo "linux-builder launching (pid $!)"
-    - name: Wait for the VM to accept SSH
-      run: |
-        set -euo pipefail
-        # First wait for create-builder to install the client key.
-        for i in $(seq 1 60); do
-          [ -f /etc/nix/builder_ed25519 ] && { echo "client key installed"; break; }
-          sleep 2
-        done
-        if [ ! -f /etc/nix/builder_ed25519 ]; then
-          echo "FATAL: create-builder never installed /etc/nix/builder_ed25519"
-          tail -120 /tmp/builder-state/vm.log || true; exit 1
-        fi
-        # Then wait for the VM's sshd (slow under TCG software emulation).
-        for i in $(seq 1 180); do
-          if sudo ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
-               -i /etc/nix/builder_ed25519 -p 31022 builder@localhost 'echo ready' 2>/dev/null; then
-            echo "builder reachable after ~$((i*5))s"; exit 0
-          fi
-          sleep 5
-        done
-        echo "FATAL: linux-builder did not accept SSH in time"
-        tail -120 /tmp/builder-state/vm.log || true
-        exit 1
-    - name: Smoke test - force a Linux build on the VM
-      run: |
-        set -euo pipefail
-        # Unique derivation name -> not in any cache -> must build remotely.
-        # --max-jobs 0 forbids local builds, so success proves the VM built it
-        # (builders come from /etc/nix/nix.conf, configured above).
-        nix-build --max-jobs 0 --system x86_64-linux --no-out-link \
-          -E 'let p = import (import ./npins).nixpkgs { system = "x86_64-linux"; };
-              in p.runCommand "vm-probe-${{ github.run_id }}" {} "uname -srm > $out; cat $out"'
-    - name: Build the Android APK via the linux-builder
-      run: |
-        set -euo pipefail
-        # Evaluate the APK as an x86_64-linux derivation; the daemon offloads
-        # the actual builds to the VM.  Cached deps (cross-GHC, NDK, ...)
-        # substitute from the jappie cache on the client and are copied to the
-        # VM; only the changed derivations (hatter, hatter-android, apk) build
-        # on the VM.  --max-jobs 0 forbids local (Darwin) builds.
-        nix-build nix/ci.nix -A apk --system x86_64-linux --max-jobs 0 -o result-apk
-        echo "=== APK built on macOS via the linux-builder VM ==="
-        ls -lL result-apk
-        find result-apk -name '*.apk' -exec ls -l {} +
+        nix-build nix/apk.nix -o result-apk
+        echo "=== APK built on macOS ==="
+        find result-apk/ -name '*.apk' -exec ls -l {} +
     - name: Cancel workflow on failure
       if: failure()
       continue-on-error: true

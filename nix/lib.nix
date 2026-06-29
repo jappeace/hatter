@@ -100,13 +100,7 @@ in {
       # Template Haskell support for consumer code: when crossDeps includes
       # the iserv wrapper, add -fexternal-interpreter so GHC delegates TH
       # splices to the QEMU-emulated iserv-proxy-interpreter.
-      # The emulator is Linux-only, so on a non-Linux build host (e.g. an
-      # x86_64-darwin runner building the APK) we omit the flag.  Code that
-      # actually needs TH then fails at compile time with a clear GHC error
-      # rather than silently using an interpreter that cannot run.
-      # (cross-deps.nix gates the same way via builtins.currentSystem, which
-      # it must use because its check runs before nixpkgs is imported.)
-      thFlags = if crossDeps != null && pkgs.stdenv.buildPlatform.isLinux
+      thFlags = if crossDeps != null
         then "-fexternal-interpreter -pgmi ${crossDeps}/bin/iserv-proxy-wrapper"
         else "";
     in
