@@ -14,6 +14,8 @@
 , consumerCabalFile ? null
 , consumerCabal2Nix ? null
 , hpkgs ? (_: _: {})       # consumer haskellPackages overrides
+, hatterSrc ? null          # hatter source tree (builds hatter as a normal dep)
+, deviceCpu ? null          # optional CPU target for C compilations (issue #216)
 }:
 let
   pkgs = import sources.nixpkgs {};
@@ -25,8 +27,39 @@ let
     }) {};
   };
 
+  # Build hatter as a regular haskellPackages derivation from local source.
+  # Executables and tests are stripped to avoid pulling in test-framework deps.
+  hatterOverride = self: super:
+    if hatterSrc != null then {
+      hatter = pkgs.haskell.lib.overrideCabal
+        (self.callCabal2nix "hatter" hatterSrc {})
+        (old: {
+          postPatch = (old.postPatch or "") + ''
+            sed -i '/^executable /,$d' hatter.cabal
+            sed -i '/^test-suite /,$d' hatter.cabal
+          '';
+          doCheck = false;
+        });
+    } else {};
+
+  # Issue #216: Inject -mcpu into C compilations of Haskell dependencies
+  # (e.g. sqlite3.c in direct-sqlite) to avoid ARMv8.4+ instructions.
+  deviceCpuOverride = self: super:
+    if deviceCpu != null then {
+      mkDerivation = args: super.mkDerivation (args // {
+        configureFlags = (args.configureFlags or []) ++ [
+          "--ghc-option=-optc-mcpu=${deviceCpu}"
+        ];
+      });
+    } else {};
+
   nativeHaskellPkgs = pkgs.haskellPackages.override {
-    overrides = pkgs.lib.composeExtensions unwitchOverride hpkgs;
+    overrides = pkgs.lib.composeManyExtensions [
+      unwitchOverride
+      hatterOverride
+      deviceCpuOverride
+      hpkgs
+    ];
   };
 
   ghc = nativeHaskellPkgs.ghc;
@@ -37,11 +70,15 @@ let
     haskellPkgs = nativeHaskellPkgs;
   };
 
+  # When hatterSrc is provided, add the hatter package to the collected deps
+  # so its .a and .conf are available for linking.
+  hatterDep = if hatterSrc != null then [ nativeHaskellPkgs.hatter ] else [];
+
   # Hatter's own non-boot dependencies — always included so mkIOSLib's
   # raw GHC invocation can find them even without a consumer cabal file.
   hatterOwnDeps = [ nativeHaskellPkgs.unwitch ];
 
 in import ./collect-deps.nix {
   inherit pkgs ghc ghcPkgCmd;
-  deps = resolvedDeps ++ hatterOwnDeps;
+  deps = resolvedDeps ++ hatterDep ++ hatterOwnDeps;
 }
