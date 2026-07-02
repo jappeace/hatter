@@ -69,8 +69,10 @@ jobs:
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
           extra-substituters = https://nix-cache.jappie.me
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
-          http2 = false
-          download-attempts = 10
+          # No http2=false here, unlike every other job: on macos-15-intel the
+          # HTTP/1.1 download of the multi-GB NDK toolchain NARs stalled
+          # silently for 99 minutes and timed out the job (run 28588129668),
+          # while HTTP/2 has only ever failed on the ubuntu runners.
           # apk.nix boots a qemu VM, so its build is __noChroot; relaxed permits
           # that while still sandboxing everything else.
           sandbox = relaxed
