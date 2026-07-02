@@ -4,9 +4,18 @@
 # single `nix build`, since native Android cross-compilation does not work on
 # a Darwin host (see docs/android-apk-on-macos.md).
 #
-# On an x86_64-darwin host this yields an x86_64-linux builder.  We keep the
-# config at its default so the VM closure substitutes from cache.nixos.org
-# instead of having to be built (which would itself need a Linux builder).
+# nixpkgs' default.nix picks the guest arch by mirroring the host
+# (`nixpkgs.hostPlatform = toGuest stdenv.hostPlatform.system`, e.g.
+# aarch64-darwin -> aarch64-linux).  We force x86_64-linux regardless of host
+# arch (mirroring nixpkgs' own `darwin.linux-builder-x86_64`) because the
+# Android NDK only ships linux-x86_64/darwin-x86_64 prebuilt toolchains --
+# nixpkgs' androidndk-pkgs.nix throws "Android NDK doesn't support building on
+# aarch64-unknown-linux-gnu" for an aarch64-linux build host (see
+# nix/lib.nix's hardcoded ".../prebuilt/linux-x86_64/..." NDK paths).  On an
+# aarch64-darwin host this means the VM runs under full TCG CPU emulation
+# (aarch64 -> x86_64), which is slower to boot/build than a native-arch VM but
+# still substitutes from cache.nixos.org since x86_64-linux is the most
+# widely cached target.
 #
 # It is pinned to a *stable* nixpkgs (nixpkgs-linux-builder, nixos-25.05), not
 # the project's unstable pin: the default darwin.linux-builder closure for the
@@ -47,6 +56,11 @@
       # default for GHC.  The APK build completes within these on macos-15-intel.
       virtualisation.darwin-builder.diskSize = 60 * 1024;  # MB
       virtualisation.darwin-builder.memorySize = 6 * 1024; # MB
+
+      # See comment above: pin the guest to x86_64-linux (nixpkgs sets this
+      # with mkDefault, so a plain assignment here wins) instead of letting it
+      # mirror an aarch64-darwin host.
+      nixpkgs.hostPlatform = "x86_64-linux";
     }
   ];
 }
