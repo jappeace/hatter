@@ -33,7 +33,8 @@ jobs:
           # curl failure mode, download-attempts covers other transient drops.
           # Alternative --fallback was rejected: a cache miss on the patched GHC
           # would rebuild it from source in CI (hours) instead of failing fast.
-          # These two lines are repeated in every job's extra_nix_config below.
+          # These two lines are repeated in every Linux and simulator job below;
+          # macos-apk deliberately omits them (HTTP/1.1 stalled its downloads).
           http2 = false
           download-attempts = 10
     - name: Build all nix targets (excludes emulator/simulator runners)
