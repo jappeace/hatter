@@ -17,3 +17,6 @@ ios/Hatter.xcodeproj/
 # Staging dirs populated from nix build output
 ios/lib/
 ios/include/
+
+# Stray command-output logs
+*.log

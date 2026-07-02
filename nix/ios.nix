@@ -19,7 +19,9 @@ let
   };
 in
 lib.mkIOSLib {
-  hatterSrc = ../.;
+  # Filtered source, not ../. , so platform-file edits don't bust the
+  # cross-compile cache (see nix/hatter-src.nix and issue #208).
+  hatterSrc = import ./hatter-src.nix { inherit sources; };
   inherit mainModule simulator;
   crossDeps = iosDeps;
 }
