@@ -27,6 +27,15 @@ jobs:
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
           extra-substituters = https://nix-cache.jappie.me
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
+          # Decision: harden substitution against the self-hosted cache dropping
+          # multi-GB NARs mid-stream ("Stream error in the HTTP/2 framing layer",
+          # seen twice on the android system image). http2=false removes that
+          # curl failure mode, download-attempts covers other transient drops.
+          # Alternative --fallback was rejected: a cache miss on the patched GHC
+          # would rebuild it from source in CI (hours) instead of failing fast.
+          # These two lines are repeated in every job's extra_nix_config below.
+          http2 = false
+          download-attempts = 10
     - name: Build all nix targets (excludes emulator/simulator runners)
       run: nix-build nix/ci.nix -A all-builds
     - name: Cancel workflow on failure
@@ -60,6 +69,8 @@ jobs:
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
           extra-substituters = https://nix-cache.jappie.me
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
+          http2 = false
+          download-attempts = 10
           # apk.nix boots a qemu VM, so its build is __noChroot; relaxed permits
           # that while still sandboxing everything else.
           sandbox = relaxed
@@ -97,6 +108,8 @@ jobs:
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
           extra-substituters = https://nix-cache.jappie.me
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
+          http2 = false
+          download-attempts = 10
     - name: Run combined emulator test (lifecycle + UI + buttons + scroll)
       run: nix-build nix/ci.nix -A emulator-all -o result-emulator-all && ./result-emulator-all/bin/test-all
     - name: Cancel workflow on failure
@@ -122,6 +135,8 @@ jobs:
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
           extra-substituters = https://nix-cache.jappie.me
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
+          http2 = false
+          download-attempts = 10
     - name: Run armv7a emulator test
       run: nix-build nix/ci.nix -A emulator-armv7a -o result-emulator-armv7a && ./result-emulator-armv7a/bin/test-all
     - name: Cancel workflow on failure
@@ -142,6 +157,8 @@ jobs:
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
           extra-substituters = https://nix-cache.jappie.me
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
+          http2 = false
+          download-attempts = 10
     - run: nix-build nix/ci.nix -A simulator-all -A ios-lib
     - name: Run combined simulator test (lifecycle + UI + buttons + scroll)
       run: nix-build nix/ci.nix -A simulator-all -o result-simulator-all && ./result-simulator-all/bin/test-all-ios
@@ -165,6 +182,8 @@ jobs:
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
           extra-substituters = https://nix-cache.jappie.me
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
+          http2 = false
+          download-attempts = 10
     - name: Build watchOS (with diagnostics)
       run: |
         # Background watchdog: every 60s log what nix is building + system load
