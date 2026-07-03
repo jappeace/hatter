@@ -33,7 +33,8 @@ jobs:
           # curl failure mode, download-attempts covers other transient drops.
           # Alternative --fallback was rejected: a cache miss on the patched GHC
           # would rebuild it from source in CI (hours) instead of failing fast.
-          # These two lines are repeated in every job's extra_nix_config below.
+          # These two lines are repeated in every Linux and simulator job below;
+          # macos-apk deliberately omits them (HTTP/1.1 stalled its downloads).
           http2 = false
           download-attempts = 10
     - name: Build all nix targets (excludes emulator/simulator runners)
@@ -69,8 +70,10 @@ jobs:
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
           extra-substituters = https://nix-cache.jappie.me
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
-          http2 = false
-          download-attempts = 10
+          # No http2=false here, unlike every other job: on macos-15-intel the
+          # HTTP/1.1 download of the multi-GB NDK toolchain NARs stalled
+          # silently for 99 minutes and timed out the job (run 28588129668),
+          # while HTTP/2 has only ever failed on the ubuntu runners.
           # apk.nix boots a qemu VM, so its build is __noChroot; relaxed permits
           # that while still sandboxing everything else.
           sandbox = relaxed
