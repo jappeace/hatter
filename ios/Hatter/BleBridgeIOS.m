@@ -40,6 +40,8 @@ static BOOL g_scanning_requested = NO;
  * out earlier, so ble_connect looks the address up here. */
 @property (nonatomic, strong) NSMutableDictionary<NSString *, CBPeripheral *> *discoveredPeripherals;
 @property (nonatomic, strong) CBPeripheral *connectedPeripheral;
+/* Dispatch a BLE_CONNECTION_* event to Haskell on the main thread. */
+- (void)dispatchConnectionEvent:(int32_t)event;
 @end
 
 @implementation BleScanDelegate
