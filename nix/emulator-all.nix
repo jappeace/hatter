@@ -28,6 +28,12 @@ let
   # API 30 still has 32-bit ARM translation, needed for Wear OS armv7a APKs.
   emulatorApiLevel = { aarch64 = "34"; armv7a = "30"; }.${androidArch};
 
+  # Virtual Bluetooth (netsim) needs guest-side support that only
+  # API 33+ system images ship; the API 30 image used for armv7a has
+  # no virtio Bluetooth chip, so its BLE test keeps the old
+  # no-simulation behaviour (adapter check + no crash).
+  bleSimulationSupported = { aarch64 = true; armv7a = false; }.${androidArch};
+
   lib = import ./lib.nix { inherit sources androidArch; };
 
   counterAndroid = import ./android.nix {
@@ -395,6 +401,11 @@ let
   sdk = androidComposition.androidsdk;
   sdkRoot = "${sdk}/libexec/android-sdk";
 
+  # Python with Google's bumble BLE stack.  ble_peripheral.py uses it
+  # to place a virtual, connectable BLE peripheral in the emulator's
+  # netsim radio scene (see the Decision comment in that script).
+  bumblePython = pkgs.python3.withPackages (pythonPackages: [ pythonPackages.bumble ]);
+
   platformVersion = emulatorApiLevel;
   systemImageType = "google_apis";
   abiVersion = "x86_64";
@@ -456,6 +467,11 @@ PACKAGE="me.jappie.hatter"
 ACTIVITY=".MainActivity"
 DEVICE_NAME="test_all"
 TEST_SCRIPTS="${testScripts}"
+# Virtual Bluetooth: 1 = emulator runs with netsim and the BLE test
+# simulates a peripheral (see test/android/ble.sh), 0 = adapter-check
+# only (API 30 image, no guest netsim support).
+BLE_SIM="${if bleSimulationSupported then "1" else "0"}"
+BUMBLE_PYTHON="${bumblePython}/bin/python3"
 
 # --- .so size guard (see docs/ci-ram-regression-110.md) ---
 # Fail fast if any test .so exceeds 120 MB.  The counter app is ~80 MB;
@@ -545,6 +561,11 @@ export ANDROID_USER_HOME="$WORK_DIR/user-home"
 export ANDROID_AVD_HOME="$WORK_DIR/avd"
 export ANDROID_EMULATOR_HOME="$WORK_DIR/emulator-home"
 export TMPDIR="$WORK_DIR/tmp"
+# netsimd (spawned by the emulator for Bluetooth emulation) publishes
+# its gRPC port in netsim.ini inside this directory; bumble discovers
+# it there.  Both check XDG_RUNTIME_DIR before TMPDIR on Linux, so pin
+# it explicitly to keep them in the same session-private directory.
+export XDG_RUNTIME_DIR="$WORK_DIR/tmp"
 mkdir -p "$HOME" "$ANDROID_USER_HOME" "$ANDROID_AVD_HOME" "$ANDROID_EMULATOR_HOME" "$TMPDIR"
 
 "$ADB" kill-server 2>/dev/null || true
@@ -648,6 +669,14 @@ fi
 
 # --- Boot emulator ---
 echo "=== Booting emulator ==="
+# -packet-streamer-endpoint default spawns netsimd, the virtual radio
+# that gives the guest a working Bluetooth controller; the BLE test's
+# simulated peripheral joins the same netsim scene.
+if [ "$BLE_SIM" = "1" ]; then
+    BLE_EMULATOR_FLAGS="-packet-streamer-endpoint default"
+else
+    BLE_EMULATOR_FLAGS=""
+fi
 "$EMULATOR" \
     -avd "$DEVICE_NAME" \
     -no-window \
@@ -659,6 +688,7 @@ echo "=== Booting emulator ==="
     -no-snapshot \
     -memory 6144 \
     $ACCEL_FLAG \
+    $BLE_EMULATOR_FLAGS \
     &
 EMU_PID=$!
 echo "Emulator PID: $EMU_PID"
@@ -700,7 +730,7 @@ done
 # ===========================================================================
 # PHASE 1 + PHASE 2 — Run test scripts
 # ===========================================================================
-export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK SCROLL_TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK PLATFORM_SIGN_IN_APK CAMERA_APK BOTTOM_SHEET_APK HTTP_APK NETWORK_STATUS_APK MAPVIEW_APK ANIMATION_APK KEYFRAME_APK FILES_DIR_APK DEVICE_INFO_APK TEXTINPUT_RERENDER_APK STACK_APK SCROLLVIEW_SWITCH_APK STYLED_TYPE_CHANGE_APK HORIZONTAL_SCROLL_APK ASYNC_OOM_APK REDRAW_APK CONFETTI_REPRO_APK PACKAGE ACTIVITY WORK_DIR
+export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK SCROLL_TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK PLATFORM_SIGN_IN_APK CAMERA_APK BOTTOM_SHEET_APK HTTP_APK NETWORK_STATUS_APK MAPVIEW_APK ANIMATION_APK KEYFRAME_APK FILES_DIR_APK DEVICE_INFO_APK TEXTINPUT_RERENDER_APK STACK_APK SCROLLVIEW_SWITCH_APK STYLED_TYPE_CHANGE_APK HORIZONTAL_SCROLL_APK ASYNC_OOM_APK REDRAW_APK CONFETTI_REPRO_APK PACKAGE ACTIVITY WORK_DIR BLE_SIM BUMBLE_PYTHON
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0

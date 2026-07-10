@@ -1,11 +1,14 @@
 /*
- * Android implementation of the BLE scanning bridge callbacks.
+ * Android implementation of the BLE bridge callbacks.
  *
  * Uses JNI to call Activity.checkBleAdapter(), Activity.startBleScan(),
- * and Activity.stopBleScan(). Compiled by NDK clang, not cabal.
+ * Activity.stopBleScan(), Activity.connectBleDevice() and
+ * Activity.disconnectBleDevice(). Compiled by NDK clang, not cabal.
  *
  * All functions run on the main/UI thread, the same thread that
- * calls haskellRenderUI from Java.
+ * calls haskellRenderUI from Java.  The Java side posts connection
+ * events back on the UI thread as well (runOnUiThread), so g_env
+ * stays valid for every callback.
  */
 
 #include <jni.h>
@@ -17,8 +20,9 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-/* Haskell FFI export (dispatches scan result back to Haskell callback) */
+/* Haskell FFI exports (dispatch results back to Haskell callbacks) */
 extern void haskellOnBleScanResult(void *ctx, const char *name, const char *address, int32_t rssi);
+extern void haskellOnBleConnectionEvent(void *ctx, int32_t event);
 
 /* ---- Global state (valid only on the UI thread) ---- */
 static JNIEnv  *g_env          = NULL;
@@ -29,6 +33,8 @@ static void    *g_haskell_ctx   = NULL;   /* stored for async JNI callback */
 static jmethodID g_method_checkBleAdapter;
 static jmethodID g_method_startBleScan;
 static jmethodID g_method_stopBleScan;
+static jmethodID g_method_connectBleDevice;
+static jmethodID g_method_disconnectBleDevice;
 
 /* ---- BLE bridge implementations ---- */
 
@@ -83,6 +89,41 @@ static void android_ble_stop_scan(void)
     }
 }
 
+static void android_ble_connect(void *ctx, const char *address)
+{
+    JNIEnv *env = g_env;
+    if (!env || !g_activity) {
+        LOGE("ble_connect: bridge not initialized");
+        return;
+    }
+
+    g_haskell_ctx = ctx;
+    LOGI("ble_connect(%s)", address ? address : "(null)");
+    jstring jaddress = (*env)->NewStringUTF(env, address ? address : "");
+    (*env)->CallVoidMethod(env, g_activity, g_method_connectBleDevice, jaddress);
+    if ((*env)->ExceptionCheck(env)) {
+        LOGE("ble_connect: Java exception thrown");
+        (*env)->ExceptionClear(env);
+    }
+    (*env)->DeleteLocalRef(env, jaddress);
+}
+
+static void android_ble_disconnect(void)
+{
+    JNIEnv *env = g_env;
+    if (!env || !g_activity) {
+        LOGE("ble_disconnect: bridge not initialized");
+        return;
+    }
+
+    LOGI("ble_disconnect()");
+    (*env)->CallVoidMethod(env, g_activity, g_method_disconnectBleDevice);
+    if ((*env)->ExceptionCheck(env)) {
+        LOGE("ble_disconnect: Java exception thrown");
+        (*env)->ExceptionClear(env);
+    }
+}
+
 /* ---- Public API ---- */
 
 /*
@@ -109,22 +150,39 @@ void setup_android_ble_bridge(JNIEnv *env, jobject activity, void *haskellCtx)
     g_method_stopBleScan = (*env)->GetMethodID(env, actClass,
         "stopBleScan", "()V");
 
-    /* Clean up local reference */
-    (*env)->DeleteLocalRef(env, actClass);
-
     if (!g_method_checkBleAdapter || !g_method_startBleScan || !g_method_stopBleScan) {
         LOGE("Failed to resolve BLE JNI method IDs — BLE bridge disabled");
         (*env)->ExceptionClear(env);
+        (*env)->DeleteLocalRef(env, actClass);
         return;
     }
+
+    ble_register_impl(android_ble_check_adapter, android_ble_start_scan, android_ble_stop_scan);
+
+    /* Connect methods are resolved separately: a consumer Activity that
+     * predates the connect API keeps working scans, and ble_connect
+     * then reports BLE_CONNECTION_FAILED instead of crashing. */
+    g_method_connectBleDevice = (*env)->GetMethodID(env, actClass,
+        "connectBleDevice", "(Ljava/lang/String;)V");
+    g_method_disconnectBleDevice = (*env)->GetMethodID(env, actClass,
+        "disconnectBleDevice", "()V");
+
+    if (g_method_connectBleDevice && g_method_disconnectBleDevice) {
+        ble_register_connect_impl(android_ble_connect, android_ble_disconnect);
+    } else {
+        LOGE("BLE connect JNI methods missing, BLE connections disabled"
+             " (update the Activity to the current hatter android sources)");
+        (*env)->ExceptionClear(env);
+    }
+
+    /* Clean up local reference */
+    (*env)->DeleteLocalRef(env, actClass);
 
     /* Clear any unexpected pending exception before continuing */
     if ((*env)->ExceptionCheck(env)) {
         LOGE("Unexpected JNI exception after BLE method resolution");
         (*env)->ExceptionClear(env);
     }
-
-    ble_register_impl(android_ble_check_adapter, android_ble_start_scan, android_ble_stop_scan);
 
     LOGI("Android BLE bridge initialized");
 }
@@ -155,4 +213,15 @@ JNI_METHOD(onBleScanResult)(JNIEnv *env, jobject thiz, jstring jname, jstring ja
     if (caddr) {
         (*env)->ReleaseStringUTFChars(env, jaddr, caddr);
     }
+}
+
+/* ---- JNI callback from Java BLE connection state change ---- */
+
+JNIEXPORT void JNICALL
+JNI_METHOD(onBleConnectionEvent)(JNIEnv *env, jobject thiz, jint event)
+{
+    g_env = env;
+
+    LOGI("onBleConnectionEvent(event=%d)", event);
+    haskellOnBleConnectionEvent(g_haskell_ctx, (int32_t)event);
 }

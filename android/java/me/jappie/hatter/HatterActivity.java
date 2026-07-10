@@ -4,7 +4,11 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanRecord;
@@ -72,6 +76,7 @@ public class HatterActivity extends Activity implements View.OnClickListener {
     private native void onPermissionResult(int requestCode, int statusCode);
     private native void onSecureStorageResult(int requestId, int statusCode, String value);
     private native void onBleScanResult(String deviceName, String deviceAddress, int rssi);
+    private native void onBleConnectionEvent(int event);
     private native void onDialogResult(int requestId, int actionCode);
     private native void onLocationResult(double lat, double lon, double alt, double acc);
     private native void onAuthSessionResult(int requestId, int statusCode,
@@ -94,6 +99,16 @@ public class HatterActivity extends Activity implements View.OnClickListener {
 
     private BluetoothLeScanner bleScanner;
     private ScanCallback bleScanCallback;
+    private BluetoothGatt bleGatt;
+    /**
+     * Devices seen during the current scan, keyed by address.  Connecting
+     * through the scanned BluetoothDevice preserves the address type
+     * (public vs random): adapter.getRemoteDevice(address) assumes a
+     * public address and fails to connect to peripherals advertising
+     * with a random static address.
+     */
+    private final java.util.HashMap<String, BluetoothDevice> bleScannedDevices =
+        new java.util.HashMap<>();
 
     private LocationManager locationManager;
     private LocationListener locationListener;
@@ -268,6 +283,7 @@ public class HatterActivity extends Activity implements View.OnClickListener {
                     String name = record != null ? record.getDeviceName() : null;
                     String address = result.getDevice().getAddress();
                     int rssi = result.getRssi();
+                    bleScannedDevices.put(address, result.getDevice());
                     onBleScanResult(name, address, rssi);
                 }
             };
@@ -289,6 +305,86 @@ public class HatterActivity extends Activity implements View.OnClickListener {
             }
         } catch (Exception e) {
             android.util.Log.e("BleBridge", "stopBleScan failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Connect to a BLE device by address. Called from native code via JNI.
+     * Connection state changes are delivered via the onBleConnectionEvent
+     * JNI callback: 0 = established, 1 = closed, 2 = failed.
+     * Only one GATT connection is held at a time; connecting again closes
+     * the previous client first.
+     */
+    public void connectBleDevice(String address) {
+        try {
+            if (bleGatt != null) {
+                bleGatt.close();
+                bleGatt = null;
+            }
+            BluetoothManager manager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+            BluetoothAdapter adapter = manager != null ? manager.getAdapter() : null;
+            if (adapter == null || !adapter.isEnabled()) {
+                android.util.Log.e("BleBridge", "connectBleDevice: adapter unavailable");
+                onBleConnectionEvent(2 /* FAILED */);
+                return;
+            }
+            BluetoothDevice device = bleScannedDevices.get(address);
+            if (device == null) {
+                device = adapter.getRemoteDevice(address);
+            }
+            BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
+                @Override
+                public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+                    android.util.Log.i("BleBridge",
+                        "onConnectionStateChange status=" + status + " newState=" + newState);
+                    final int event;
+                    if (newState == BluetoothProfile.STATE_CONNECTED) {
+                        event = 0; // ESTABLISHED
+                    } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                        // A disconnect with an error status on a connection
+                        // that was never established is a failed connect.
+                        event = status == BluetoothGatt.GATT_SUCCESS ? 1 /* CLOSED */ : 2 /* FAILED */;
+                        gatt.close();
+                        if (bleGatt == gatt) {
+                            bleGatt = null;
+                        }
+                    } else {
+                        return; // ignore intermediate CONNECTING/DISCONNECTING
+                    }
+                    // GATT callbacks arrive on a binder thread; the JNI env
+                    // cached by the native bridge is only valid on the UI
+                    // thread, so hop over before calling into Haskell.
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            onBleConnectionEvent(event);
+                        }
+                    });
+                }
+            };
+            bleGatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE);
+            if (bleGatt == null) {
+                android.util.Log.e("BleBridge", "connectBleDevice: connectGatt returned null");
+                onBleConnectionEvent(2 /* FAILED */);
+            }
+        } catch (Exception e) {
+            android.util.Log.e("BleBridge", "connectBleDevice failed: " + e.getMessage());
+            onBleConnectionEvent(2 /* FAILED */);
+        }
+    }
+
+    /**
+     * Disconnect the active BLE connection. Called from native code via JNI.
+     * The CLOSED event is delivered asynchronously through the GATT callback
+     * registered by connectBleDevice.
+     */
+    public void disconnectBleDevice() {
+        try {
+            if (bleGatt != null) {
+                bleGatt.disconnect();
+            }
+        } catch (Exception e) {
+            android.util.Log.e("BleBridge", "disconnectBleDevice failed: " + e.getMessage());
         }
     }
 

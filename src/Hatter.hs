@@ -145,7 +145,7 @@ import Hatter.Animation (dispatchAnimationFrame)
 import Hatter.AppContext (AppContext(..), newAppContext, derefAppContext)
 import Hatter.AuthSession (dispatchAuthSessionResult)
 import Hatter.PlatformSignIn (dispatchPlatformSignInResult)
-import Hatter.Ble (dispatchBleScanResult)
+import Hatter.Ble (dispatchBleScanResult, dispatchBleConnectionEvent)
 import Hatter.BottomSheet (dispatchBottomSheetResult)
 import Hatter.Camera
   ( dispatchCameraResult
@@ -357,6 +357,16 @@ haskellOnBleScanResult ctxPtr cName cAddr cRssi =
     dispatchBleScanResult (acBleState appCtx) cName cAddr cRssi
 
 foreign export ccall haskellOnBleScanResult :: Ptr AppContext -> CString -> CString -> CInt -> IO ()
+
+-- | Handle a BLE connection event from native code. Dispatches to the
+-- callback registered by 'Hatter.Ble.connectBleDevice'.
+haskellOnBleConnectionEvent :: Ptr AppContext -> CInt -> IO ()
+haskellOnBleConnectionEvent ctxPtr eventCode =
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    dispatchBleConnectionEvent (acBleState appCtx) eventCode
+
+foreign export ccall haskellOnBleConnectionEvent :: Ptr AppContext -> CInt -> IO ()
 
 -- | Handle a dialog result from native code. Dispatches to the
 -- callback registered by 'Hatter.Dialog.showDialog'.

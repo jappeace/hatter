@@ -1,5 +1,25 @@
 # Change log for hatter
 
+## Unreleased
+
+### Added
+
+- `Hatter.Ble` connection API (issue #108, first slice):
+  `connectBleDevice`, `disconnectBleDevice`, and the
+  `BleConnectionEvent` sum type (`BleConnectionEstablished`,
+  `BleConnectionClosed`, `BleConnectionFailed`) with streaming
+  connection-state callbacks.  Implemented on Android
+  (`BluetoothGatt`) and iOS (`CBCentralManager`); the desktop stub
+  fails connections visibly.  GATT service discovery,
+  characteristic read/write/subscribe, and scan filtering remain
+  open in #108.
+- The Android emulator CI job now simulates real BLE traffic: the
+  emulator boots with a netsim virtual radio and a bumble-based
+  virtual peripheral (`test/android/ble_peripheral.py`) advertises
+  into it.  The BLE test asserts hatter's scan callback receives the
+  advertisement and that hatter code can connect to and disconnect
+  from the peripheral.  See docs/ble-emulator-simulation.md.
+
 ## Version 0.3.0 2026.04.19
 
 ### Breaking changes
