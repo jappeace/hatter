@@ -17,7 +17,7 @@
 module Main where
 
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import Data.Text (Text, pack)
+import Data.Text (pack)
 import Foreign.Ptr (Ptr)
 import Hatter
   ( MobileApp(..)
@@ -33,6 +33,7 @@ import Hatter.AppContext (AppContext(..), derefAppContext)
 import Hatter.Ble
   ( BleState(..)
   , BleScanResult(..)
+  , BleDeviceAddress(..)
   , checkBleAdapter
   , startBleScan
   , stopBleScan
@@ -46,7 +47,7 @@ main = do
   platformLog "BLE demo app registered"
   actionState <- newActionState
   bleStateRef <- newIORef (Nothing :: Maybe BleState)
-  lastAddressRef <- newIORef (Nothing :: Maybe Text)
+  lastAddressRef <- newIORef (Nothing :: Maybe BleDeviceAddress)
   (onCheckAdapter, onStartScan, onStopScan, onConnect, onDisconnect) <-
     runActionM actionState $ do
       check <- createAction $ do
@@ -63,7 +64,7 @@ main = do
       connect <- createAction $ do
         Just bleState <- readIORef bleStateRef
         address <- connectTargetAddress lastAddressRef
-        platformLog ("BLE connecting to " <> address)
+        platformLog ("BLE connecting to " <> unBleDeviceAddress address)
         connectBleDevice bleState address $ \event ->
           platformLog ("BLE connection event: " <> pack (show event))
       disconnect <- createAction $ do
@@ -83,7 +84,7 @@ main = do
 
 -- | Scan callback: log the result and remember its address as the
 -- Connect target.
-logAndRememberScanResult :: IORef (Maybe Text) -> BleScanResult -> IO ()
+logAndRememberScanResult :: IORef (Maybe BleDeviceAddress) -> BleScanResult -> IO ()
 logAndRememberScanResult lastAddressRef scanResult = do
   platformLog ("BLE scan result: " <> pack (show scanResult))
   writeIORef lastAddressRef (Just (bsrDeviceAddress scanResult))
@@ -91,14 +92,14 @@ logAndRememberScanResult lastAddressRef scanResult = do
 -- | Address the Connect button targets: the last discovered device,
 -- or a placeholder when nothing was discovered yet (so the connect
 -- path is still exercised and fails visibly).
-connectTargetAddress :: IORef (Maybe Text) -> IO Text
+connectTargetAddress :: IORef (Maybe BleDeviceAddress) -> IO BleDeviceAddress
 connectTargetAddress lastAddressRef = do
   maybeAddress <- readIORef lastAddressRef
   case maybeAddress of
     Just address -> pure address
     Nothing -> do
       platformLog "BLE connect: no scan result yet, using placeholder address"
-      pure "00:11:22:33:44:55"
+      pure (BleDeviceAddress "00:11:22:33:44:55")
 
 -- | Builds a Column with a label, adapter check button, scan buttons,
 -- and connection buttons.

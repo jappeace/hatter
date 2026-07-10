@@ -13,6 +13,9 @@
   fails connections visibly.  GATT service discovery,
   characteristic read/write/subscribe, and scan filtering remain
   open in #108.
+- `BleDeviceAddress` newtype: `bsrDeviceAddress` and
+  `connectBleDevice` use it instead of a bare `Text` (breaking for
+  existing `BleScanResult` consumers).
 - The Android emulator CI job now simulates real BLE traffic: the
   emulator boots with a netsim virtual radio and a bumble-based
   virtual peripheral (`test/android/ble_peripheral.py`) advertises

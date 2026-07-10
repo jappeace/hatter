@@ -52,6 +52,7 @@ import Hatter.SecureStorage
 import Hatter.Ble
   ( BleAdapterStatus(..)
   , BleScanResult(..)
+  , BleDeviceAddress(..)
   , BleConnectionEvent(..)
   , BleState(..)
   , newBleState
@@ -401,7 +402,7 @@ bleTests ffiBleState = testGroup "BLE"
         Nothing -> assertFailure "callback should have been fired"
         Just scanResult -> do
           bsrDeviceName scanResult @?= "TestDevice"
-          bsrDeviceAddress scanResult @?= "AA:BB:CC:DD:EE:FF"
+          bsrDeviceAddress scanResult @?= BleDeviceAddress "AA:BB:CC:DD:EE:FF"
           bsrRssi scanResult @?= (-42)
 
   , testCase "dispatchBleScanResult with no active scan is no-op" $ do
@@ -464,7 +465,7 @@ bleTests ffiBleState = testGroup "BLE"
         Nothing -> assertFailure "callback should have been fired"
         Just scanResult -> do
           bsrDeviceName scanResult @?= ""
-          bsrDeviceAddress scanResult @?= "FF:EE:DD:CC:BB:AA"
+          bsrDeviceAddress scanResult @?= BleDeviceAddress "FF:EE:DD:CC:BB:AA"
 
   , testCase "bleConnectionEventFromInt roundtrips all constructors" $ do
       let allEvents = [BleConnectionEstablished, BleConnectionClosed, BleConnectionFailed]
@@ -482,40 +483,35 @@ bleTests ffiBleState = testGroup "BLE"
       -- so ble_connect must dispatch BleConnectionFailed back through
       -- haskellOnBleConnectionEvent, so the caller is never left hanging.
       ref <- newIORef (Nothing :: Maybe BleConnectionEvent)
-      connectBleDevice ffiBleState "AA:BB:CC:DD:EE:FF" (\event -> writeIORef ref (Just event))
+      connectBleDevice ffiBleState (BleDeviceAddress "AA:BB:CC:DD:EE:FF")
+        (\event -> writeIORef ref (Just event))
       result <- readIORef ref
       result @?= Just BleConnectionFailed
 
   , testCase "dispatchBleConnectionEvent fires registered callback" $ do
       bleState <- newBleState
       ref <- newIORef ([] :: [BleConnectionEvent])
-      connectBleDevice bleState "11:22:33:44:55:66" (\event -> modifyIORef' ref (++ [event]))
-      dispatchBleConnectionEvent bleState (bleConnectionEventToInt BleConnectionEstablished)
-      dispatchBleConnectionEvent bleState (bleConnectionEventToInt BleConnectionClosed)
+      connectBleDevice bleState (BleDeviceAddress "11:22:33:44:55:66")
+        (\event -> modifyIORef' ref (++ [event]))
+      dispatchBleConnectionEvent bleState BleConnectionEstablished
+      dispatchBleConnectionEvent bleState BleConnectionClosed
       events <- readIORef ref
       events @?= [BleConnectionEstablished, BleConnectionClosed]
-
-  , testCase "dispatchBleConnectionEvent with unknown code does not fire callback" $ do
-      bleState <- newBleState
-      ref <- newIORef (0 :: Int)
-      connectBleDevice bleState "11:22:33:44:55:66" (\_ -> modifyIORef' ref (+ 1))
-      dispatchBleConnectionEvent bleState 42
-      count <- readIORef ref
-      count @?= 0
 
   , testCase "dispatchBleConnectionEvent without callback is safe" $ do
       bleState <- newBleState
       -- Logs loudly to stderr but must not crash
-      dispatchBleConnectionEvent bleState (bleConnectionEventToInt BleConnectionClosed)
+      dispatchBleConnectionEvent bleState BleConnectionClosed
 
   , testCase "disconnectBleDevice keeps the connection callback" $ do
       -- The BleConnectionClosed event arrives after the disconnect
       -- call, so the callback must survive disconnectBleDevice.
       bleState <- newBleState
       ref <- newIORef (Nothing :: Maybe BleConnectionEvent)
-      connectBleDevice bleState "11:22:33:44:55:66" (\event -> writeIORef ref (Just event))
+      connectBleDevice bleState (BleDeviceAddress "11:22:33:44:55:66")
+        (\event -> writeIORef ref (Just event))
       disconnectBleDevice bleState
-      dispatchBleConnectionEvent bleState (bleConnectionEventToInt BleConnectionClosed)
+      dispatchBleConnectionEvent bleState BleConnectionClosed
       result <- readIORef ref
       result @?= Just BleConnectionClosed
   ]

@@ -16,6 +16,7 @@
 module Hatter.Ble
   ( BleAdapterStatus(..)
   , BleScanResult(..)
+  , BleDeviceAddress(..)
   , BleConnectionEvent(..)
   , BleState(..)
   , newBleState
@@ -49,10 +50,16 @@ data BleAdapterStatus
   | BleAdapterUnsupported
   deriving (Show, Eq, Ord, Enum, Bounded)
 
+-- | A BLE device address as delivered by the platform: a MAC address
+-- on Android, a peripheral identifier UUID on iOS.  Opaque to
+-- applications; pass it back verbatim to 'connectBleDevice'.
+newtype BleDeviceAddress = BleDeviceAddress { unBleDeviceAddress :: Text }
+  deriving (Show, Eq, Ord)
+
 -- | A single BLE scan result delivered by the platform.
 data BleScanResult = BleScanResult
   { bsrDeviceName    :: Text
-  , bsrDeviceAddress :: Text
+  , bsrDeviceAddress :: BleDeviceAddress
   , bsrRssi          :: Int
   } deriving (Show, Eq)
 
@@ -162,20 +169,19 @@ stopBleScan bleState = do
   writeIORef (blesScanCallback bleState) Nothing
   c_bleStopScan
 
--- | Connect to a BLE device by address (MAC address on Android,
--- peripheral identifier UUID on iOS, both exactly as delivered in
--- 'bsrDeviceAddress').  Registers the callback and calls the C
+-- | Connect to a BLE device by the address a scan delivered in
+-- 'bsrDeviceAddress'.  Registers the callback and calls the C
 -- bridge; the callback is invoked for every connection state change
 -- ('BleConnectionEstablished', then eventually 'BleConnectionClosed'
 -- or 'BleConnectionFailed') until a new 'connectBleDevice' call
 -- replaces it.  Only one connection is held at a time: connecting
 -- again closes the previous connection first (handled by the
 -- platform side).
-connectBleDevice :: BleState -> Text -> (BleConnectionEvent -> IO ()) -> IO ()
+connectBleDevice :: BleState -> BleDeviceAddress -> (BleConnectionEvent -> IO ()) -> IO ()
 connectBleDevice bleState address callback = do
   writeIORef (blesConnectionCallback bleState) (Just callback)
   ctx <- readIORef (blesContextPtr bleState)
-  withCString (unpack address) (c_bleConnect ctx)
+  withCString (unpack (unBleDeviceAddress address)) (c_bleConnect ctx)
 
 -- | Disconnect the active BLE connection. The registered connection
 -- callback stays in place so the resulting 'BleConnectionClosed'
@@ -201,29 +207,27 @@ dispatchBleScanResult bleState cName cAddr cRssi = do
         else pack <$> peekCString cAddr
       let scanResult = BleScanResult
             { bsrDeviceName    = nameStr
-            , bsrDeviceAddress = addrStr
+            , bsrDeviceAddress = BleDeviceAddress addrStr
             , bsrRssi          = CInt.toInt cRssi
             }
       callback scanResult
 
 -- | Dispatch a BLE connection event from the platform back to the
--- registered Haskell callback. Called from the FFI entry point.
+-- registered Haskell callback.  The FFI entry point
+-- ('Hatter.haskellOnBleConnectionEvent') decodes the C event code
+-- before calling this, so the public API only sees the sum type.
 -- Unlike scan results, connection events without a registered
 -- callback indicate a platform bug (events can only follow a
 -- 'connectBleDevice' call), so they are logged loudly instead of
 -- silently dropped.
-dispatchBleConnectionEvent :: BleState -> CInt -> IO ()
-dispatchBleConnectionEvent bleState eventCode =
-  case bleConnectionEventFromInt eventCode of
+dispatchBleConnectionEvent :: BleState -> BleConnectionEvent -> IO ()
+dispatchBleConnectionEvent bleState event = do
+  maybeCallback <- readIORef (blesConnectionCallback bleState)
+  case maybeCallback of
     Nothing -> hPutStrLn stderr $
-      "dispatchBleConnectionEvent: unknown event code " ++ show eventCode
-    Just event -> do
-      maybeCallback <- readIORef (blesConnectionCallback bleState)
-      case maybeCallback of
-        Nothing -> hPutStrLn stderr $
-          "dispatchBleConnectionEvent: received " ++ show event
-          ++ " without an active connection callback"
-        Just callback -> callback event
+      "dispatchBleConnectionEvent: received " ++ show event
+      ++ " without an active connection callback"
+    Just callback -> callback event
 
 -- | FFI import: check BLE adapter status via the C bridge.
 foreign import ccall "ble_check_adapter"
