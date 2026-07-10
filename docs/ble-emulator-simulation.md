@@ -48,7 +48,17 @@ The test (`test/android/ble.sh`, `BLE_SIM=1`) asserts through logcat:
 3. `BLE connection event: BleConnectionEstablished`: hatter connected
    to the peripheral (the peripheral's log independently confirms with
    `PERIPHERAL_CONNECTED`).
-4. `BLE connection event: BleConnectionClosed`: hatter disconnected.
+4. `BLE discovered: ...` and `BLE discovery complete:`: GATT service
+   discovery lists the peripheral's characteristics with their
+   properties.
+5. `BLE mtu granted:`: ATT MTU negotiation completed.
+6. `BLE subscribed`, `BLE read result: ...`, `BLE write completed`,
+   `BLE notification: ...`: characteristic read, acknowledged write,
+   and the peripheral echoing the written bytes back as a
+   notification (its own log confirms the write with `ECHO_WRITE`).
+7. `BLE connection event: BleConnectionClosed`: hatter disconnected.
+8. `BLE filtered scan result: ... HatterBleSim ...`: a scan filtered
+   by the advertised service UUID still finds the peripheral.
 
 ## Platform coverage
 

@@ -145,6 +145,60 @@ if [ "$BLE_SIM" = "1" ]; then
     assert_logcat "$PERIPHERAL_LOG" "PERIPHERAL_CONNECTED" \
         "virtual peripheral registered the connection"
 
+    # Discover the peripheral's GATT services from hatter code.
+    # Android reports UUIDs lowercase, hence the lowercase patterns.
+    tap_button "Discover" || { echo "WARNING: could not tap Discover"; }
+    wait_for_logcat "BLE discovery complete:" 60 || true
+    LOGCAT_DISCOVER="$WORK_DIR/ble_logcat_discover.txt"
+    "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_DISCOVER" 2>&1 || true
+    assert_logcat "$LOGCAT_DISCOVER" \
+        "BLE discovered: 50db505c-8ac4-4738-8448-3b1d9cc09cc5 486f64c6-4b5f-4b3b-8aff-ede56a8b54f5" \
+        "discovery reports the test service's read characteristic"
+    assert_logcat "$LOGCAT_DISCOVER" \
+        "BLE discovered: .*8cb7c0f4-3b97-4653-9e4f-6f02bf97c7fb .*BleCharacteristicNotify" \
+        "discovery reports the echo characteristic with notify support"
+    assert_logcat "$LOGCAT_DISCOVER" "BLE discovery complete:" \
+        "discovery completed"
+
+    # Negotiate a larger MTU (the granted value depends on the stack).
+    tap_button "Request Mtu" || { echo "WARNING: could not tap Request Mtu"; }
+    wait_for_logcat "BLE mtu granted:" 30 || true
+    LOGCAT_MTU="$WORK_DIR/ble_logcat_mtu.txt"
+    "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_MTU" 2>&1 || true
+    assert_logcat "$LOGCAT_MTU" "BLE mtu granted:" \
+        "MTU negotiation completed"
+
+    # Subscribe to the echo characteristic's notifications, then write
+    # to it: the peripheral echoes the bytes back as a notification, so
+    # one round trip covers write, subscribe and notification dispatch.
+    tap_button "Subscribe" || { echo "WARNING: could not tap Subscribe"; }
+    wait_for_logcat "BLE subscribed" 30 || true
+    LOGCAT_SUBSCRIBE="$WORK_DIR/ble_logcat_subscribe.txt"
+    "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_SUBSCRIBE" 2>&1 || true
+    assert_logcat "$LOGCAT_SUBSCRIBE" "BLE subscribed" \
+        "hatter subscribed to the echo characteristic"
+
+    # Read the fixed characteristic: bytes of "hatter".
+    tap_button "Read" || { echo "WARNING: could not tap Read"; }
+    wait_for_logcat "BLE read result: \[104,97,116,116,101,114\]" 30 || true
+    LOGCAT_READ="$WORK_DIR/ble_logcat_read.txt"
+    "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_READ" 2>&1 || true
+    assert_logcat "$LOGCAT_READ" "BLE read result: \[104,97,116,116,101,114\]" \
+        "hatter read the peripheral's characteristic value"
+
+    # Write "hatter!" and expect it echoed back as a notification.
+    tap_button "Write" || { echo "WARNING: could not tap Write"; }
+    wait_for_logcat "BLE notification: \[104,97,116,116,101,114,33\]" 30 || true
+    LOGCAT_WRITE="$WORK_DIR/ble_logcat_write.txt"
+    "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_WRITE" 2>&1 || true
+    assert_logcat "$LOGCAT_WRITE" "BLE write completed" \
+        "hatter's characteristic write was acknowledged"
+    assert_logcat "$LOGCAT_WRITE" "BLE notification: \[104,97,116,116,101,114,33\]" \
+        "hatter received the echoed notification"
+    # Host-side proof: the peripheral saw the write arrive.
+    assert_logcat "$PERIPHERAL_LOG" "ECHO_WRITE: 68617474657221" \
+        "virtual peripheral received the written bytes"
+
     # Disconnect again from hatter code.
     tap_button "Disconnect" || { echo "WARNING: could not tap Disconnect"; }
     wait_for_logcat "BLE connection event: BleConnectionClosed" 30 || true
@@ -152,6 +206,15 @@ if [ "$BLE_SIM" = "1" ]; then
     "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_DISCONNECT" 2>&1 || true
     assert_logcat "$LOGCAT_DISCONNECT" "BLE connection event: BleConnectionClosed" \
         "hatter disconnected from the simulated peripheral"
+
+    # Scan filtered by the test service UUID: the peripheral advertises
+    # it (auto-restarted after the disconnect), so it must be found.
+    tap_button "Filtered Scan" || { echo "WARNING: could not tap Filtered Scan"; }
+    wait_for_logcat "BLE filtered scan result:.*HatterBleSim" 90 || true
+    LOGCAT_FILTERED="$WORK_DIR/ble_logcat_filtered.txt"
+    "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_FILTERED" 2>&1 || true
+    assert_logcat "$LOGCAT_FILTERED" "BLE filtered scan result:.*HatterBleSim" \
+        "service-UUID-filtered scan found the peripheral"
 else
     sleep 1
 fi
