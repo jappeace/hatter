@@ -132,6 +132,11 @@ void haskellOnSecureStorageResult(void *ctx, int32_t requestId,
  * ctx must be a pointer returned by haskellRunMain(). */
 void haskellOnBleScanResult(void *ctx, const char *name, const char *address, int32_t rssi);
 
+/* Dispatch a BLE connection event from native code back to Haskell.
+ * event: one of the BLE_CONNECTION_* codes from BleBridge.h.
+ * ctx must be a pointer returned by haskellRunMain(). */
+void haskellOnBleConnectionEvent(void *ctx, int32_t event);
+
 /* Dialog action codes */
 #define DIALOG_BUTTON_1   0
 #define DIALOG_BUTTON_2   1

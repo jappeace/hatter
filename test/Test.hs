@@ -4,6 +4,7 @@ import Test.Tasty
 
 import Hatter (startMobileApp)
 import Hatter.AppContext (AppContext(..), derefAppContext)
+import Hatter.Ble (BleState)
 import Hatter.Permission (PermissionState)
 import Hatter.SecureStorage (SecureStorageState)
 import Hatter.Dialog (DialogState)
@@ -31,14 +32,15 @@ main = do
   defaultMain (tests
     (acPermissionState ffiAppCtx)
     (acSecureStorageState ffiAppCtx)
+    (acBleState ffiAppCtx)
     (acDialogState ffiAppCtx)
     (acAuthSessionState ffiAppCtx)
     (acPlatformSignInState ffiAppCtx)
     (acBottomSheetState ffiAppCtx)
     (acHttpState ffiAppCtx))
 
-tests :: PermissionState -> SecureStorageState -> DialogState -> AuthSessionState -> PlatformSignInState -> BottomSheetState -> HttpState -> TestTree
-tests ffiPermState ffiSecureStorageState ffiDialogState ffiAuthSessionState ffiPlatformSignInState ffiBottomSheetState ffiHttpState =
+tests :: PermissionState -> SecureStorageState -> BleState -> DialogState -> AuthSessionState -> PlatformSignInState -> BottomSheetState -> HttpState -> TestTree
+tests ffiPermState ffiSecureStorageState ffiBleState ffiDialogState ffiAuthSessionState ffiPlatformSignInState ffiBottomSheetState ffiHttpState =
   testGroup "Tests"
     [ qcProps
     , unitTests
@@ -58,7 +60,7 @@ tests ffiPermState ffiSecureStorageState ffiDialogState ffiAuthSessionState ffiP
     , i18nTests
     , permissionTests ffiPermState
     , secureStorageTests ffiSecureStorageState
-    , bleTests
+    , bleTests ffiBleState
     , dialogTests ffiDialogState
     , locationTests
     , cameraTests

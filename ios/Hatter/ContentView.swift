@@ -31,6 +31,21 @@ struct HaskellUIView: UIViewControllerRepresentable {
             }
         }
 
+        // CI auto-test: exercise the BLE connect path.  Event ids follow
+        // the action creation order in test/BleDemoMain.hs: 0 = Check
+        // Adapter, 1 = Start Scan, 2 = Stop Scan, 3 = Connect,
+        // 4 = Disconnect.  The simulator has no CoreBluetooth support,
+        // so Connect must round-trip through the bridge and log
+        // BleConnectionFailed without crashing.
+        if CommandLine.arguments.contains("--autotest-ble") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                HaskellBridge.onUIEvent(3)  // Connect
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+                HaskellBridge.onUIEvent(4)  // Disconnect
+            }
+        }
+
         // CI auto-test: exercise both "+" and "-" buttons.
         // Sequence: +, +, -, -, - → Counter: 1, 2, 1, 0, -1
         if CommandLine.arguments.contains("--autotest-buttons") {

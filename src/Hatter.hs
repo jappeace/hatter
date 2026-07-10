@@ -130,6 +130,7 @@ import Foreign.C.Types (CDouble(..), CInt(..))
 import Foreign.Ptr (Ptr, castPtr, nullPtr)
 import Data.ByteString qualified as BS
 import Data.Word (Word8)
+import System.IO (hPutStrLn, stderr)
 import Unwitch.Convert.CInt qualified as CInt
 import Hatter.Action
   ( Action(..)
@@ -145,7 +146,7 @@ import Hatter.Animation (dispatchAnimationFrame)
 import Hatter.AppContext (AppContext(..), newAppContext, derefAppContext)
 import Hatter.AuthSession (dispatchAuthSessionResult)
 import Hatter.PlatformSignIn (dispatchPlatformSignInResult)
-import Hatter.Ble (dispatchBleScanResult)
+import Hatter.Ble (dispatchBleScanResult, dispatchBleConnectionEvent, bleConnectionEventFromInt)
 import Hatter.BottomSheet (dispatchBottomSheetResult)
 import Hatter.Camera
   ( dispatchCameraResult
@@ -357,6 +358,21 @@ haskellOnBleScanResult ctxPtr cName cAddr cRssi =
     dispatchBleScanResult (acBleState appCtx) cName cAddr cRssi
 
 foreign export ccall haskellOnBleScanResult :: Ptr AppContext -> CString -> CString -> CInt -> IO ()
+
+-- | Handle a BLE connection event from native code. Decodes the C
+-- event code here at the FFI boundary so 'dispatchBleConnectionEvent'
+-- only deals in 'Hatter.Ble.BleConnectionEvent', then dispatches to
+-- the callback registered by 'Hatter.Ble.connectBleDevice'.
+haskellOnBleConnectionEvent :: Ptr AppContext -> CInt -> IO ()
+haskellOnBleConnectionEvent ctxPtr eventCode =
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    case bleConnectionEventFromInt eventCode of
+      Nothing -> hPutStrLn stderr $
+        "haskellOnBleConnectionEvent: unknown event code " ++ show eventCode
+      Just event -> dispatchBleConnectionEvent (acBleState appCtx) event
+
+foreign export ccall haskellOnBleConnectionEvent :: Ptr AppContext -> CInt -> IO ()
 
 -- | Handle a dialog result from native code. Dispatches to the
 -- callback registered by 'Hatter.Dialog.showDialog'.
