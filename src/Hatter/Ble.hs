@@ -122,6 +122,14 @@ newtype BleCharacteristicUuid = BleCharacteristicUuid { unBleCharacteristicUuid 
 -- 'normalizeBleServiceUuid' \/ 'normalizeBleCharacteristicUuid';
 -- deliberately no 'IsString' instance, a literal would bypass the
 -- normalization.
+--
+-- Decision: case-insensitivity is a dedicated normalized newtype
+-- built only through smart constructors.  Alternatives considered:
+-- lowercasing ad hoc at each comparison site (error-prone, exactly
+-- how the original subscribe\/notify mismatch bug happened), and a
+-- case-insensitive 'Ord' on the raw UUID newtypes (invisible at use
+-- sites and surprising for anyone sorting or printing them).  A type
+-- that cannot exist un-normalized makes the mistake unrepresentable.
 newtype NormalizedBleUuid = NormalizedBleUuid { unNormalizedBleUuid :: Text }
   deriving (Show, Eq, Ord)
 
