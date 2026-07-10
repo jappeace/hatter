@@ -47,7 +47,15 @@ FATAL_PATTERNS="UnsatisfiedLinkError|dlopen failed|cannot locate symbol|SIGABRT|
 check_fatal_logcat() {
     local logcat_poll="$WORK_DIR/logcat_fatal.txt"
     "$ADB" -s "$EMULATOR_SERIAL" logcat -d > "$logcat_poll" 2>&1 || true
-    if grep -qE "$FATAL_PATTERNS" "$logcat_poll" 2>/dev/null; then
+    # The linker logs benign probe failures at debug level on process
+    # start, e.g.: dlerror set to "dlopen failed: library
+    # "libnetd_client.so" not found".  Those contain "dlopen failed"
+    # but are not crashes; a real load failure surfaces separately as
+    # UnsatisfiedLinkError or Fatal signal.  Filter the probe lines
+    # out before matching, otherwise any test that waits longer than
+    # the 10s fatal-check interval (async-oom's slow hs_init on
+    # armv7a) is spuriously reported as crashed.
+    if grep -v 'dlerror set to' "$logcat_poll" 2>/dev/null | grep -qE "$FATAL_PATTERNS"; then
         echo ""
         echo "=== FATAL: App crashed ==="
         # Print the full logcat so the debuggerd native backtrace,
