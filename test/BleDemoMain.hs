@@ -42,6 +42,8 @@ import Hatter.Ble
   , BleDeviceAddress(..)
   , BleServiceUuid(..)
   , BleCharacteristicUuid(..)
+  , BleCharacteristicValue(..)
+  , BleMtu(..)
   , BleDiscoveredCharacteristic(..)
   , BleGattError
   , BleWriteMode(..)
@@ -61,19 +63,19 @@ import Hatter.Widget (ButtonConfig(..), TextConfig(..), Widget(..), column)
 
 -- | Service served by the virtual test peripheral.
 demoServiceUuid :: BleServiceUuid
-demoServiceUuid = BleServiceUuid "50DB505C-8AC4-4738-8448-3B1D9CC09CC5"
+demoServiceUuid = "50DB505C-8AC4-4738-8448-3B1D9CC09CC5"
 
 -- | Readable characteristic on the test peripheral (value "hatter").
 demoReadCharacteristicUuid :: BleCharacteristicUuid
-demoReadCharacteristicUuid = BleCharacteristicUuid "486F64C6-4B5F-4B3B-8AFF-EDE56A8B54F5"
+demoReadCharacteristicUuid = "486F64C6-4B5F-4B3B-8AFF-EDE56A8B54F5"
 
 -- | Write+notify characteristic on the test peripheral: written bytes
 -- are echoed back as a notification.
 demoEchoCharacteristicUuid :: BleCharacteristicUuid
-demoEchoCharacteristicUuid = BleCharacteristicUuid "8CB7C0F4-3B97-4653-9E4F-6F02BF97C7FB"
+demoEchoCharacteristicUuid = "8CB7C0F4-3B97-4653-9E4F-6F02BF97C7FB"
 
 -- | Payload the Write button sends (echoed back by the peripheral).
-demoWritePayload :: BS.ByteString
+demoWritePayload :: BleCharacteristicValue
 demoWritePayload = "hatter!"
 
 main :: IO (Ptr AppContext)
@@ -118,7 +120,8 @@ main = do
         case result of
           Left gattError -> platformLog ("BLE read failed: " <> pack (show gattError))
           Right payload  -> platformLog
-            ("BLE read result: " <> pack (show (BS.unpack payload)))
+            ("BLE read result: "
+             <> pack (show (BS.unpack (unBleCharacteristicValue payload))))
     writeCharacteristic <- createAction $ do
       Just bleState <- readIORef bleStateRef
       writeBleCharacteristic bleState demoServiceUuid demoEchoCharacteristicUuid
@@ -130,16 +133,17 @@ main = do
       Just bleState <- readIORef bleStateRef
       subscribeBleCharacteristic bleState demoServiceUuid demoEchoCharacteristicUuid
         (\payload -> platformLog
-          ("BLE notification: " <> pack (show (BS.unpack payload))))
+          ("BLE notification: "
+           <> pack (show (BS.unpack (unBleCharacteristicValue payload)))))
         (\result -> case result of
             Left gattError -> platformLog ("BLE subscribe failed: " <> pack (show gattError))
             Right ()       -> platformLog "BLE subscribed")
     mtu <- createAction $ do
       Just bleState <- readIORef bleStateRef
-      requestBleMtu bleState 247 $ \result ->
+      requestBleMtu bleState (BleMtu 247) $ \result ->
         case result of
           Left gattError -> platformLog ("BLE mtu failed: " <> pack (show gattError))
-          Right granted  -> platformLog ("BLE mtu granted: " <> pack (show granted))
+          Right granted  -> platformLog ("BLE mtu granted: " <> pack (show (unBleMtu granted)))
     filteredScan <- createAction $ do
       Just bleState <- readIORef bleStateRef
       startFilteredBleScan bleState demoServiceUuid $ \scanResult ->

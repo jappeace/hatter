@@ -159,6 +159,8 @@ import Hatter.Ble
   , BleDiscoveredCharacteristic(..)
   , BleServiceUuid(..)
   , BleCharacteristicUuid(..)
+  , BleCharacteristicValue(..)
+  , BleMtu(..)
   )
 import Hatter.BottomSheet (dispatchBottomSheetResult)
 import Hatter.Camera
@@ -429,8 +431,8 @@ haskellOnBleGattResult ctxPtr cOperation cStatus dataPtr dataLength =
         dispatchBleGattCompletion (acBleState appCtx) BleGattCompletion
           { bgcOperation  = operation
           , bgcStatusCode = CInt.toInt cStatus
-          , bgcPayload    = payload
-          , bgcGrantedMtu = grantedMtu
+          , bgcPayload    = BleCharacteristicValue payload
+          , bgcGrantedMtu = BleMtu grantedMtu
           }
 
 foreign export ccall haskellOnBleGattResult
@@ -452,7 +454,7 @@ haskellOnBleNotification ctxPtr cService cCharacteristic dataPtr dataLength =
     dispatchBleNotification (acBleState appCtx)
       (BleServiceUuid serviceUuid)
       (BleCharacteristicUuid characteristicUuid)
-      payload
+      (BleCharacteristicValue payload)
 
 foreign export ccall haskellOnBleNotification
   :: Ptr AppContext -> CString -> CString -> Ptr Word8 -> CInt -> IO ()

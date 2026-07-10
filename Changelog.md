@@ -13,9 +13,12 @@
   flight at a time; a second one fails immediately with
   `BleGattBusy`, and every operation completes exactly once with
   `Either BleGattError`.  New types: `BleServiceUuid`,
-  `BleCharacteristicUuid`, `BleDiscoveredCharacteristic`,
-  `BleCharacteristicProperty`, `BleWriteMode`, `BleGattOperation`,
-  `BleGattError`.
+  `BleCharacteristicUuid`, `BleCharacteristicValue`, `BleMtu`,
+  `NormalizedBleUuid`, `BleCharacteristicKey`,
+  `BleDiscoveredCharacteristic`, `BleCharacteristicProperty`,
+  `BleWriteMode`, `BleGattOperation`, `BleGattError`.  The UUID,
+  address and value newtypes derive `IsString`, so constants can be
+  written as string literals.
 - `startFilteredBleScan`: scan filtered by an advertised service
   UUID.
 - The emulator BLE integration test now covers the full GATT surface

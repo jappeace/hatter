@@ -1,4 +1,6 @@
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedStrings #-}
 -- | BLE (Bluetooth Low Energy) API for mobile platforms.
@@ -25,6 +27,10 @@ module Hatter.Ble
   , BleDeviceAddress(..)
   , BleServiceUuid(..)
   , BleCharacteristicUuid(..)
+  , NormalizedBleUuid(..)
+  , BleCharacteristicKey(..)
+  , BleCharacteristicValue(..)
+  , BleMtu(..)
   , BleConnectionEvent(..)
   , BleCharacteristicProperty(..)
   , BleDiscoveredCharacteristic(..)
@@ -35,6 +41,9 @@ module Hatter.Ble
   , PendingBleGattOperation(..)
   , BleState(..)
   , newBleState
+  , normalizeBleServiceUuid
+  , normalizeBleCharacteristicUuid
+  , bleCharacteristicKey
   , bleAdapterStatusFromInt
   , bleAdapterStatusToInt
   , bleConnectionEventFromInt
@@ -69,6 +78,7 @@ import Data.ByteString qualified as BS
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.String (IsString)
 import Data.Text (Text, pack, toLower, unpack)
 import Foreign.C.String (CString, peekCString, withCString)
 import Foreign.C.Types (CInt(..))
@@ -91,15 +101,48 @@ data BleAdapterStatus
 -- applications; pass it back verbatim to 'connectBleDevice'.
 newtype BleDeviceAddress = BleDeviceAddress { unBleDeviceAddress :: Text }
   deriving (Show, Eq, Ord)
+  deriving newtype (IsString)
 
 -- | A 128-bit GATT service UUID string, e.g.
 -- @"50DB505C-8AC4-4738-8448-3B1D9CC09CC5"@.  Case-insensitive on both
 -- platforms.
 newtype BleServiceUuid = BleServiceUuid { unBleServiceUuid :: Text }
   deriving (Show, Eq, Ord)
+  deriving newtype (IsString)
 
 -- | A 128-bit GATT characteristic UUID string.
 newtype BleCharacteristicUuid = BleCharacteristicUuid { unBleCharacteristicUuid :: Text }
+  deriving (Show, Eq, Ord)
+  deriving newtype (IsString)
+
+-- | A UUID string normalized to lowercase for comparisons.  UUIDs are
+-- case-insensitive per the Bluetooth spec, but the platforms disagree
+-- on the case they report (Android lowercase, iOS uppercase), so raw
+-- strings must never be compared directly.  Constructed via
+-- 'normalizeBleServiceUuid' \/ 'normalizeBleCharacteristicUuid';
+-- deliberately no 'IsString' instance, a literal would bypass the
+-- normalization.
+newtype NormalizedBleUuid = NormalizedBleUuid { unNormalizedBleUuid :: Text }
+  deriving (Show, Eq, Ord)
+
+-- | Identifies one characteristic on the connected device: its
+-- containing service and its own UUID, case-normalized so lookups
+-- match across platforms.  Used as the notification-callback key.
+data BleCharacteristicKey = BleCharacteristicKey
+  { bckService        :: NormalizedBleUuid
+  , bckCharacteristic :: NormalizedBleUuid
+  } deriving (Show, Eq, Ord)
+
+-- | The bytes of a characteristic's value: read results, write
+-- payloads and notification payloads.
+newtype BleCharacteristicValue = BleCharacteristicValue
+  { unBleCharacteristicValue :: ByteString }
+  deriving (Show, Eq, Ord)
+  deriving newtype (IsString)
+
+-- | An ATT MTU in bytes.  Write payloads should stay within
+-- @'unBleMtu' granted - 3@ bytes (the 3 bytes are the ATT header).
+newtype BleMtu = BleMtu { unBleMtu :: Int }
   deriving (Show, Eq, Ord)
 
 -- | A single BLE scan result delivered by the platform.
@@ -176,10 +219,10 @@ data BleGattCompletion = BleGattCompletion
   { bgcOperation  :: BleGattOperation
   , bgcStatusCode :: Int
     -- ^ 0 = success.
-  , bgcPayload    :: ByteString
+  , bgcPayload    :: BleCharacteristicValue
     -- ^ Read data for 'BleGattRead'; empty otherwise.
-  , bgcGrantedMtu :: Int
-    -- ^ Granted MTU for 'BleGattRequestMtu'; 0 otherwise.
+  , bgcGrantedMtu :: BleMtu
+    -- ^ Granted MTU for 'BleGattRequestMtu'; 'BleMtu' 0 otherwise.
   } deriving (Show, Eq)
 
 -- | The one GATT operation currently in flight, with its
@@ -189,15 +232,13 @@ data BleGattCompletion = BleGattCompletion
 data PendingBleGattOperation
   = PendingBleDiscover (IORef [BleDiscoveredCharacteristic])
       (Either BleGattError [BleDiscoveredCharacteristic] -> IO ())
-  | PendingBleRead (Either BleGattError ByteString -> IO ())
+  | PendingBleRead (Either BleGattError BleCharacteristicValue -> IO ())
   | PendingBleWrite (Either BleGattError () -> IO ())
-  | PendingBleSubscribe (Text, Text)
+  | PendingBleSubscribe BleCharacteristicKey
       (Either BleGattError () -> IO ())
-    -- ^ Key: 'normalizedBleUuidPair' of the subscribed characteristic.
-  | PendingBleUnsubscribe (Text, Text)
+  | PendingBleUnsubscribe BleCharacteristicKey
       (Either BleGattError () -> IO ())
-    -- ^ Key: 'normalizedBleUuidPair' of the unsubscribed characteristic.
-  | PendingBleMtu (Either BleGattError Int -> IO ())
+  | PendingBleMtu (Either BleGattError BleMtu -> IO ())
 
 -- | Mutable state for the BLE subsystem.
 -- Uses 'IORef (Maybe callback)' instead of 'IntMap' because only
@@ -214,12 +255,10 @@ data BleState = BleState
     -- 'connectBleDevice' call overwrites it.
   , blesGattPending :: IORef (Maybe PendingBleGattOperation)
     -- ^ The GATT operation currently in flight, if any.
-  , blesNotificationCallbacks :: IORef (Map (Text, Text) (ByteString -> IO ()))
+  , blesNotificationCallbacks
+      :: IORef (Map BleCharacteristicKey (BleCharacteristicValue -> IO ()))
     -- ^ Per-characteristic notification callbacks, registered by
-    -- 'subscribeBleCharacteristic' and keyed by
-    -- 'normalizedBleUuidPair': Android reports UUIDs lowercase and
-    -- iOS uppercase, so the raw newtypes would never match across
-    -- the subscribe/notify round trip.
+    -- 'subscribeBleCharacteristic'.
   , blesContextPtr   :: IORef (Ptr ())
     -- ^ Opaque context pointer passed to the C bridge.
     -- Set by 'AppContext.newAppContext' after the 'StablePtr' is created.
@@ -297,15 +336,20 @@ bleGattOperationToInt BleGattSubscribe   = 3
 bleGattOperationToInt BleGattUnsubscribe = 4
 bleGattOperationToInt BleGattRequestMtu  = 5
 
--- | The case-normalized key identifying a characteristic in
--- 'blesNotificationCallbacks'.  UUID strings are case-insensitive per
--- the Bluetooth spec, but the platforms disagree on the case they
--- report (Android lowercase, iOS uppercase).
-normalizedBleUuidPair :: BleServiceUuid -> BleCharacteristicUuid -> (Text, Text)
-normalizedBleUuidPair serviceUuid characteristicUuid =
-  ( toLower (unBleServiceUuid serviceUuid)
-  , toLower (unBleCharacteristicUuid characteristicUuid)
-  )
+-- | Normalize a service UUID for comparisons.
+normalizeBleServiceUuid :: BleServiceUuid -> NormalizedBleUuid
+normalizeBleServiceUuid = NormalizedBleUuid . toLower . unBleServiceUuid
+
+-- | Normalize a characteristic UUID for comparisons.
+normalizeBleCharacteristicUuid :: BleCharacteristicUuid -> NormalizedBleUuid
+normalizeBleCharacteristicUuid = NormalizedBleUuid . toLower . unBleCharacteristicUuid
+
+-- | Build the notification-callback key for a characteristic.
+bleCharacteristicKey :: BleServiceUuid -> BleCharacteristicUuid -> BleCharacteristicKey
+bleCharacteristicKey serviceUuid characteristicUuid = BleCharacteristicKey
+  { bckService        = normalizeBleServiceUuid serviceUuid
+  , bckCharacteristic = normalizeBleCharacteristicUuid characteristicUuid
+  }
 
 -- | The @BLE_CHAR_PROP_*@ bit for one property (see @BleBridge.h@).
 bleCharacteristicPropertyBit :: BleCharacteristicProperty -> CInt
@@ -428,7 +472,7 @@ readBleCharacteristic
   :: BleState
   -> BleServiceUuid
   -> BleCharacteristicUuid
-  -> (Either BleGattError ByteString -> IO ())
+  -> (Either BleGattError BleCharacteristicValue -> IO ())
   -> IO ()
 readBleCharacteristic bleState serviceUuid characteristicUuid callback =
   startBleGattOperation bleState
@@ -448,7 +492,7 @@ writeBleCharacteristic
   -> BleServiceUuid
   -> BleCharacteristicUuid
   -> BleWriteMode
-  -> ByteString
+  -> BleCharacteristicValue
   -> (Either BleGattError () -> IO ())
   -> IO ()
 writeBleCharacteristic bleState serviceUuid characteristicUuid writeMode payload callback =
@@ -458,7 +502,7 @@ writeBleCharacteristic bleState serviceUuid characteristicUuid writeMode payload
     (do ctx <- readIORef (blesContextPtr bleState)
         withCString (unpack (unBleServiceUuid serviceUuid)) $ \cService ->
           withCString (unpack (unBleCharacteristicUuid characteristicUuid)) $ \cCharacteristic ->
-            BS.useAsCStringLen payload $ \(cPayload, payloadLength) -> do
+            BS.useAsCStringLen (unBleCharacteristicValue payload) $ \(cPayload, payloadLength) -> do
               cLength <- case Int.toCInt payloadLength of
                 Just converted -> pure converted
                 Nothing -> error $
@@ -479,20 +523,19 @@ subscribeBleCharacteristic
   :: BleState
   -> BleServiceUuid
   -> BleCharacteristicUuid
-  -> (ByteString -> IO ())              -- ^ onNotification
+  -> (BleCharacteristicValue -> IO ())  -- ^ onNotification
   -> (Either BleGattError () -> IO ())  -- ^ onSubscribed
   -> IO ()
 subscribeBleCharacteristic bleState serviceUuid characteristicUuid onNotification onSubscribed = do
+  let key = bleCharacteristicKey serviceUuid characteristicUuid
   -- Register the notification callback before asking the platform to
   -- enable notifications, so no early notification can be missed.  A
   -- failed subscription removes it again in 'dispatchBleGattCompletion'.
-  modifyIORef' (blesNotificationCallbacks bleState)
-    (Map.insert (normalizedBleUuidPair serviceUuid characteristicUuid) onNotification)
+  modifyIORef' (blesNotificationCallbacks bleState) (Map.insert key onNotification)
   startBleGattOperation bleState
-    (PendingBleSubscribe (normalizedBleUuidPair serviceUuid characteristicUuid) onSubscribed)
+    (PendingBleSubscribe key onSubscribed)
     (\gattError -> do
-        modifyIORef' (blesNotificationCallbacks bleState)
-          (Map.delete (normalizedBleUuidPair serviceUuid characteristicUuid))
+        modifyIORef' (blesNotificationCallbacks bleState) (Map.delete key)
         onSubscribed (Left gattError))
     (do ctx <- readIORef (blesContextPtr bleState)
         withCString (unpack (unBleServiceUuid serviceUuid)) $ \cService ->
@@ -509,7 +552,7 @@ unsubscribeBleCharacteristic
   -> IO ()
 unsubscribeBleCharacteristic bleState serviceUuid characteristicUuid callback =
   startBleGattOperation bleState
-    (PendingBleUnsubscribe (normalizedBleUuidPair serviceUuid characteristicUuid) callback)
+    (PendingBleUnsubscribe (bleCharacteristicKey serviceUuid characteristicUuid) callback)
     (callback . Left)
     (do ctx <- readIORef (blesContextPtr bleState)
         withCString (unpack (unBleServiceUuid serviceUuid)) $ \cService ->
@@ -518,19 +561,19 @@ unsubscribeBleCharacteristic bleState serviceUuid characteristicUuid callback =
 
 -- | Negotiate a larger ATT MTU.  Android asks the peripheral for the
 -- given value; iOS ignores it and reports the system-negotiated
--- maximum.  The callback receives the granted MTU; write payloads
--- should stay within @granted - 3@ bytes.
+-- maximum.  The callback receives the granted MTU (see 'BleMtu' for
+-- the usable write size).
 requestBleMtu
   :: BleState
-  -> Int
-  -> (Either BleGattError Int -> IO ())
+  -> BleMtu
+  -> (Either BleGattError BleMtu -> IO ())
   -> IO ()
 requestBleMtu bleState mtu callback =
   startBleGattOperation bleState
     (PendingBleMtu callback)
     (callback . Left)
     (do ctx <- readIORef (blesContextPtr bleState)
-        cMtu <- case Int.toCInt mtu of
+        cMtu <- case Int.toCInt (unBleMtu mtu) of
           Just converted -> pure converted
           Nothing -> error $ "requestBleMtu: MTU " ++ show mtu ++ " exceeds CInt"
         c_bleRequestMtu ctx cMtu)
@@ -680,10 +723,10 @@ completePendingBleGattOperation bleState pendingOperation completion =
 -- characteristic without a registered callback indicates a platform
 -- bug (or a notification racing an unsubscribe) and is logged loudly.
 dispatchBleNotification
-  :: BleState -> BleServiceUuid -> BleCharacteristicUuid -> ByteString -> IO ()
+  :: BleState -> BleServiceUuid -> BleCharacteristicUuid -> BleCharacteristicValue -> IO ()
 dispatchBleNotification bleState serviceUuid characteristicUuid payload = do
   callbacks <- readIORef (blesNotificationCallbacks bleState)
-  case Map.lookup (normalizedBleUuidPair serviceUuid characteristicUuid) callbacks of
+  case Map.lookup (bleCharacteristicKey serviceUuid characteristicUuid) callbacks of
     Nothing -> hPutStrLn stderr $
       "dispatchBleNotification: notification for "
       ++ show (serviceUuid, characteristicUuid)

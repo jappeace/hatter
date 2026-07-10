@@ -55,6 +55,8 @@ import Hatter.Ble
   , BleDeviceAddress(..)
   , BleServiceUuid(..)
   , BleCharacteristicUuid(..)
+  , BleCharacteristicValue(..)
+  , BleMtu(..)
   , BleConnectionEvent(..)
   , BleCharacteristicProperty(..)
   , BleDiscoveredCharacteristic(..)
@@ -564,7 +566,7 @@ bleTests ffiBleState = testGroup "BLE"
       discoverResult <- readIORef discoverRef
       discoverResult @?= Just (Left (BleGattFailed (-1)))
 
-      readRef <- newIORef (Nothing :: Maybe (Either BleGattError BS.ByteString))
+      readRef <- newIORef (Nothing :: Maybe (Either BleGattError BleCharacteristicValue))
       readBleCharacteristic ffiBleState testServiceUuid testCharacteristicUuid
         (\result -> writeIORef readRef (Just result))
       readResult <- readIORef readRef
@@ -582,8 +584,8 @@ bleTests ffiBleState = testGroup "BLE"
       subscribeResult <- readIORef subscribeRef
       subscribeResult @?= Just (Left (BleGattFailed (-1)))
 
-      mtuRef <- newIORef (Nothing :: Maybe (Either BleGattError Int))
-      requestBleMtu ffiBleState 247 (\result -> writeIORef mtuRef (Just result))
+      mtuRef <- newIORef (Nothing :: Maybe (Either BleGattError BleMtu))
+      requestBleMtu ffiBleState (BleMtu 247) (\result -> writeIORef mtuRef (Just result))
       mtuResult <- readIORef mtuRef
       mtuResult @?= Just (Left (BleGattFailed (-1)))
 
@@ -592,7 +594,7 @@ bleTests ffiBleState = testGroup "BLE"
       -- so the first operation stays pending.
       bleState <- newBleState
       discoverBleServices bleState (\_ -> pure ())
-      ref <- newIORef (Nothing :: Maybe (Either BleGattError BS.ByteString))
+      ref <- newIORef (Nothing :: Maybe (Either BleGattError BleCharacteristicValue))
       readBleCharacteristic bleState testServiceUuid testCharacteristicUuid
         (\result -> writeIORef ref (Just result))
       result <- readIORef ref
@@ -606,42 +608,42 @@ bleTests ffiBleState = testGroup "BLE"
       dispatchBleCharacteristicDiscovered bleState testDiscoveredEcho
       dispatchBleGattCompletion bleState BleGattCompletion
         { bgcOperation = BleGattDiscover, bgcStatusCode = 0
-        , bgcPayload = BS.empty, bgcGrantedMtu = 0 }
+        , bgcPayload = "", bgcGrantedMtu = BleMtu 0 }
       result <- readIORef ref
       result @?= Just (Right [testDiscoveredRead, testDiscoveredEcho])
 
   , testCase "read completion delivers the payload" $ do
       bleState <- newBleState
-      ref <- newIORef (Nothing :: Maybe (Either BleGattError BS.ByteString))
+      ref <- newIORef (Nothing :: Maybe (Either BleGattError BleCharacteristicValue))
       readBleCharacteristic bleState testServiceUuid testCharacteristicUuid
         (\result -> writeIORef ref (Just result))
       dispatchBleGattCompletion bleState BleGattCompletion
         { bgcOperation = BleGattRead, bgcStatusCode = 0
-        , bgcPayload = "hatter", bgcGrantedMtu = 0 }
+        , bgcPayload = "hatter", bgcGrantedMtu = BleMtu 0 }
       result <- readIORef ref
       result @?= Just (Right "hatter")
 
   , testCase "mismatched completion fails the pending operation loudly" $ do
       bleState <- newBleState
-      ref <- newIORef (Nothing :: Maybe (Either BleGattError BS.ByteString))
+      ref <- newIORef (Nothing :: Maybe (Either BleGattError BleCharacteristicValue))
       readBleCharacteristic bleState testServiceUuid testCharacteristicUuid
         (\result -> writeIORef ref (Just result))
       dispatchBleGattCompletion bleState BleGattCompletion
         { bgcOperation = BleGattWrite, bgcStatusCode = 0
-        , bgcPayload = BS.empty, bgcGrantedMtu = 0 }
+        , bgcPayload = "", bgcGrantedMtu = BleMtu 0 }
       result <- readIORef ref
       result @?= Just (Left (BleGattFailed (-2)))
 
   , testCase "subscription delivers notifications until unsubscribed" $ do
       bleState <- newBleState
-      notificationsRef <- newIORef ([] :: [BS.ByteString])
+      notificationsRef <- newIORef ([] :: [BleCharacteristicValue])
       subscribedRef <- newIORef (Nothing :: Maybe (Either BleGattError ()))
       subscribeBleCharacteristic bleState testServiceUuid testCharacteristicUuid
         (\payload -> modifyIORef' notificationsRef (++ [payload]))
         (\result -> writeIORef subscribedRef (Just result))
       dispatchBleGattCompletion bleState BleGattCompletion
         { bgcOperation = BleGattSubscribe, bgcStatusCode = 0
-        , bgcPayload = BS.empty, bgcGrantedMtu = 0 }
+        , bgcPayload = "", bgcGrantedMtu = BleMtu 0 }
       subscribed <- readIORef subscribedRef
       subscribed @?= Just (Right ())
       dispatchBleNotification bleState testServiceUuid testCharacteristicUuid "one"
@@ -650,7 +652,7 @@ bleTests ffiBleState = testGroup "BLE"
         (\_ -> pure ())
       dispatchBleGattCompletion bleState BleGattCompletion
         { bgcOperation = BleGattUnsubscribe, bgcStatusCode = 0
-        , bgcPayload = BS.empty, bgcGrantedMtu = 0 }
+        , bgcPayload = "", bgcGrantedMtu = BleMtu 0 }
       -- After unsubscribing this is logged loudly but not delivered.
       dispatchBleNotification bleState testServiceUuid testCharacteristicUuid "three"
       notifications <- readIORef notificationsRef
@@ -661,13 +663,13 @@ bleTests ffiBleState = testGroup "BLE"
       -- Android dispatches notifications with lowercase UUIDs and iOS
       -- with uppercase ones.
       bleState <- newBleState
-      ref <- newIORef (Nothing :: Maybe BS.ByteString)
+      ref <- newIORef (Nothing :: Maybe BleCharacteristicValue)
       subscribeBleCharacteristic bleState testServiceUuid testCharacteristicUuid
         (\payload -> writeIORef ref (Just payload))
         (\_ -> pure ())
       dispatchBleGattCompletion bleState BleGattCompletion
         { bgcOperation = BleGattSubscribe, bgcStatusCode = 0
-        , bgcPayload = BS.empty, bgcGrantedMtu = 0 }
+        , bgcPayload = "", bgcGrantedMtu = BleMtu 0 }
       dispatchBleNotification bleState
         (BleServiceUuid "50db505c-8ac4-4738-8448-3b1d9cc09cc5")
         (BleCharacteristicUuid "486f64c6-4b5f-4b3b-8aff-ede56a8b54f5")
@@ -684,7 +686,7 @@ bleTests ffiBleState = testGroup "BLE"
         (\result -> writeIORef subscribedRef (Just result))
       dispatchBleGattCompletion bleState BleGattCompletion
         { bgcOperation = BleGattSubscribe, bgcStatusCode = 133
-        , bgcPayload = BS.empty, bgcGrantedMtu = 0 }
+        , bgcPayload = "", bgcGrantedMtu = BleMtu 0 }
       subscribed <- readIORef subscribedRef
       subscribed @?= Just (Left (BleGattFailed 133))
       dispatchBleNotification bleState testServiceUuid testCharacteristicUuid "x"
@@ -693,20 +695,20 @@ bleTests ffiBleState = testGroup "BLE"
 
   , testCase "MTU completion delivers the granted value" $ do
       bleState <- newBleState
-      ref <- newIORef (Nothing :: Maybe (Either BleGattError Int))
-      requestBleMtu bleState 247 (\result -> writeIORef ref (Just result))
+      ref <- newIORef (Nothing :: Maybe (Either BleGattError BleMtu))
+      requestBleMtu bleState (BleMtu 247) (\result -> writeIORef ref (Just result))
       dispatchBleGattCompletion bleState BleGattCompletion
         { bgcOperation = BleGattRequestMtu, bgcStatusCode = 0
-        , bgcPayload = BS.empty, bgcGrantedMtu = 247 }
+        , bgcPayload = "", bgcGrantedMtu = BleMtu 247 }
       result <- readIORef ref
-      result @?= Just (Right 247)
+      result @?= Just (Right (BleMtu 247))
 
   , testCase "completion without a pending operation is safe" $ do
       bleState <- newBleState
       -- Logs loudly to stderr but must not crash.
       dispatchBleGattCompletion bleState BleGattCompletion
         { bgcOperation = BleGattRead, bgcStatusCode = 0
-        , bgcPayload = BS.empty, bgcGrantedMtu = 0 }
+        , bgcPayload = "", bgcGrantedMtu = BleMtu 0 }
 
   , testCase "startFilteredBleScan registers the scan callback" $ do
       bleState <- newBleState
@@ -719,10 +721,10 @@ bleTests ffiBleState = testGroup "BLE"
 
 -- | Fixed UUIDs used by the GATT unit tests.
 testServiceUuid :: BleServiceUuid
-testServiceUuid = BleServiceUuid "50DB505C-8AC4-4738-8448-3B1D9CC09CC5"
+testServiceUuid = "50DB505C-8AC4-4738-8448-3B1D9CC09CC5"
 
 testCharacteristicUuid :: BleCharacteristicUuid
-testCharacteristicUuid = BleCharacteristicUuid "486F64C6-4B5F-4B3B-8AFF-EDE56A8B54F5"
+testCharacteristicUuid = "486F64C6-4B5F-4B3B-8AFF-EDE56A8B54F5"
 
 testDiscoveredRead :: BleDiscoveredCharacteristic
 testDiscoveredRead = BleDiscoveredCharacteristic
@@ -734,7 +736,7 @@ testDiscoveredRead = BleDiscoveredCharacteristic
 testDiscoveredEcho :: BleDiscoveredCharacteristic
 testDiscoveredEcho = BleDiscoveredCharacteristic
   { bdcService        = testServiceUuid
-  , bdcCharacteristic = BleCharacteristicUuid "8CB7C0F4-3B97-4653-9E4F-6F02BF97C7FB"
+  , bdcCharacteristic = "8CB7C0F4-3B97-4653-9E4F-6F02BF97C7FB"
   , bdcProperties     = [BleCharacteristicWrite, BleCharacteristicNotify]
   }
 
