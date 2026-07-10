@@ -31,17 +31,34 @@ struct HaskellUIView: UIViewControllerRepresentable {
             }
         }
 
-        // CI auto-test: exercise the BLE connect path.  Event ids follow
-        // the action creation order in test/BleDemoMain.hs: 0 = Check
-        // Adapter, 1 = Start Scan, 2 = Stop Scan, 3 = Connect,
-        // 4 = Disconnect.  The simulator has no CoreBluetooth support,
-        // so Connect must round-trip through the bridge and log
-        // BleConnectionFailed without crashing.
+        // CI auto-test: exercise the BLE connect and GATT paths.  Event
+        // ids follow the action creation order in test/BleDemoMain.hs:
+        // 0 = Check Adapter, 1 = Start Scan, 2 = Stop Scan,
+        // 3 = Connect, 4 = Disconnect, 5 = Discover, 6 = Read,
+        // 7 = Write, 8 = Subscribe, 9 = Request Mtu, 10 = Filtered
+        // Scan.  The simulator has no CoreBluetooth support, so every
+        // operation must round-trip through the bridge and log a
+        // visible failure without hanging or crashing.
         if CommandLine.arguments.contains("--autotest-ble") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
                 HaskellBridge.onUIEvent(3)  // Connect
             }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                HaskellBridge.onUIEvent(5)  // Discover
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                HaskellBridge.onUIEvent(6)  // Read
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+                HaskellBridge.onUIEvent(7)  // Write
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 14) {
+                HaskellBridge.onUIEvent(8)  // Subscribe
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 16) {
+                HaskellBridge.onUIEvent(9)  // Request Mtu
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 18) {
                 HaskellBridge.onUIEvent(4)  // Disconnect
             }
         }

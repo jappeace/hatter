@@ -4,6 +4,26 @@
 
 ### Added
 
+- `Hatter.Ble` GATT operations, completing the core of issue #108 and
+  unblocking the kbeacon OTA tool: `discoverBleServices`,
+  `readBleCharacteristic`, `writeBleCharacteristic` (with or without
+  response), `subscribeBleCharacteristic` /
+  `unsubscribeBleCharacteristic` with streaming notification
+  callbacks, and `requestBleMtu`.  One GATT operation may be in
+  flight at a time; a second one fails immediately with
+  `BleGattBusy`, and every operation completes exactly once with
+  `Either BleGattError`.  New types: `BleServiceUuid`,
+  `BleCharacteristicUuid`, `BleDiscoveredCharacteristic`,
+  `BleCharacteristicProperty`, `BleWriteMode`, `BleGattOperation`,
+  `BleGattError`.
+- `startFilteredBleScan`: scan filtered by an advertised service
+  UUID.
+- The emulator BLE integration test now covers the full GATT surface
+  against the virtual peripheral: discovery listing the test service,
+  MTU negotiation, characteristic read, subscribe, a write echoed
+  back as a notification (asserted on both ends of the radio), and a
+  service-UUID-filtered scan.
+
 - `Hatter.Ble` connection API (issue #108, first slice):
   `connectBleDevice`, `disconnectBleDevice`, and the
   `BleConnectionEvent` sum type (`BleConnectionEstablished`,

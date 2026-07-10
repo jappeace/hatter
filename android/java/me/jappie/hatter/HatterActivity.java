@@ -7,12 +7,18 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCallback;
+import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattDescriptor;
+import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanRecord;
 import android.bluetooth.le.ScanResult;
+import android.bluetooth.le.ScanSettings;
+import android.os.ParcelUuid;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -77,6 +83,12 @@ public class HatterActivity extends Activity implements View.OnClickListener {
     private native void onSecureStorageResult(int requestId, int statusCode, String value);
     private native void onBleScanResult(String deviceName, String deviceAddress, int rssi);
     private native void onBleConnectionEvent(int event);
+    private native void onBleCharacteristicDiscovered(String serviceUuid,
+                                                      String characteristicUuid,
+                                                      int properties);
+    private native void onBleGattResult(int operation, int status, byte[] data, int mtu);
+    private native void onBleNotification(String serviceUuid, String characteristicUuid,
+                                          byte[] data);
     private native void onDialogResult(int requestId, int actionCode);
     private native void onLocationResult(double lat, double lon, double alt, double acc);
     private native void onAuthSessionResult(int requestId, int statusCode,
@@ -100,6 +112,18 @@ public class HatterActivity extends Activity implements View.OnClickListener {
     private BluetoothLeScanner bleScanner;
     private ScanCallback bleScanCallback;
     private BluetoothGatt bleGatt;
+    /**
+     * Client Characteristic Configuration descriptor: writing to it
+     * turns notifications on/off on the peripheral side.
+     */
+    private static final java.util.UUID BLE_CCCD_UUID =
+        java.util.UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
+    /**
+     * Which notification operation a pending CCCD descriptor write
+     * belongs to: 3 = subscribe, 4 = unsubscribe (BLE_GATT_OP_* codes).
+     * onDescriptorWrite reports the completion under this code.
+     */
+    private int bleNotificationOpInFlight = 3;
     /**
      * Devices seen during the current scan, keyed by address.  Connecting
      * through the scanned BluetoothDevice preserves the address type
@@ -258,8 +282,10 @@ public class HatterActivity extends Activity implements View.OnClickListener {
     /**
      * Start a BLE scan. Called from native code via JNI.
      * Scan results are delivered via onBleScanResult JNI callback.
+     * serviceUuidFilter: 128-bit service UUID string to filter
+     * advertisements by, or null for an unfiltered scan.
      */
-    public void startBleScan() {
+    public void startBleScan(String serviceUuidFilter) {
         try {
             BluetoothManager manager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
             if (manager == null) return;
@@ -288,7 +314,17 @@ public class HatterActivity extends Activity implements View.OnClickListener {
                 }
             };
 
-            bleScanner.startScan(bleScanCallback);
+            if (serviceUuidFilter != null) {
+                ScanFilter filter = new ScanFilter.Builder()
+                    .setServiceUuid(ParcelUuid.fromString(serviceUuidFilter))
+                    .build();
+                java.util.List<ScanFilter> filters = new java.util.ArrayList<>();
+                filters.add(filter);
+                ScanSettings settings = new ScanSettings.Builder().build();
+                bleScanner.startScan(filters, settings, bleScanCallback);
+            } else {
+                bleScanner.startScan(bleScanCallback);
+            }
         } catch (Exception e) {
             android.util.Log.e("BleBridge", "startBleScan failed: " + e.getMessage());
         }
@@ -361,6 +397,93 @@ public class HatterActivity extends Activity implements View.OnClickListener {
                         }
                     });
                 }
+
+                @Override
+                public void onServicesDiscovered(BluetoothGatt gatt, final int status) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (status == BluetoothGatt.GATT_SUCCESS) {
+                                for (BluetoothGattService service : gatt.getServices()) {
+                                    for (BluetoothGattCharacteristic characteristic
+                                             : service.getCharacteristics()) {
+                                        onBleCharacteristicDiscovered(
+                                            service.getUuid().toString(),
+                                            characteristic.getUuid().toString(),
+                                            blePropertyBits(characteristic.getProperties()));
+                                    }
+                                }
+                            }
+                            onBleGattResult(0 /* DISCOVER */, status, null, 0);
+                        }
+                    });
+                }
+
+                @Override
+                public void onCharacteristicRead(BluetoothGatt gatt,
+                                                 BluetoothGattCharacteristic characteristic,
+                                                 final int status) {
+                    final byte[] value = characteristic.getValue();
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            onBleGattResult(1 /* READ */, status,
+                                status == BluetoothGatt.GATT_SUCCESS ? value : null, 0);
+                        }
+                    });
+                }
+
+                @Override
+                public void onCharacteristicWrite(BluetoothGatt gatt,
+                                                  BluetoothGattCharacteristic characteristic,
+                                                  final int status) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            onBleGattResult(2 /* WRITE */, status, null, 0);
+                        }
+                    });
+                }
+
+                @Override
+                public void onDescriptorWrite(BluetoothGatt gatt,
+                                              BluetoothGattDescriptor descriptor,
+                                              final int status) {
+                    // The only descriptor this class writes is the CCCD, so a
+                    // descriptor write completing is a subscribe/unsubscribe
+                    // completing.
+                    final int operation = bleNotificationOpInFlight;
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            onBleGattResult(operation, status, null, 0);
+                        }
+                    });
+                }
+
+                @Override
+                public void onMtuChanged(BluetoothGatt gatt, final int mtu, final int status) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            onBleGattResult(5 /* MTU */, status, null, mtu);
+                        }
+                    });
+                }
+
+                @Override
+                public void onCharacteristicChanged(BluetoothGatt gatt,
+                                                    BluetoothGattCharacteristic characteristic) {
+                    final String serviceUuid = characteristic.getService().getUuid().toString();
+                    final String characteristicUuid = characteristic.getUuid().toString();
+                    final byte[] value = characteristic.getValue();
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            onBleNotification(serviceUuid, characteristicUuid, value);
+                        }
+                    });
+                }
             };
             bleGatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE);
             if (bleGatt == null) {
@@ -385,6 +508,186 @@ public class HatterActivity extends Activity implements View.OnClickListener {
             }
         } catch (Exception e) {
             android.util.Log.e("BleBridge", "disconnectBleDevice failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Map Android characteristic property flags to the BLE_CHAR_PROP_*
+     * bits shared with the C bridge and Hatter.Ble.
+     */
+    private static int blePropertyBits(int androidProperties) {
+        int bits = 0;
+        if ((androidProperties & BluetoothGattCharacteristic.PROPERTY_READ) != 0) {
+            bits |= 1;
+        }
+        if ((androidProperties & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0) {
+            bits |= 2;
+        }
+        if ((androidProperties & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0) {
+            bits |= 4;
+        }
+        if ((androidProperties & BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0) {
+            bits |= 8;
+        }
+        return bits;
+    }
+
+    /**
+     * Report a GATT operation as failed before it reached the stack
+     * (no connection, characteristic not found).  Uses Android's
+     * generic GATT_FAILURE code (0x101) so the Haskell side sees a
+     * nonzero status.
+     */
+    private void bleGattFailEarly(int operation, String reason) {
+        android.util.Log.e("BleBridge", "GATT operation " + operation + " failed: " + reason);
+        onBleGattResult(operation, 0x101 /* GATT_FAILURE */, null, 0);
+    }
+
+    /**
+     * Look up a characteristic on the connected device.  Returns null
+     * (after reporting failure) when there is no connection or the
+     * service/characteristic does not exist.
+     */
+    private BluetoothGattCharacteristic bleFindCharacteristic(
+            int operation, String serviceUuid, String characteristicUuid) {
+        if (bleGatt == null) {
+            bleGattFailEarly(operation, "not connected");
+            return null;
+        }
+        BluetoothGattService service =
+            bleGatt.getService(java.util.UUID.fromString(serviceUuid));
+        if (service == null) {
+            bleGattFailEarly(operation, "service not found: " + serviceUuid);
+            return null;
+        }
+        BluetoothGattCharacteristic characteristic =
+            service.getCharacteristic(java.util.UUID.fromString(characteristicUuid));
+        if (characteristic == null) {
+            bleGattFailEarly(operation, "characteristic not found: " + characteristicUuid);
+            return null;
+        }
+        return characteristic;
+    }
+
+    /**
+     * Discover services and characteristics on the connected device.
+     * Called from native code via JNI.  Each characteristic is reported
+     * via onBleCharacteristicDiscovered; completion via onBleGattResult.
+     */
+    public void discoverBleServices() {
+        try {
+            if (bleGatt == null) {
+                bleGattFailEarly(0 /* DISCOVER */, "not connected");
+                return;
+            }
+            if (!bleGatt.discoverServices()) {
+                bleGattFailEarly(0 /* DISCOVER */, "discoverServices rejected");
+            }
+        } catch (Exception e) {
+            android.util.Log.e("BleBridge", "discoverBleServices failed: " + e.getMessage());
+            bleGattFailEarly(0 /* DISCOVER */, String.valueOf(e.getMessage()));
+        }
+    }
+
+    /**
+     * Read a characteristic's value. Called from native code via JNI.
+     */
+    public void readBleCharacteristic(String serviceUuid, String characteristicUuid) {
+        try {
+            BluetoothGattCharacteristic characteristic =
+                bleFindCharacteristic(1 /* READ */, serviceUuid, characteristicUuid);
+            if (characteristic == null) {
+                return;
+            }
+            if (!bleGatt.readCharacteristic(characteristic)) {
+                bleGattFailEarly(1 /* READ */, "readCharacteristic rejected");
+            }
+        } catch (Exception e) {
+            android.util.Log.e("BleBridge", "readBleCharacteristic failed: " + e.getMessage());
+            bleGattFailEarly(1 /* READ */, String.valueOf(e.getMessage()));
+        }
+    }
+
+    /**
+     * Write a characteristic's value. Called from native code via JNI.
+     * writeMode: 0 = without response, 1 = with response (BLE_WRITE_*).
+     */
+    public void writeBleCharacteristic(String serviceUuid, String characteristicUuid,
+                                       byte[] data, int writeMode) {
+        try {
+            BluetoothGattCharacteristic characteristic =
+                bleFindCharacteristic(2 /* WRITE */, serviceUuid, characteristicUuid);
+            if (characteristic == null) {
+                return;
+            }
+            characteristic.setWriteType(writeMode == 1
+                ? BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                : BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+            characteristic.setValue(data);
+            if (!bleGatt.writeCharacteristic(characteristic)) {
+                bleGattFailEarly(2 /* WRITE */, "writeCharacteristic rejected");
+            }
+            // Completion (both write modes) arrives via onCharacteristicWrite.
+        } catch (Exception e) {
+            android.util.Log.e("BleBridge", "writeBleCharacteristic failed: " + e.getMessage());
+            bleGattFailEarly(2 /* WRITE */, String.valueOf(e.getMessage()));
+        }
+    }
+
+    /**
+     * Enable or disable notifications for a characteristic. Called from
+     * native code via JNI.  enable: 1 = subscribe, 0 = unsubscribe.
+     * Completion arrives via onDescriptorWrite after the CCCD write.
+     */
+    public void setBleCharacteristicNotification(String serviceUuid,
+                                                 String characteristicUuid,
+                                                 int enable) {
+        final int operation = enable != 0 ? 3 /* SUBSCRIBE */ : 4 /* UNSUBSCRIBE */;
+        try {
+            BluetoothGattCharacteristic characteristic =
+                bleFindCharacteristic(operation, serviceUuid, characteristicUuid);
+            if (characteristic == null) {
+                return;
+            }
+            if (!bleGatt.setCharacteristicNotification(characteristic, enable != 0)) {
+                bleGattFailEarly(operation, "setCharacteristicNotification rejected");
+                return;
+            }
+            BluetoothGattDescriptor cccd = characteristic.getDescriptor(BLE_CCCD_UUID);
+            if (cccd == null) {
+                bleGattFailEarly(operation, "CCCD descriptor missing");
+                return;
+            }
+            bleNotificationOpInFlight = operation;
+            cccd.setValue(enable != 0
+                ? BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                : BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE);
+            if (!bleGatt.writeDescriptor(cccd)) {
+                bleGattFailEarly(operation, "writeDescriptor rejected");
+            }
+        } catch (Exception e) {
+            android.util.Log.e("BleBridge",
+                "setBleCharacteristicNotification failed: " + e.getMessage());
+            bleGattFailEarly(operation, String.valueOf(e.getMessage()));
+        }
+    }
+
+    /**
+     * Request a larger ATT MTU. Called from native code via JNI.
+     * The granted value arrives via onMtuChanged.
+     */
+    public void requestBleMtu(int mtu) {
+        try {
+            if (bleGatt == null) {
+                bleGattFailEarly(5 /* MTU */, "not connected");
+                return;
+            }
+            if (!bleGatt.requestMtu(mtu)) {
+                bleGattFailEarly(5 /* MTU */, "requestMtu rejected");
+            }
+        } catch (Exception e) {
+            android.util.Log.e("BleBridge", "requestBleMtu failed: " + e.getMessage());
+            bleGattFailEarly(5 /* MTU */, String.valueOf(e.getMessage()));
         }
     }
 

@@ -146,7 +146,20 @@ import Hatter.Animation (dispatchAnimationFrame)
 import Hatter.AppContext (AppContext(..), newAppContext, derefAppContext)
 import Hatter.AuthSession (dispatchAuthSessionResult)
 import Hatter.PlatformSignIn (dispatchPlatformSignInResult)
-import Hatter.Ble (dispatchBleScanResult, dispatchBleConnectionEvent, bleConnectionEventFromInt)
+import Hatter.Ble
+  ( dispatchBleScanResult
+  , dispatchBleConnectionEvent
+  , dispatchBleCharacteristicDiscovered
+  , dispatchBleGattCompletion
+  , dispatchBleNotification
+  , bleConnectionEventFromInt
+  , bleGattOperationFromInt
+  , bleCharacteristicPropertiesFromBits
+  , BleGattCompletion(..)
+  , BleDiscoveredCharacteristic(..)
+  , BleServiceUuid(..)
+  , BleCharacteristicUuid(..)
+  )
 import Hatter.BottomSheet (dispatchBottomSheetResult)
 import Hatter.Camera
   ( dispatchCameraResult
@@ -373,6 +386,76 @@ haskellOnBleConnectionEvent ctxPtr eventCode =
       Just event -> dispatchBleConnectionEvent (acBleState appCtx) event
 
 foreign export ccall haskellOnBleConnectionEvent :: Ptr AppContext -> CInt -> IO ()
+
+-- | Handle one discovered GATT characteristic from native code,
+-- streamed during a 'Hatter.Ble.discoverBleServices' run.
+haskellOnBleCharacteristicDiscovered
+  :: Ptr AppContext -> CString -> CString -> CInt -> IO ()
+haskellOnBleCharacteristicDiscovered ctxPtr cService cCharacteristic cProperties =
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    serviceUuid <- pack <$> peekCString cService
+    characteristicUuid <- pack <$> peekCString cCharacteristic
+    dispatchBleCharacteristicDiscovered (acBleState appCtx)
+      BleDiscoveredCharacteristic
+        { bdcService        = BleServiceUuid serviceUuid
+        , bdcCharacteristic = BleCharacteristicUuid characteristicUuid
+        , bdcProperties     = bleCharacteristicPropertiesFromBits cProperties
+        }
+
+foreign export ccall haskellOnBleCharacteristicDiscovered
+  :: Ptr AppContext -> CString -> CString -> CInt -> IO ()
+
+-- | Handle a GATT operation completion from native code.  Decodes the
+-- operation code, status, payload (read data) and granted MTU at the
+-- FFI boundary, then dispatches to the pending operation registered
+-- in 'Hatter.Ble.BleState'.
+haskellOnBleGattResult
+  :: Ptr AppContext -> CInt -> CInt -> Ptr Word8 -> CInt -> IO ()
+haskellOnBleGattResult ctxPtr cOperation cStatus dataPtr dataLength =
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    case bleGattOperationFromInt cOperation of
+      Nothing -> hPutStrLn stderr $
+        "haskellOnBleGattResult: unknown operation code " ++ show cOperation
+      Just operation -> do
+        -- With a payload the length field is the payload size; without
+        -- one it carries the granted MTU (nonzero only for MTU
+        -- completions, see BleBridge.h).
+        payload <- if dataPtr == nullPtr || dataLength <= 0
+          then pure BS.empty
+          else BS.packCStringLen (castPtr dataPtr, CInt.toInt dataLength)
+        let grantedMtu = if dataPtr == nullPtr then CInt.toInt dataLength else 0
+        dispatchBleGattCompletion (acBleState appCtx) BleGattCompletion
+          { bgcOperation  = operation
+          , bgcStatusCode = CInt.toInt cStatus
+          , bgcPayload    = payload
+          , bgcGrantedMtu = grantedMtu
+          }
+
+foreign export ccall haskellOnBleGattResult
+  :: Ptr AppContext -> CInt -> CInt -> Ptr Word8 -> CInt -> IO ()
+
+-- | Handle characteristic notification data from native code.
+-- Dispatches to the callback registered by
+-- 'Hatter.Ble.subscribeBleCharacteristic'.
+haskellOnBleNotification
+  :: Ptr AppContext -> CString -> CString -> Ptr Word8 -> CInt -> IO ()
+haskellOnBleNotification ctxPtr cService cCharacteristic dataPtr dataLength =
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    serviceUuid <- pack <$> peekCString cService
+    characteristicUuid <- pack <$> peekCString cCharacteristic
+    payload <- if dataPtr == nullPtr || dataLength <= 0
+      then pure BS.empty
+      else BS.packCStringLen (castPtr dataPtr, CInt.toInt dataLength)
+    dispatchBleNotification (acBleState appCtx)
+      (BleServiceUuid serviceUuid)
+      (BleCharacteristicUuid characteristicUuid)
+      payload
+
+foreign export ccall haskellOnBleNotification
+  :: Ptr AppContext -> CString -> CString -> Ptr Word8 -> CInt -> IO ()
 
 -- | Handle a dialog result from native code. Dispatches to the
 -- callback registered by 'Hatter.Dialog.showDialog'.

@@ -137,6 +137,26 @@ void haskellOnBleScanResult(void *ctx, const char *name, const char *address, in
  * ctx must be a pointer returned by haskellRunMain(). */
 void haskellOnBleConnectionEvent(void *ctx, int32_t event);
 
+/* Dispatch one discovered GATT characteristic back to Haskell
+ * (streamed during service discovery, before the discover completion).
+ * properties: BLE_CHAR_PROP_* bit mask from BleBridge.h. */
+void haskellOnBleCharacteristicDiscovered(void *ctx, const char *serviceUuid,
+                                          const char *characteristicUuid,
+                                          int32_t properties);
+
+/* Dispatch a GATT operation completion back to Haskell.
+ * operation: BLE_GATT_OP_* code; status: 0 = success.
+ * data/length: read payload for BLE_GATT_OP_READ; for completions
+ * without a payload (data == NULL) length carries the granted MTU for
+ * BLE_GATT_OP_MTU and is 0 otherwise. */
+void haskellOnBleGattResult(void *ctx, int32_t operation, int32_t status,
+                            const uint8_t *data, int32_t length);
+
+/* Dispatch characteristic notification data back to Haskell. */
+void haskellOnBleNotification(void *ctx, const char *serviceUuid,
+                              const char *characteristicUuid,
+                              const uint8_t *data, int32_t length);
+
 /* Dialog action codes */
 #define DIALOG_BUTTON_1   0
 #define DIALOG_BUTTON_2   1

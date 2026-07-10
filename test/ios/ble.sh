@@ -21,12 +21,22 @@ EXIT_CODE=0
 start_app "$BLE_APP" "ble" --autotest --autotest-ble
 wait_for_render "ble" --autotest
 wait_for_log "$STREAM_LOG" "BLE adapter:" 30 || true
-wait_for_log "$STREAM_LOG" "BLE connection event:" 60 || true
+wait_for_log "$STREAM_LOG" "BLE mtu failed:" 60 || true
 collect_logs "ble"
 
 assert_log "$FULL_LOG" "BLE adapter:" "BLE adapter check logged"
 assert_log "$FULL_LOG" "BLE connection event: BleConnectionFailed" \
     "connect on simulator fails visibly through the bridge"
+assert_log "$FULL_LOG" "BLE discovery failed:" \
+    "discovery on simulator fails visibly through the bridge"
+assert_log "$FULL_LOG" "BLE read failed:" \
+    "read on simulator fails visibly through the bridge"
+assert_log "$FULL_LOG" "BLE write failed:" \
+    "write on simulator fails visibly through the bridge"
+assert_log "$FULL_LOG" "BLE subscribe failed:" \
+    "subscribe on simulator fails visibly through the bridge"
+assert_log "$FULL_LOG" "BLE mtu failed:" \
+    "MTU request on simulator fails visibly through the bridge"
 assert_log "$FULL_LOG" "createNode" "createNode called (app renders)"
 assert_log "$FULL_LOG" "setRoot" "setRoot"
 

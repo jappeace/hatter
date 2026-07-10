@@ -17,23 +17,63 @@
 #include "BleBridge.h"
 #include <stdio.h>
 
-/* Haskell FFI export (dispatches connection events back to Haskell) */
+/* Haskell FFI exports (dispatch results back to Haskell) */
 extern void haskellOnBleConnectionEvent(void *ctx, int32_t event);
+extern void haskellOnBleGattResult(void *ctx, int32_t operation, int32_t status,
+                                   const uint8_t *data, int32_t length);
 
 static int32_t (*g_check_adapter_impl)(void) = NULL;
-static void (*g_start_scan_impl)(void *) = NULL;
+static void (*g_start_scan_impl)(void *, const char *) = NULL;
 static void (*g_stop_scan_impl)(void) = NULL;
 static void (*g_connect_impl)(void *, const char *) = NULL;
 static void (*g_disconnect_impl)(void) = NULL;
+static void (*g_discover_services_impl)(void *) = NULL;
+static void (*g_read_characteristic_impl)(void *, const char *, const char *) = NULL;
+static void (*g_write_characteristic_impl)(void *, const char *, const char *,
+                                           const uint8_t *, int32_t, int32_t) = NULL;
+static void (*g_set_notification_impl)(void *, const char *, const char *, int32_t) = NULL;
+static void (*g_request_mtu_impl)(void *, int32_t) = NULL;
 
 void ble_register_impl(
     int32_t (*check_adapter)(void),
-    void (*start_scan)(void *),
+    void (*start_scan)(void *, const char *),
     void (*stop_scan)(void))
 {
     g_check_adapter_impl = check_adapter;
     g_start_scan_impl = start_scan;
     g_stop_scan_impl = stop_scan;
+}
+
+void ble_register_gatt_impl(
+    void (*discover_services)(void *),
+    void (*read_characteristic)(void *, const char *, const char *),
+    void (*write_characteristic)(void *, const char *, const char *,
+                                 const uint8_t *, int32_t, int32_t),
+    void (*set_characteristic_notification)(void *, const char *,
+                                            const char *, int32_t),
+    void (*request_mtu)(void *, int32_t))
+{
+    g_discover_services_impl = discover_services;
+    g_read_characteristic_impl = read_characteristic;
+    g_write_characteristic_impl = write_characteristic;
+    g_set_notification_impl = set_characteristic_notification;
+    g_request_mtu_impl = request_mtu;
+}
+
+/* Fail a GATT operation that has no platform implementation.  Loud and
+ * always delivers a completion so callers are never left waiting. */
+static void ble_gatt_stub_fail(void *ctx, int32_t operation, const char *name)
+{
+    fprintf(stderr,
+            "[BleBridge stub] %s -> BLE_GATT_STATUS_NO_IMPL"
+            " (no platform GATT implementation registered)\n",
+            name);
+    if (ctx) {
+        haskellOnBleGattResult(ctx, operation, BLE_GATT_STATUS_NO_IMPL, NULL, 0);
+    } else {
+        fprintf(stderr, "[BleBridge stub] %s: null context,"
+                " cannot dispatch failure\n", name);
+    }
 }
 
 void ble_register_connect_impl(
@@ -54,14 +94,15 @@ int32_t ble_check_adapter(void)
     return BLE_ADAPTER_ON;
 }
 
-void ble_start_scan(void *ctx)
+void ble_start_scan(void *ctx, const char *service_uuid_filter)
 {
     if (g_start_scan_impl) {
-        g_start_scan_impl(ctx);
+        g_start_scan_impl(ctx, service_uuid_filter);
         return;
     }
     /* Desktop stub: no-op (no fabricated devices) */
-    fprintf(stderr, "[BleBridge stub] ble_start_scan() -> no-op\n");
+    fprintf(stderr, "[BleBridge stub] ble_start_scan(filter=%s) -> no-op\n",
+            service_uuid_filter ? service_uuid_filter : "(none)");
 }
 
 void ble_stop_scan(void)
@@ -104,4 +145,58 @@ void ble_disconnect(void)
     }
     /* Desktop stub: no-op (nothing can be connected without an impl) */
     fprintf(stderr, "[BleBridge stub] ble_disconnect() -> no-op\n");
+}
+
+void ble_discover_services(void *ctx)
+{
+    if (g_discover_services_impl) {
+        g_discover_services_impl(ctx);
+        return;
+    }
+    ble_gatt_stub_fail(ctx, BLE_GATT_OP_DISCOVER, "ble_discover_services()");
+}
+
+void ble_read_characteristic(void *ctx, const char *service_uuid,
+                             const char *characteristic_uuid)
+{
+    if (g_read_characteristic_impl) {
+        g_read_characteristic_impl(ctx, service_uuid, characteristic_uuid);
+        return;
+    }
+    ble_gatt_stub_fail(ctx, BLE_GATT_OP_READ, "ble_read_characteristic()");
+}
+
+void ble_write_characteristic(void *ctx, const char *service_uuid,
+                              const char *characteristic_uuid,
+                              const uint8_t *data, int32_t length,
+                              int32_t write_mode)
+{
+    if (g_write_characteristic_impl) {
+        g_write_characteristic_impl(ctx, service_uuid, characteristic_uuid,
+                                    data, length, write_mode);
+        return;
+    }
+    ble_gatt_stub_fail(ctx, BLE_GATT_OP_WRITE, "ble_write_characteristic()");
+}
+
+void ble_set_characteristic_notification(void *ctx, const char *service_uuid,
+                                         const char *characteristic_uuid,
+                                         int32_t enable)
+{
+    if (g_set_notification_impl) {
+        g_set_notification_impl(ctx, service_uuid, characteristic_uuid, enable);
+        return;
+    }
+    ble_gatt_stub_fail(ctx,
+                       enable ? BLE_GATT_OP_SUBSCRIBE : BLE_GATT_OP_UNSUBSCRIBE,
+                       "ble_set_characteristic_notification()");
+}
+
+void ble_request_mtu(void *ctx, int32_t mtu)
+{
+    if (g_request_mtu_impl) {
+        g_request_mtu_impl(ctx, mtu);
+        return;
+    }
+    ble_gatt_stub_fail(ctx, BLE_GATT_OP_MTU, "ble_request_mtu()");
 }

@@ -3,44 +3,80 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- | BLE (Bluetooth Low Energy) API for mobile platforms.
 --
--- Provides adapter status check, start\/stop scan, and GATT
--- connection management.  Scan results and connection events are
--- delivered via streaming callbacks (multiple invocations per
--- registration), unlike the permission bridge which uses one
--- callback per request.
+-- Provides adapter status check, start\/stop scan (optionally filtered
+-- by service UUID), GATT connection management, and GATT operations:
+-- service discovery, characteristic read\/write, notification
+-- subscriptions and MTU negotiation.  Scan results, connection events
+-- and notifications are delivered via streaming callbacks (multiple
+-- invocations per registration); GATT operations complete exactly once
+-- per request.
+--
+-- Exactly one GATT operation may be outstanding at a time (matching
+-- the platform stacks); starting a second one fails it immediately
+-- with 'BleGattBusy'.
 --
 -- On desktop (no platform bridge registered) the C stub reports
 -- the adapter as on, start\/stop scan are no-ops, and connection
--- attempts immediately deliver 'BleConnectionFailed', so @cabal test@
--- works without native code.
+-- attempts and GATT operations immediately deliver visible failures,
+-- so @cabal test@ works without native code.
 module Hatter.Ble
   ( BleAdapterStatus(..)
   , BleScanResult(..)
   , BleDeviceAddress(..)
+  , BleServiceUuid(..)
+  , BleCharacteristicUuid(..)
   , BleConnectionEvent(..)
+  , BleCharacteristicProperty(..)
+  , BleDiscoveredCharacteristic(..)
+  , BleWriteMode(..)
+  , BleGattOperation(..)
+  , BleGattError(..)
+  , BleGattCompletion(..)
+  , PendingBleGattOperation(..)
   , BleState(..)
   , newBleState
   , bleAdapterStatusFromInt
   , bleAdapterStatusToInt
   , bleConnectionEventFromInt
   , bleConnectionEventToInt
+  , bleGattOperationFromInt
+  , bleGattOperationToInt
+  , bleCharacteristicPropertiesFromBits
+  , bleCharacteristicPropertiesToBits
   , checkBleAdapter
   , startBleScan
+  , startFilteredBleScan
   , stopBleScan
   , connectBleDevice
   , disconnectBleDevice
+  , discoverBleServices
+  , readBleCharacteristic
+  , writeBleCharacteristic
+  , subscribeBleCharacteristic
+  , unsubscribeBleCharacteristic
+  , requestBleMtu
   , dispatchBleScanResult
   , dispatchBleConnectionEvent
+  , dispatchBleCharacteristicDiscovered
+  , dispatchBleGattCompletion
+  , dispatchBleNotification
   )
 where
 
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import Data.Text (Text, pack, unpack)
+import Data.Bits ((.&.))
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
+import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Text (Text, pack, toLower, unpack)
 import Foreign.C.String (CString, peekCString, withCString)
 import Foreign.C.Types (CInt(..))
+import Foreign.Marshal.Utils (maybeWith)
 import Foreign.Ptr (Ptr, nullPtr)
 import System.IO (hPutStrLn, stderr)
 import Unwitch.Convert.CInt qualified as CInt
+import Unwitch.Convert.Int qualified as Int
 
 -- | Status of the platform's BLE adapter.
 data BleAdapterStatus
@@ -54,6 +90,16 @@ data BleAdapterStatus
 -- on Android, a peripheral identifier UUID on iOS.  Opaque to
 -- applications; pass it back verbatim to 'connectBleDevice'.
 newtype BleDeviceAddress = BleDeviceAddress { unBleDeviceAddress :: Text }
+  deriving (Show, Eq, Ord)
+
+-- | A 128-bit GATT service UUID string, e.g.
+-- @"50DB505C-8AC4-4738-8448-3B1D9CC09CC5"@.  Case-insensitive on both
+-- platforms.
+newtype BleServiceUuid = BleServiceUuid { unBleServiceUuid :: Text }
+  deriving (Show, Eq, Ord)
+
+-- | A 128-bit GATT characteristic UUID string.
+newtype BleCharacteristicUuid = BleCharacteristicUuid { unBleCharacteristicUuid :: Text }
   deriving (Show, Eq, Ord)
 
 -- | A single BLE scan result delivered by the platform.
@@ -76,9 +122,87 @@ data BleConnectionEvent
     -- was lost with an error.
   deriving (Show, Eq, Ord, Enum, Bounded)
 
+-- | What a characteristic supports, as reported by discovery.
+data BleCharacteristicProperty
+  = BleCharacteristicRead
+  | BleCharacteristicWrite
+  | BleCharacteristicWriteNoResponse
+  | BleCharacteristicNotify
+  deriving (Show, Eq, Ord, Enum, Bounded)
+
+-- | One characteristic found by 'discoverBleServices'.
+data BleDiscoveredCharacteristic = BleDiscoveredCharacteristic
+  { bdcService        :: BleServiceUuid
+  , bdcCharacteristic :: BleCharacteristicUuid
+  , bdcProperties     :: [BleCharacteristicProperty]
+  } deriving (Show, Eq)
+
+-- | How to write a characteristic: acknowledged by the peripheral or
+-- fire-and-forget.
+data BleWriteMode
+  = BleWriteWithResponse
+  | BleWriteWithoutResponse
+  deriving (Show, Eq, Ord, Enum, Bounded)
+
+-- | The GATT operations that complete asynchronously.  Mirrors the
+-- @BLE_GATT_OP_*@ constants in @BleBridge.h@.
+data BleGattOperation
+  = BleGattDiscover
+  | BleGattRead
+  | BleGattWrite
+  | BleGattSubscribe
+  | BleGattUnsubscribe
+  | BleGattRequestMtu
+  deriving (Show, Eq, Ord, Enum, Bounded)
+
+-- | Why a GATT operation failed.
+data BleGattError
+  = BleGattBusy
+    -- ^ Another GATT operation is still outstanding; retry after its
+    -- callback fires.
+  | BleGattFailed Int
+    -- ^ The platform reported a nonzero status code.  @-1@ means no
+    -- platform implementation is registered (desktop, or an outdated
+    -- consumer Activity); @-2@ means the platform completed a
+    -- different operation than the one pending (a platform bug);
+    -- other values are passed through from Android
+    -- (@BluetoothGatt@ status) or iOS (@NSError@ code, with
+    -- @0x101@ for failures before CoreBluetooth was reached).
+  deriving (Show, Eq)
+
+-- | A decoded GATT completion from the platform, built at the FFI
+-- boundary ('Hatter.haskellOnBleGattResult').
+data BleGattCompletion = BleGattCompletion
+  { bgcOperation  :: BleGattOperation
+  , bgcStatusCode :: Int
+    -- ^ 0 = success.
+  , bgcPayload    :: ByteString
+    -- ^ Read data for 'BleGattRead'; empty otherwise.
+  , bgcGrantedMtu :: Int
+    -- ^ Granted MTU for 'BleGattRequestMtu'; 0 otherwise.
+  } deriving (Show, Eq)
+
+-- | The one GATT operation currently in flight, with its
+-- result callback.  'BleGattError' code @-2@ is delivered if the
+-- platform completes a different operation (see
+-- 'dispatchBleGattCompletion').
+data PendingBleGattOperation
+  = PendingBleDiscover (IORef [BleDiscoveredCharacteristic])
+      (Either BleGattError [BleDiscoveredCharacteristic] -> IO ())
+  | PendingBleRead (Either BleGattError ByteString -> IO ())
+  | PendingBleWrite (Either BleGattError () -> IO ())
+  | PendingBleSubscribe (Text, Text)
+      (Either BleGattError () -> IO ())
+    -- ^ Key: 'normalizedBleUuidPair' of the subscribed characteristic.
+  | PendingBleUnsubscribe (Text, Text)
+      (Either BleGattError () -> IO ())
+    -- ^ Key: 'normalizedBleUuidPair' of the unsubscribed characteristic.
+  | PendingBleMtu (Either BleGattError Int -> IO ())
+
 -- | Mutable state for the BLE subsystem.
 -- Uses 'IORef (Maybe callback)' instead of 'IntMap' because only
--- one scan and one connection can be active at a time.
+-- one scan, one connection and one GATT operation can be active at
+-- a time.
 data BleState = BleState
   { blesScanCallback :: IORef (Maybe (BleScanResult -> IO ()))
     -- ^ Active scan result callback, or 'Nothing' if not scanning.
@@ -88,23 +212,36 @@ data BleState = BleState
     -- that late events (e.g. the 'BleConnectionClosed' following a
     -- 'disconnectBleDevice') still reach the app; a new
     -- 'connectBleDevice' call overwrites it.
+  , blesGattPending :: IORef (Maybe PendingBleGattOperation)
+    -- ^ The GATT operation currently in flight, if any.
+  , blesNotificationCallbacks :: IORef (Map (Text, Text) (ByteString -> IO ()))
+    -- ^ Per-characteristic notification callbacks, registered by
+    -- 'subscribeBleCharacteristic' and keyed by
+    -- 'normalizedBleUuidPair': Android reports UUIDs lowercase and
+    -- iOS uppercase, so the raw newtypes would never match across
+    -- the subscribe/notify round trip.
   , blesContextPtr   :: IORef (Ptr ())
     -- ^ Opaque context pointer passed to the C bridge.
     -- Set by 'AppContext.newAppContext' after the 'StablePtr' is created.
   }
 
--- | Create a fresh 'BleState' with no active scan or connection.
--- The context pointer is initially null and must be set via
--- 'blesContextPtr' before calling 'startBleScan' or 'connectBleDevice'.
+-- | Create a fresh 'BleState' with no active scan, connection or
+-- GATT operation.  The context pointer is initially null and must be
+-- set via 'blesContextPtr' before calling anything that talks to the
+-- platform.
 newBleState :: IO BleState
 newBleState = do
-  scanCallback       <- newIORef Nothing
-  connectionCallback <- newIORef Nothing
-  contextPtr         <- newIORef nullPtr
+  scanCallback          <- newIORef Nothing
+  connectionCallback    <- newIORef Nothing
+  gattPending           <- newIORef Nothing
+  notificationCallbacks <- newIORef Map.empty
+  contextPtr            <- newIORef nullPtr
   pure BleState
-    { blesScanCallback       = scanCallback
-    , blesConnectionCallback = connectionCallback
-    , blesContextPtr         = contextPtr
+    { blesScanCallback          = scanCallback
+    , blesConnectionCallback    = connectionCallback
+    , blesGattPending           = gattPending
+    , blesNotificationCallbacks = notificationCallbacks
+    , blesContextPtr            = contextPtr
     }
 
 -- | Convert a C bridge adapter status code to 'BleAdapterStatus'.
@@ -139,6 +276,59 @@ bleConnectionEventToInt BleConnectionEstablished = 0
 bleConnectionEventToInt BleConnectionClosed      = 1
 bleConnectionEventToInt BleConnectionFailed      = 2
 
+-- | Convert a C bridge GATT operation code to 'BleGattOperation'.
+-- Returns 'Nothing' for unknown codes.
+bleGattOperationFromInt :: CInt -> Maybe BleGattOperation
+bleGattOperationFromInt 0 = Just BleGattDiscover
+bleGattOperationFromInt 1 = Just BleGattRead
+bleGattOperationFromInt 2 = Just BleGattWrite
+bleGattOperationFromInt 3 = Just BleGattSubscribe
+bleGattOperationFromInt 4 = Just BleGattUnsubscribe
+bleGattOperationFromInt 5 = Just BleGattRequestMtu
+bleGattOperationFromInt _ = Nothing
+
+-- | Convert a 'BleGattOperation' to its C bridge integer code.
+-- Must match the @BLE_GATT_OP_*@ constants in @BleBridge.h@.
+bleGattOperationToInt :: BleGattOperation -> CInt
+bleGattOperationToInt BleGattDiscover    = 0
+bleGattOperationToInt BleGattRead        = 1
+bleGattOperationToInt BleGattWrite       = 2
+bleGattOperationToInt BleGattSubscribe   = 3
+bleGattOperationToInt BleGattUnsubscribe = 4
+bleGattOperationToInt BleGattRequestMtu  = 5
+
+-- | The case-normalized key identifying a characteristic in
+-- 'blesNotificationCallbacks'.  UUID strings are case-insensitive per
+-- the Bluetooth spec, but the platforms disagree on the case they
+-- report (Android lowercase, iOS uppercase).
+normalizedBleUuidPair :: BleServiceUuid -> BleCharacteristicUuid -> (Text, Text)
+normalizedBleUuidPair serviceUuid characteristicUuid =
+  ( toLower (unBleServiceUuid serviceUuid)
+  , toLower (unBleCharacteristicUuid characteristicUuid)
+  )
+
+-- | The @BLE_CHAR_PROP_*@ bit for one property (see @BleBridge.h@).
+bleCharacteristicPropertyBit :: BleCharacteristicProperty -> CInt
+bleCharacteristicPropertyBit BleCharacteristicRead            = 1
+bleCharacteristicPropertyBit BleCharacteristicWrite           = 2
+bleCharacteristicPropertyBit BleCharacteristicWriteNoResponse = 4
+bleCharacteristicPropertyBit BleCharacteristicNotify          = 8
+
+-- | Whether a property's bit is set in a @BLE_CHAR_PROP_*@ mask.
+bleCharacteristicPropertyPresent :: CInt -> BleCharacteristicProperty -> Bool
+bleCharacteristicPropertyPresent bits property =
+  bits .&. bleCharacteristicPropertyBit property /= 0
+
+-- | Decode the @BLE_CHAR_PROP_*@ bit mask from @BleBridge.h@.
+bleCharacteristicPropertiesFromBits :: CInt -> [BleCharacteristicProperty]
+bleCharacteristicPropertiesFromBits bits =
+  filter (bleCharacteristicPropertyPresent bits) [minBound .. maxBound]
+
+-- | Encode 'BleCharacteristicProperty's back into the
+-- @BLE_CHAR_PROP_*@ bit mask (used by tests to check the roundtrip).
+bleCharacteristicPropertiesToBits :: [BleCharacteristicProperty] -> CInt
+bleCharacteristicPropertiesToBits = sum . map bleCharacteristicPropertyBit
+
 -- | Check the BLE adapter status (synchronous).
 checkBleAdapter :: IO BleAdapterStatus
 checkBleAdapter = do
@@ -149,18 +339,30 @@ checkBleAdapter = do
       hPutStrLn stderr $ "checkBleAdapter: unknown status code " ++ show result
       pure BleAdapterUnsupported
 
--- | Start a BLE scan. Stops any existing scan first, then registers
--- the callback and calls the C bridge. The callback will be invoked
--- for each discovered device until 'stopBleScan' is called.
+-- | Start an unfiltered BLE scan. Stops any existing scan first, then
+-- registers the callback and calls the C bridge. The callback will be
+-- invoked for each discovered device until 'stopBleScan' is called.
 startBleScan :: BleState -> (BleScanResult -> IO ()) -> IO ()
-startBleScan bleState callback = do
+startBleScan bleState callback =
+  startBleScanInternal bleState Nothing callback
+
+-- | Start a BLE scan that only reports devices advertising the given
+-- service UUID.  Otherwise identical to 'startBleScan'.
+startFilteredBleScan :: BleState -> BleServiceUuid -> (BleScanResult -> IO ()) -> IO ()
+startFilteredBleScan bleState serviceUuid callback =
+  startBleScanInternal bleState (Just serviceUuid) callback
+
+-- | Shared implementation of the scan starters.
+startBleScanInternal :: BleState -> Maybe BleServiceUuid -> (BleScanResult -> IO ()) -> IO ()
+startBleScanInternal bleState maybeServiceUuid callback = do
   -- Stop any existing scan first
   c_bleStopScan
   -- Register the new callback
   writeIORef (blesScanCallback bleState) (Just callback)
   -- Start scanning via C bridge
   ctx <- readIORef (blesContextPtr bleState)
-  c_bleStartScan ctx
+  maybeWith (withCString . unpack . unBleServiceUuid) maybeServiceUuid
+    (c_bleStartScan ctx)
 
 -- | Stop a running BLE scan. Clears the callback so that any
 -- late-arriving results are silently dropped.
@@ -188,6 +390,150 @@ connectBleDevice bleState address callback = do
 -- event is still delivered.  A no-op when nothing is connected.
 disconnectBleDevice :: BleState -> IO ()
 disconnectBleDevice _bleState = c_bleDisconnect
+
+-- | Register a GATT operation as pending, or fail it immediately with
+-- 'BleGattBusy' when one is already in flight.  Runs the given action
+-- (the C bridge call) only after successful registration.
+startBleGattOperation
+  :: BleState
+  -> PendingBleGattOperation
+  -> (BleGattError -> IO ())  -- ^ How to fail this operation's callback.
+  -> IO ()                    -- ^ The C bridge call.
+  -> IO ()
+startBleGattOperation bleState pending failWith bridgeCall = do
+  alreadyPending <- readIORef (blesGattPending bleState)
+  case alreadyPending of
+    Just _  -> failWith BleGattBusy
+    Nothing -> do
+      writeIORef (blesGattPending bleState) (Just pending)
+      bridgeCall
+
+-- | Discover all services and characteristics on the connected
+-- device.  The callback receives every characteristic (with its
+-- containing service and properties) or the failure.
+discoverBleServices
+  :: BleState
+  -> (Either BleGattError [BleDiscoveredCharacteristic] -> IO ())
+  -> IO ()
+discoverBleServices bleState callback = do
+  accumulator <- newIORef []
+  startBleGattOperation bleState
+    (PendingBleDiscover accumulator callback)
+    (callback . Left)
+    (do ctx <- readIORef (blesContextPtr bleState)
+        c_bleDiscoverServices ctx)
+
+-- | Read a characteristic's value.
+readBleCharacteristic
+  :: BleState
+  -> BleServiceUuid
+  -> BleCharacteristicUuid
+  -> (Either BleGattError ByteString -> IO ())
+  -> IO ()
+readBleCharacteristic bleState serviceUuid characteristicUuid callback =
+  startBleGattOperation bleState
+    (PendingBleRead callback)
+    (callback . Left)
+    (do ctx <- readIORef (blesContextPtr bleState)
+        withCString (unpack (unBleServiceUuid serviceUuid)) $ \cService ->
+          withCString (unpack (unBleCharacteristicUuid characteristicUuid)) $ \cCharacteristic ->
+            c_bleReadCharacteristic ctx cService cCharacteristic)
+
+-- | Write a characteristic's value.  'BleWriteWithoutResponse'
+-- completes as soon as the platform queued the write;
+-- 'BleWriteWithResponse' completes when the peripheral acknowledged
+-- it.
+writeBleCharacteristic
+  :: BleState
+  -> BleServiceUuid
+  -> BleCharacteristicUuid
+  -> BleWriteMode
+  -> ByteString
+  -> (Either BleGattError () -> IO ())
+  -> IO ()
+writeBleCharacteristic bleState serviceUuid characteristicUuid writeMode payload callback =
+  startBleGattOperation bleState
+    (PendingBleWrite callback)
+    (callback . Left)
+    (do ctx <- readIORef (blesContextPtr bleState)
+        withCString (unpack (unBleServiceUuid serviceUuid)) $ \cService ->
+          withCString (unpack (unBleCharacteristicUuid characteristicUuid)) $ \cCharacteristic ->
+            BS.useAsCStringLen payload $ \(cPayload, payloadLength) -> do
+              cLength <- case Int.toCInt payloadLength of
+                Just converted -> pure converted
+                Nothing -> error $
+                  "writeBleCharacteristic: payload of "
+                  ++ show payloadLength ++ " bytes exceeds CInt"
+              c_bleWriteCharacteristic ctx cService cCharacteristic
+                cPayload
+                cLength
+                (case writeMode of
+                   BleWriteWithResponse    -> 1
+                   BleWriteWithoutResponse -> 0))
+
+-- | Subscribe to a characteristic's notifications.  @onNotification@
+-- is invoked for every notification until
+-- 'unsubscribeBleCharacteristic'; @onSubscribed@ fires once with the
+-- subscription outcome.
+subscribeBleCharacteristic
+  :: BleState
+  -> BleServiceUuid
+  -> BleCharacteristicUuid
+  -> (ByteString -> IO ())              -- ^ onNotification
+  -> (Either BleGattError () -> IO ())  -- ^ onSubscribed
+  -> IO ()
+subscribeBleCharacteristic bleState serviceUuid characteristicUuid onNotification onSubscribed = do
+  -- Register the notification callback before asking the platform to
+  -- enable notifications, so no early notification can be missed.  A
+  -- failed subscription removes it again in 'dispatchBleGattCompletion'.
+  modifyIORef' (blesNotificationCallbacks bleState)
+    (Map.insert (normalizedBleUuidPair serviceUuid characteristicUuid) onNotification)
+  startBleGattOperation bleState
+    (PendingBleSubscribe (normalizedBleUuidPair serviceUuid characteristicUuid) onSubscribed)
+    (\gattError -> do
+        modifyIORef' (blesNotificationCallbacks bleState)
+          (Map.delete (normalizedBleUuidPair serviceUuid characteristicUuid))
+        onSubscribed (Left gattError))
+    (do ctx <- readIORef (blesContextPtr bleState)
+        withCString (unpack (unBleServiceUuid serviceUuid)) $ \cService ->
+          withCString (unpack (unBleCharacteristicUuid characteristicUuid)) $ \cCharacteristic ->
+            c_bleSetCharacteristicNotification ctx cService cCharacteristic 1)
+
+-- | Stop receiving notifications for a characteristic.  The
+-- notification callback is removed once the platform confirms.
+unsubscribeBleCharacteristic
+  :: BleState
+  -> BleServiceUuid
+  -> BleCharacteristicUuid
+  -> (Either BleGattError () -> IO ())
+  -> IO ()
+unsubscribeBleCharacteristic bleState serviceUuid characteristicUuid callback =
+  startBleGattOperation bleState
+    (PendingBleUnsubscribe (normalizedBleUuidPair serviceUuid characteristicUuid) callback)
+    (callback . Left)
+    (do ctx <- readIORef (blesContextPtr bleState)
+        withCString (unpack (unBleServiceUuid serviceUuid)) $ \cService ->
+          withCString (unpack (unBleCharacteristicUuid characteristicUuid)) $ \cCharacteristic ->
+            c_bleSetCharacteristicNotification ctx cService cCharacteristic 0)
+
+-- | Negotiate a larger ATT MTU.  Android asks the peripheral for the
+-- given value; iOS ignores it and reports the system-negotiated
+-- maximum.  The callback receives the granted MTU; write payloads
+-- should stay within @granted - 3@ bytes.
+requestBleMtu
+  :: BleState
+  -> Int
+  -> (Either BleGattError Int -> IO ())
+  -> IO ()
+requestBleMtu bleState mtu callback =
+  startBleGattOperation bleState
+    (PendingBleMtu callback)
+    (callback . Left)
+    (do ctx <- readIORef (blesContextPtr bleState)
+        cMtu <- case Int.toCInt mtu of
+          Just converted -> pure converted
+          Nothing -> error $ "requestBleMtu: MTU " ++ show mtu ++ " exceeds CInt"
+        c_bleRequestMtu ctx cMtu)
 
 -- | Dispatch a BLE scan result from the platform back to the
 -- registered Haskell callback. Called from the FFI entry point.
@@ -229,13 +575,129 @@ dispatchBleConnectionEvent bleState event = do
       ++ " without an active connection callback"
     Just callback -> callback event
 
+-- | Record one characteristic streamed by the platform during a
+-- pending 'discoverBleServices' run.  Without a pending discovery the
+-- report indicates a platform bug and is logged loudly.
+dispatchBleCharacteristicDiscovered :: BleState -> BleDiscoveredCharacteristic -> IO ()
+dispatchBleCharacteristicDiscovered bleState discovered = do
+  pending <- readIORef (blesGattPending bleState)
+  case pending of
+    Just (PendingBleDiscover accumulator _) ->
+      modifyIORef' accumulator (discovered :)
+    Just _ -> hPutStrLn stderr $
+      "dispatchBleCharacteristicDiscovered: received " ++ show discovered
+      ++ " while a non-discovery operation is pending"
+    Nothing -> hPutStrLn stderr $
+      "dispatchBleCharacteristicDiscovered: received " ++ show discovered
+      ++ " without a pending discovery"
+
+-- | Fail whichever operation is pending with the given error.
+failPendingBleGattOperation :: PendingBleGattOperation -> BleGattError -> IO ()
+failPendingBleGattOperation pending gattError =
+  case pending of
+    PendingBleDiscover _ callback    -> callback (Left gattError)
+    PendingBleRead callback          -> callback (Left gattError)
+    PendingBleWrite callback         -> callback (Left gattError)
+    PendingBleSubscribe _ callback   -> callback (Left gattError)
+    PendingBleUnsubscribe _ callback -> callback (Left gattError)
+    PendingBleMtu callback           -> callback (Left gattError)
+
+-- | Complete the pending GATT operation with a platform result.
+-- Called from the FFI entry point.  The pending operation is cleared
+-- before its callback runs, so the callback may start the next
+-- operation immediately.  A completion without a pending operation,
+-- or for a different operation than the pending one, indicates a
+-- platform bug: it is logged loudly and the pending operation (if
+-- any) fails with code @-2@ so its caller is not left waiting.
+dispatchBleGattCompletion :: BleState -> BleGattCompletion -> IO ()
+dispatchBleGattCompletion bleState completion = do
+  pending <- readIORef (blesGattPending bleState)
+  writeIORef (blesGattPending bleState) Nothing
+  case pending of
+    Nothing -> hPutStrLn stderr $
+      "dispatchBleGattCompletion: received " ++ show completion
+      ++ " without a pending operation"
+    Just pendingOperation ->
+      if pendingBleGattOperationKind pendingOperation /= bgcOperation completion
+        then do
+          hPutStrLn stderr $
+            "dispatchBleGattCompletion: received " ++ show (bgcOperation completion)
+            ++ " while " ++ show (pendingBleGattOperationKind pendingOperation)
+            ++ " was pending"
+          failPendingBleGattOperation pendingOperation (BleGattFailed (-2))
+        else completePendingBleGattOperation bleState pendingOperation completion
+
+-- | Which 'BleGattOperation' a pending operation belongs to.
+pendingBleGattOperationKind :: PendingBleGattOperation -> BleGattOperation
+pendingBleGattOperationKind (PendingBleDiscover _ _)    = BleGattDiscover
+pendingBleGattOperationKind (PendingBleRead _)          = BleGattRead
+pendingBleGattOperationKind (PendingBleWrite _)         = BleGattWrite
+pendingBleGattOperationKind (PendingBleSubscribe _ _)   = BleGattSubscribe
+pendingBleGattOperationKind (PendingBleUnsubscribe _ _) = BleGattUnsubscribe
+pendingBleGattOperationKind (PendingBleMtu _)           = BleGattRequestMtu
+
+-- | Deliver a matching completion to the pending operation's callback.
+completePendingBleGattOperation
+  :: BleState -> PendingBleGattOperation -> BleGattCompletion -> IO ()
+completePendingBleGattOperation bleState pendingOperation completion =
+  case pendingOperation of
+    PendingBleDiscover accumulator callback ->
+      if bgcStatusCode completion == 0
+        then do
+          discovered <- readIORef accumulator
+          callback (Right (reverse discovered))
+        else callback (Left (BleGattFailed (bgcStatusCode completion)))
+    PendingBleRead callback ->
+      if bgcStatusCode completion == 0
+        then callback (Right (bgcPayload completion))
+        else callback (Left (BleGattFailed (bgcStatusCode completion)))
+    PendingBleWrite callback ->
+      if bgcStatusCode completion == 0
+        then callback (Right ())
+        else callback (Left (BleGattFailed (bgcStatusCode completion)))
+    PendingBleSubscribe key callback ->
+      if bgcStatusCode completion == 0
+        then callback (Right ())
+        else do
+          -- The platform never enabled notifications; drop the
+          -- callback registered optimistically by
+          -- 'subscribeBleCharacteristic'.
+          modifyIORef' (blesNotificationCallbacks bleState) (Map.delete key)
+          callback (Left (BleGattFailed (bgcStatusCode completion)))
+    PendingBleUnsubscribe key callback ->
+      if bgcStatusCode completion == 0
+        then do
+          modifyIORef' (blesNotificationCallbacks bleState) (Map.delete key)
+          callback (Right ())
+        else callback (Left (BleGattFailed (bgcStatusCode completion)))
+    PendingBleMtu callback ->
+      if bgcStatusCode completion == 0
+        then callback (Right (bgcGrantedMtu completion))
+        else callback (Left (BleGattFailed (bgcStatusCode completion)))
+
+-- | Dispatch notification data from the platform to the callback
+-- registered by 'subscribeBleCharacteristic'.  Data for a
+-- characteristic without a registered callback indicates a platform
+-- bug (or a notification racing an unsubscribe) and is logged loudly.
+dispatchBleNotification
+  :: BleState -> BleServiceUuid -> BleCharacteristicUuid -> ByteString -> IO ()
+dispatchBleNotification bleState serviceUuid characteristicUuid payload = do
+  callbacks <- readIORef (blesNotificationCallbacks bleState)
+  case Map.lookup (normalizedBleUuidPair serviceUuid characteristicUuid) callbacks of
+    Nothing -> hPutStrLn stderr $
+      "dispatchBleNotification: notification for "
+      ++ show (serviceUuid, characteristicUuid)
+      ++ " without a registered callback"
+    Just callback -> callback payload
+
 -- | FFI import: check BLE adapter status via the C bridge.
 foreign import ccall "ble_check_adapter"
   c_bleCheckAdapter :: IO CInt
 
--- | FFI import: start BLE scan via the C bridge.
+-- | FFI import: start BLE scan via the C bridge.  The second argument
+-- is a service UUID filter, or null for an unfiltered scan.
 foreign import ccall "ble_start_scan"
-  c_bleStartScan :: Ptr () -> IO ()
+  c_bleStartScan :: Ptr () -> CString -> IO ()
 
 -- | FFI import: stop BLE scan via the C bridge.
 foreign import ccall "ble_stop_scan"
@@ -248,3 +710,25 @@ foreign import ccall "ble_connect"
 -- | FFI import: disconnect the active BLE connection via the C bridge.
 foreign import ccall "ble_disconnect"
   c_bleDisconnect :: IO ()
+
+-- | FFI import: discover services via the C bridge.
+foreign import ccall "ble_discover_services"
+  c_bleDiscoverServices :: Ptr () -> IO ()
+
+-- | FFI import: read a characteristic via the C bridge.
+foreign import ccall "ble_read_characteristic"
+  c_bleReadCharacteristic :: Ptr () -> CString -> CString -> IO ()
+
+-- | FFI import: write a characteristic via the C bridge.  The payload
+-- travels as a CString + explicit length pair (same convention as the
+-- HTTP bridge's request body).
+foreign import ccall "ble_write_characteristic"
+  c_bleWriteCharacteristic :: Ptr () -> CString -> CString -> CString -> CInt -> CInt -> IO ()
+
+-- | FFI import: enable/disable characteristic notifications via the C bridge.
+foreign import ccall "ble_set_characteristic_notification"
+  c_bleSetCharacteristicNotification :: Ptr () -> CString -> CString -> CInt -> IO ()
+
+-- | FFI import: request an ATT MTU via the C bridge.
+foreign import ccall "ble_request_mtu"
+  c_bleRequestMtu :: Ptr () -> CInt -> IO ()
