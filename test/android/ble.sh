@@ -15,7 +15,6 @@
 #   ADB, EMULATOR_SERIAL, BLE_APK, PACKAGE, ACTIVITY, WORK_DIR
 # Additionally when BLE_SIM=1:
 #   BUMBLE_PYTHON: python interpreter with the bumble package
-#   TEST_SCRIPTS:  test-tree root (for ble_peripheral.py)
 set -euo pipefail
 source "$(dirname "$0")/helpers.sh"
 
@@ -61,9 +60,11 @@ ensure_guest_bluetooth_on() {
 
 if [ "$BLE_SIM" = "1" ]; then
     # Start the virtual peripheral first so it is already advertising
-    # in the netsim scene when the app starts scanning.
+    # in the netsim scene when the app starts scanning.  The script
+    # lives next to this one (dirname, like helpers.sh above): the
+    # harness only exports BUMBLE_PYTHON, not the test-tree root.
     PERIPHERAL_LOG="$WORK_DIR/ble_peripheral.log"
-    "$BUMBLE_PYTHON" "$TEST_SCRIPTS/android/ble_peripheral.py" > "$PERIPHERAL_LOG" 2>&1 &
+    "$BUMBLE_PYTHON" "$(dirname "$0")/ble_peripheral.py" > "$PERIPHERAL_LOG" 2>&1 &
     PERIPHERAL_PID=$!
     PERIPHERAL_WAIT=0
     while [ $PERIPHERAL_WAIT -lt 30 ]; do
