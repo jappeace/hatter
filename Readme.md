@@ -372,6 +372,16 @@ This lets you develop and test your app logic without a device.
 
 # Contributing
 
+Hatter is a bindings project to android and ios.
+It is not supposed to be a difficult to understand project.
+In fact, it is supposed to be kinda boring!
+Every platform feature follows the same shape:
+a Haskell state record, a C dispatcher with loud stubs,
+a platform implementation per OS, a foreign export,
+and a demo app with an integration test poking it.
+So: copy the pattern, newtype the primitives,
+and if a change feels clever, it is probably wrong for this repo.
+
 Always make sure to include tests.
 If we deal with platform integration or add native code
 we need tests in the simulator / emulator
