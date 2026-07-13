@@ -21,6 +21,7 @@ import Test.Tasty.HUnit
 import Data.ByteString qualified as BS
 import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
 import Data.IntMap.Strict qualified as IntMap
+import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text qualified as Text
 import Foreign.C.String (newCString)
 import Foreign.Marshal.Alloc (free)
@@ -68,6 +69,8 @@ import Hatter.Ble
   , BleAdvertisement(..)
   , NormalizedBleUuid(..)
   , ManufacturerId(..)
+  , AdvertisementParseError(..)
+  , AdvertisementParseErrors(..)
   , emptyBleAdvertisement
   , parseBleAdvertisement
   , serviceDataForUuid
@@ -434,7 +437,7 @@ bleTests ffiBleState = testGroup "BLE"
           bsrDeviceName scanResult @?= "TestDevice"
           bsrDeviceAddress scanResult @?= BleDeviceAddress "AA:BB:CC:DD:EE:FF"
           bsrRssi scanResult @?= (-42)
-          bsrAdvertisement scanResult @?= emptyBleAdvertisement
+          bsrAdvertisement scanResult @?= Right emptyBleAdvertisement
 
   , testCase "dispatchBleScanResult with no active scan is no-op" $ do
       bleState <- newBleState
@@ -518,14 +521,14 @@ bleTests ffiBleState = testGroup "BLE"
       case result of
         Nothing -> assertFailure "callback should have been fired"
         Just scanResult ->
-          serviceDataForUuid "00002080-0000-1000-8000-00805F9B34FB"
+          fmap (serviceDataForUuid "00002080-0000-1000-8000-00805F9B34FB")
               (bsrAdvertisement scanResult)
-            @?= Just (BS.pack [0x55, 0x00, 0x01, 0xF6])
+            @?= Right (Just (BS.pack [0x55, 0x00, 0x01, 0xF6]))
 
   , testCase "parseBleAdvertisement reads 16-bit service data" $
       parseBleAdvertisement
           (BS.pack [0x02, 0x01, 0x06, 0x05, 0x16, 0xED, 0xFE, 0x2A, 0x63])
-        @?= BleAdvertisement
+        @?= Right BleAdvertisement
           { advServiceData =
               [(NormalizedBleUuid "0000feed-0000-1000-8000-00805f9b34fb", BS.pack [0x2A, 0x63])]
           , advManufacturerData = []
@@ -541,7 +544,7 @@ bleTests ffiBleState = testGroup "BLE"
             , 0x38, 0x47, 0xC4, 0x8A, 0x5C, 0x50, 0xDB, 0x50
             , 0x7F
             ])
-        @?= BleAdvertisement
+        @?= Right BleAdvertisement
           { advServiceData =
               [(NormalizedBleUuid "50db505c-8ac4-4738-8448-3b1d9cc09cc5", BS.pack [0x7F])]
           , advManufacturerData = []
@@ -550,7 +553,7 @@ bleTests ffiBleState = testGroup "BLE"
   , testCase "parseBleAdvertisement reads manufacturer data" $
       -- KKM's company id 0x0A53, little-endian on air.
       parseBleAdvertisement (BS.pack [0x04, 0xFF, 0x53, 0x0A, 0x21])
-        @?= BleAdvertisement
+        @?= Right BleAdvertisement
           { advServiceData = []
           , advManufacturerData = [(ManufacturerId 0x0A53, BS.pack [0x21])]
           }
@@ -562,7 +565,7 @@ bleTests ffiBleState = testGroup "BLE"
             , 0x03, 0xFF, 0x4C, 0x00
             , 0x04, 0x16, 0x80, 0x20, 0x02
             ])
-        @?= BleAdvertisement
+        @?= Right BleAdvertisement
           { advServiceData =
               [ (NormalizedBleUuid "0000feaa-0000-1000-8000-00805f9b34fb", BS.pack [0x01])
               , (NormalizedBleUuid "00002080-0000-1000-8000-00805f9b34fb", BS.pack [0x02])
@@ -575,30 +578,37 @@ bleTests ffiBleState = testGroup "BLE"
       -- size; the padding must not become phantom entries.
       parseBleAdvertisement
           (BS.pack [0x05, 0x16, 0xED, 0xFE, 0x2A, 0x63, 0x00, 0x00, 0x00, 0x00])
-        @?= BleAdvertisement
+        @?= Right BleAdvertisement
           { advServiceData =
               [(NormalizedBleUuid "0000feed-0000-1000-8000-00805f9b34fb", BS.pack [0x2A, 0x63])]
           , advManufacturerData = []
           }
 
-  , testCase "parseBleAdvertisement drops a truncated tail" $
-      -- The final structure claims 9 bytes but only 3 follow.
+  , testCase "parseBleAdvertisement reports a truncated structure with its offset" $
+      -- The second structure (length byte at offset 5) claims 9
+      -- bytes but only 3 follow.
       parseBleAdvertisement
           (BS.pack [0x04, 0xFF, 0x53, 0x0A, 0x21, 0x09, 0x16, 0xED, 0xFE])
-        @?= BleAdvertisement
-          { advServiceData = []
-          , advManufacturerData = [(ManufacturerId 0x0A53, BS.pack [0x21])]
-          }
+        @?= Left (AdvertisementParseErrors (AdStructureTruncated 5 9 3 :| []))
+
+  , testCase "parseBleAdvertisement accumulates every defect" $
+      -- Service data too short for its 16-bit UUID at offset 0, then
+      -- manufacturer data too short for its company id at offset 3.
+      parseBleAdvertisement
+          (BS.pack [0x02, 0x16, 0xED, 0x02, 0xFF, 0x53])
+        @?= Left (AdvertisementParseErrors
+              (ServiceDataUuidTruncated 0 0x16 2 1
+                :| [ManufacturerDataTooShort 3 1]))
 
   , testCase "serviceDataForUuid is case-insensitive" $ do
-      let adv = parseBleAdvertisement
+      let parsed = parseBleAdvertisement
             (BS.pack [0x05, 0x16, 0x80, 0x20, 0x55, 0x63])
-      serviceDataForUuid "00002080-0000-1000-8000-00805F9B34FB" adv
-        @?= Just (BS.pack [0x55, 0x63])
-      serviceDataForUuid "00002080-0000-1000-8000-00805f9b34fb" adv
-        @?= Just (BS.pack [0x55, 0x63])
-      serviceDataForUuid "0000FEAA-0000-1000-8000-00805F9B34FB" adv
-        @?= Nothing
+      fmap (serviceDataForUuid "00002080-0000-1000-8000-00805F9B34FB") parsed
+        @?= Right (Just (BS.pack [0x55, 0x63]))
+      fmap (serviceDataForUuid "00002080-0000-1000-8000-00805f9b34fb") parsed
+        @?= Right (Just (BS.pack [0x55, 0x63]))
+      fmap (serviceDataForUuid "0000FEAA-0000-1000-8000-00805F9B34FB") parsed
+        @?= Right Nothing
 
   , testCase "bleConnectionEventFromInt roundtrips all constructors" $ do
       let allEvents = [BleConnectionEstablished, BleConnectionClosed, BleConnectionFailed]

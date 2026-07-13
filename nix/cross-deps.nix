@@ -293,8 +293,16 @@ WRAPPER
   hatterDep = if hatterSrc != null then [ crossHaskellPkgs.hatter ] else [];
 
   # Hatter's own non-boot dependencies — must be collected so hatter's
-  # .conf can resolve them (collect-deps doesn't follow propagatedBuildInputs).
-  hatterOwnDeps = [ crossHaskellPkgs.unwitch ];
+  # .conf can resolve them (collect-deps doesn't follow
+  # propagatedBuildInputs), including uuid-types' transitive non-boot
+  # dependencies for the same reason.
+  hatterOwnDeps = [
+    crossHaskellPkgs.unwitch
+    crossHaskellPkgs.uuid-types
+    crossHaskellPkgs.hashable
+    crossHaskellPkgs.random
+    crossHaskellPkgs.splitmix
+  ];
 
 in import ./collect-deps.nix {
   inherit pkgs ghc ghcPkgCmd;

@@ -16,17 +16,22 @@ module Hatter.BleAdvertisement
   ( BleAdvertisement(..)
   , NormalizedBleUuid(..)
   , ManufacturerId(..)
+  , AdvertisementParseError(..)
+  , AdvertisementParseErrors(..)
   , emptyBleAdvertisement
   , parseBleAdvertisement
   , serviceDataForUuid
   ) where
 
+import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Char (intToDigit)
+import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Word (Word8, Word16)
+import Data.UUID.Types (UUID)
+import Data.UUID.Types qualified as UUID
+import Data.Word (Word8, Word16, Word32)
 import Unwitch.Convert.Word8 qualified as Word8
 
 -- | A UUID string normalized to lowercase for comparisons.  UUIDs are
@@ -63,6 +68,35 @@ data BleAdvertisement = BleAdvertisement
 newtype ManufacturerId = ManufacturerId { unManufacturerId :: Word16 }
   deriving (Show, Eq, Ord)
 
+-- | One malformed AD structure: what failed, why, and where (every
+-- constructor carries the byte offset of the offending structure's
+-- length byte within the raw advertisement).
+data AdvertisementParseError
+  = -- | A structure declares more bytes than the advertisement still
+    -- holds, so it (and anything after it) cannot be framed.
+    AdStructureTruncated
+      Int -- ^ Byte offset of the structure's length byte.
+      Int -- ^ Length the structure declares.
+      Int -- ^ Bytes actually remaining after the length byte.
+  | -- | A service data structure too short to hold the UUID its AD
+    -- type promises.
+    ServiceDataUuidTruncated
+      Int   -- ^ Byte offset of the structure's length byte.
+      Word8 -- ^ The AD type (0x16, 0x20 or 0x21).
+      Int   -- ^ UUID width in bytes that AD type requires.
+      Int   -- ^ Bytes the structure actually carries after the type.
+  | -- | A manufacturer data structure too short to hold the 2-byte
+    -- company identifier.
+    ManufacturerDataTooShort
+      Int -- ^ Byte offset of the structure's length byte.
+      Int -- ^ Bytes the structure actually carries after the type.
+  deriving (Show, Eq)
+
+-- | Every defect found in one advertisement, in structure order.
+newtype AdvertisementParseErrors = AdvertisementParseErrors
+  { unAdvertisementParseErrors :: NonEmpty AdvertisementParseError }
+  deriving (Show, Eq)
+
 -- | An advertisement carrying no service or manufacturer data (also
 -- what desktop's stubbed scan and payload-less advertisements parse
 -- to).
@@ -73,72 +107,112 @@ emptyBleAdvertisement = BleAdvertisement
   }
 
 -- | Parse raw AD structures. A zero length byte ends the data
--- (Android's @ScanRecord.getBytes()@ zero-pads to the fixed
--- advertisement buffer size); a structure whose length exceeds the
--- remaining bytes is dropped along with everything after it.
+-- cleanly: it is the value Android's @ScanRecord.getBytes()@ pads
+-- the fixed advertisement buffer with, not a defect.
 --
--- Decision: tolerate malformed input instead of failing. The bytes
--- come straight off the air from arbitrary third-party devices, so a
--- garbled advertisement must degrade to "no payload", never take the
--- app down or suppress the scan result carrying it.
-parseBleAdvertisement :: ByteString -> BleAdvertisement
+-- Decision: malformed structures fail the parse with every defect
+-- found, in the signature, instead of being silently dropped: per
+-- <https://jappie.me/failing-in-haskell.html failing in Haskell> we
+-- want to know what fails, why and where (each error carries its
+-- byte offset and the sizes involved), and the bytes come off the
+-- air from arbitrary third-party devices, so defects WILL occur in
+-- the field. The scan dispatch in "Hatter.Ble" logs the defects and
+-- still delivers the scan result, so a garbled advertisement never
+-- hides the device that sent it.
+parseBleAdvertisement :: ByteString -> Either AdvertisementParseErrors BleAdvertisement
 parseBleAdvertisement bytes =
+  case parseAdStructuresFrom 0 bytes of
+    (advertisement, []) -> Right advertisement
+    (_, firstDefect : moreDefects) ->
+      Left (AdvertisementParseErrors (firstDefect :| moreDefects))
+
+-- | Walk the AD structures, accumulating both the parsed entries and
+-- every defect, with the byte offset threaded through for the error
+-- reports. A truncated structure ends the walk (framing is lost); a
+-- defect inside a well-framed structure skips only that structure.
+parseAdStructuresFrom :: Int -> ByteString -> (BleAdvertisement, [AdvertisementParseError])
+parseAdStructuresFrom offset bytes =
   case BS.uncons bytes of
-    Nothing -> emptyBleAdvertisement
+    Nothing -> (emptyBleAdvertisement, [])
     Just (lengthByte, afterLength) ->
       let structureLength = Word8.toInt lengthByte
-      -- The zero check also guards the recursion: a zero-length
-      -- structure would drop zero bytes and loop here forever.
-      in if lengthByte == 0 || BS.length afterLength < structureLength
-        then emptyBleAdvertisement
-        else
-          let structure = BS.take structureLength afterLength
-              parsedRest = parseBleAdvertisement (BS.drop structureLength afterLength)
-          in case BS.uncons structure of
-            Nothing -> parsedRest
-            Just (adType, payload) -> addAdStructure adType payload parsedRest
+      in if
+        -- Zero length is the padding terminator. The check also
+        -- guards the recursion: a zero-length structure would drop
+        -- zero bytes and loop here forever.
+        | lengthByte == 0 -> (emptyBleAdvertisement, [])
+        | BS.length afterLength < structureLength ->
+            ( emptyBleAdvertisement
+            , [AdStructureTruncated offset structureLength (BS.length afterLength)]
+            )
+        | otherwise ->
+            -- In bounds: structureLength >= 1 was just established.
+            let adType = BS.index afterLength 0
+                payload = BS.take (structureLength - 1) (BS.drop 1 afterLength)
+                (restAdvertisement, restDefects) =
+                  parseAdStructuresFrom (offset + 1 + structureLength)
+                    (BS.drop structureLength afterLength)
+            in case addAdStructure offset adType payload restAdvertisement of
+              Right grown -> (grown, restDefects)
+              Left defect -> (restAdvertisement, defect : restDefects)
 
 -- | Fold one AD structure into the advertisement parsed from the
--- bytes after it. Only the payload-bearing types are kept: service
--- data at each UUID width (0x16, 0x20, 0x21) and manufacturer data
--- (0xFF). Names, flags and service-class UUID lists are dropped; the
--- platforms already surface the name, and the UUID lists carry no
--- payload.
-addAdStructure :: Word8 -> ByteString -> BleAdvertisement -> BleAdvertisement
-addAdStructure adType payload advertisement = if
-  | adType == 0x16 -> addServiceData 2 payload advertisement
-  | adType == 0x20 -> addServiceData 4 payload advertisement
-  | adType == 0x21 -> addServiceData 16 payload advertisement
-  | adType == 0xFF -> addManufacturerData payload advertisement
-  | otherwise -> advertisement
+-- bytes after it, or say why it cannot be. Only the payload-bearing
+-- types are kept: service data at each UUID width (0x16, 0x20, 0x21)
+-- and manufacturer data (0xFF). Other AD types are legitimate
+-- structures this module does not surface (names, flags,
+-- service-class UUID lists), not defects: the platforms already
+-- deliver the name and the rest carries no payload.
+addAdStructure
+  :: Int
+  -> Word8
+  -> ByteString
+  -> BleAdvertisement
+  -> Either AdvertisementParseError BleAdvertisement
+addAdStructure offset adType payload advertisement = if
+  | adType == 0x16 -> addServiceData offset adType 2 payload advertisement
+  | adType == 0x20 -> addServiceData offset adType 4 payload advertisement
+  | adType == 0x21 -> addServiceData offset adType 16 payload advertisement
+  | adType == 0xFF -> addManufacturerData offset payload advertisement
+  | otherwise -> Right advertisement
 
 -- | Prepend one service data entry: a little-endian UUID of the given
--- byte width, then the payload. Too short to hold its UUID means a
--- malformed structure, which is skipped (see 'parseBleAdvertisement'
--- on tolerating air garbage).
-addServiceData :: Int -> ByteString -> BleAdvertisement -> BleAdvertisement
-addServiceData uuidWidth payload advertisement =
+-- byte width, then the payload. A structure too short to hold its
+-- UUID is reported with the widths involved.
+addServiceData
+  :: Int
+  -> Word8
+  -> Int
+  -> ByteString
+  -> BleAdvertisement
+  -> Either AdvertisementParseError BleAdvertisement
+addServiceData offset adType uuidWidth payload advertisement =
   if BS.length payload < uuidWidth
-    then advertisement
+    then Left (ServiceDataUuidTruncated offset adType uuidWidth (BS.length payload))
     else
       let (uuidBytes, dataBytes) = BS.splitAt uuidWidth payload
-      in advertisement { advServiceData =
-                 (normalizedUuidFromLittleEndian uuidBytes, dataBytes)
-                   : advServiceData advertisement }
+      in Right advertisement { advServiceData =
+           (normalizedUuidFromLittleEndian uuidBytes, dataBytes)
+             : advServiceData advertisement }
 
 -- | Prepend one manufacturer data entry: little-endian company
--- identifier, then the payload.
-addManufacturerData :: ByteString -> BleAdvertisement -> BleAdvertisement
-addManufacturerData payload advertisement =
+-- identifier, then the payload. A structure too short to hold the
+-- company identifier is reported with its actual size.
+addManufacturerData
+  :: Int
+  -> ByteString
+  -> BleAdvertisement
+  -> Either AdvertisementParseError BleAdvertisement
+addManufacturerData offset payload advertisement =
   if BS.length payload < 2
-    then advertisement
+    then Left (ManufacturerDataTooShort offset (BS.length payload))
     else
       let companyId = Word8.toWord16 (BS.index payload 1) * 256
             + Word8.toWord16 (BS.index payload 0)
           dataBytes = BS.drop 2 payload
-      in advertisement { advManufacturerData =
-                 (ManufacturerId companyId, dataBytes)
-                   : advManufacturerData advertisement }
+      in Right advertisement { advManufacturerData =
+           (ManufacturerId companyId, dataBytes)
+             : advManufacturerData advertisement }
 
 -- | Look up a service data payload by UUID text
 -- (case-insensitively). Accepts the same 128-bit form used across
@@ -147,40 +221,45 @@ serviceDataForUuid :: Text -> BleAdvertisement -> Maybe ByteString
 serviceDataForUuid uuid advertisement =
   lookup (NormalizedBleUuid (Text.toLower uuid)) (advServiceData advertisement)
 
--- | The last 12 bytes of the Bluetooth base UUID
+-- | Words 2 to 4 of the Bluetooth base UUID
 -- (@xxxxxxxx-0000-1000-8000-00805F9B34FB@), which 16- and 32-bit
 -- UUIDs are an alias into.
-bluetoothBaseUuidTail :: ByteString
-bluetoothBaseUuidTail = BS.pack
-  [0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0x80, 0x5F, 0x9B, 0x34, 0xFB]
+bluetoothBaseUuidWord2 :: Word32
+bluetoothBaseUuidWord2 = 0x00001000
+
+bluetoothBaseUuidWord3 :: Word32
+bluetoothBaseUuidWord3 = 0x80000080
+
+bluetoothBaseUuidWord4 :: Word32
+bluetoothBaseUuidWord4 = 0x5F9B34FB
 
 -- | Render an advertisement UUID (2, 4 or 16 bytes little-endian on
--- air) as a full 128-bit 'NormalizedBleUuid' (the hex rendering is
--- lowercase by construction).
+-- air) as a full 128-bit 'NormalizedBleUuid'; 'UUID.toText' renders
+-- the canonical lowercase form.
 normalizedUuidFromLittleEndian :: ByteString -> NormalizedBleUuid
 normalizedUuidFromLittleEndian uuidBytes =
   let bigEndian = BS.reverse uuidBytes
-      full = if BS.length bigEndian == 16
-        then bigEndian
-        else BS.replicate (4 - BS.length bigEndian) 0x00
-          <> bigEndian
-          <> bluetoothBaseUuidTail
-  in NormalizedBleUuid (formatUuid128 full)
+  in NormalizedBleUuid (UUID.toText (if BS.length bigEndian == 16
+    then uuidFromBigEndianBytes bigEndian
+    else UUID.fromWords
+      (word32BigEndianAt (BS.replicate (4 - BS.length bigEndian) 0x00 <> bigEndian) 0)
+      bluetoothBaseUuidWord2
+      bluetoothBaseUuidWord3
+      bluetoothBaseUuidWord4))
 
--- | Format 16 big-endian bytes as @xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx@.
-formatUuid128 :: ByteString -> Text
-formatUuid128 bigEndian =
-  let hexText = Text.pack (concatMap hexByte (BS.unpack bigEndian))
-  in Text.intercalate "-"
-    [ Text.take 8 hexText
-    , Text.take 4 (Text.drop 8 hexText)
-    , Text.take 4 (Text.drop 12 hexText)
-    , Text.take 4 (Text.drop 16 hexText)
-    , Text.drop 20 hexText
-    ]
+-- | Build a 'UUID' from its 16 big-endian bytes.
+uuidFromBigEndianBytes :: ByteString -> UUID
+uuidFromBigEndianBytes bigEndian = UUID.fromWords
+  (word32BigEndianAt bigEndian 0)
+  (word32BigEndianAt bigEndian 4)
+  (word32BigEndianAt bigEndian 8)
+  (word32BigEndianAt bigEndian 12)
 
--- | Two lowercase hex digits for one byte.
-hexByte :: Word8 -> String
-hexByte byte =
-  let (high, low) = Word8.toInt byte `divMod` 16
-  in [intToDigit high, intToDigit low]
+-- | Big-endian 32-bit word starting at the given offset (bounds
+-- already checked by callers).
+word32BigEndianAt :: ByteString -> Int -> Word32
+word32BigEndianAt bytes offset =
+  Word8.toWord32 (BS.index bytes offset) `shiftL` 24
+    .|. Word8.toWord32 (BS.index bytes (offset + 1)) `shiftL` 16
+    .|. Word8.toWord32 (BS.index bytes (offset + 2)) `shiftL` 8
+    .|. Word8.toWord32 (BS.index bytes (offset + 3))

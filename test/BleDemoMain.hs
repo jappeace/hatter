@@ -179,10 +179,14 @@ main = do
 logAndRememberScanResult :: IORef (Maybe BleDeviceAddress) -> BleScanResult -> IO ()
 logAndRememberScanResult lastAddressRef scanResult = do
   platformLog ("BLE scan result: " <> pack (show scanResult))
-  mapM_ (\(uuid, payload) ->
-      platformLog ("BLE adv service data: " <> unNormalizedBleUuid uuid
-        <> "=" <> pack (show (BS.unpack payload))))
-    (advServiceData (bsrAdvertisement scanResult))
+  case bsrAdvertisement scanResult of
+    Left parseErrors ->
+      platformLog ("BLE adv parse errors: " <> pack (show parseErrors))
+    Right advertisement ->
+      mapM_ (\(uuid, payload) ->
+          platformLog ("BLE adv service data: " <> unNormalizedBleUuid uuid
+            <> "=" <> pack (show (BS.unpack payload))))
+        (advServiceData advertisement)
   writeIORef lastAddressRef (Just (bsrDeviceAddress scanResult))
 
 -- | Address the Connect button targets: the last discovered device,

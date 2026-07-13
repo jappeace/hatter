@@ -142,9 +142,12 @@ data BleScanResult = BleScanResult
   { bsrDeviceName    :: Text
   , bsrDeviceAddress :: BleDeviceAddress
   , bsrRssi          :: Int
-  , bsrAdvertisement :: BleAdvertisement
+  , bsrAdvertisement :: Either AdvertisementParseErrors BleAdvertisement
     -- ^ Service data and manufacturer data broadcast in the
-    -- advertisement, see "Hatter.BleAdvertisement".
+    -- advertisement, or every defect found in a malformed one, see
+    -- "Hatter.BleAdvertisement". 'dispatchBleScanResult' has already
+    -- logged the defects; they are passed on so applications can
+    -- also surface them.
   } deriving (Show, Eq)
 
 -- | A connection state change delivered by the platform for the
@@ -590,16 +593,24 @@ dispatchBleScanResult bleState cName cAddr cRssi advPtr advLength = do
       addrStr <- if cAddr == nullPtr
         then pure ""
         else pack <$> peekCString cAddr
-      advBytes <- if advPtr == nullPtr || advLength <= 0
+      advertisementBytes <- if advPtr == nullPtr || advLength <= 0
         then pure BS.empty
         else BS.packCStringLen (castPtr advPtr, CInt.toInt advLength)
-      let scanResult = BleScanResult
-            { bsrDeviceName    = nameStr
-            , bsrDeviceAddress = BleDeviceAddress addrStr
-            , bsrRssi          = CInt.toInt cRssi
-            , bsrAdvertisement = parseBleAdvertisement advBytes
-            }
-      callback scanResult
+      let parsedAdvertisement = parseBleAdvertisement advertisementBytes
+      -- Log defects loudly (what, why and where, including which
+      -- device sent them) but still deliver the scan result: a
+      -- garbled advertisement must never hide the device.
+      case parsedAdvertisement of
+        Left defects -> hPutStrLn stderr
+          ("dispatchBleScanResult: malformed advertisement from "
+            ++ unpack addrStr ++ ": " ++ show defects)
+        Right _ -> pure ()
+      callback BleScanResult
+        { bsrDeviceName    = nameStr
+        , bsrDeviceAddress = BleDeviceAddress addrStr
+        , bsrRssi          = CInt.toInt cRssi
+        , bsrAdvertisement = parsedAdvertisement
+        }
 
 -- | Dispatch a BLE connection event from the platform back to the
 -- registered Haskell callback.  The FFI entry point
