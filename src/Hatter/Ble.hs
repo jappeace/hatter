@@ -24,6 +24,7 @@
 module Hatter.Ble
   ( BleAdapterStatus(..)
   , BleScanResult(..)
+  , module Hatter.BleAdvertisement
   , BleDeviceAddress(..)
   , BleServiceUuid(..)
   , BleCharacteristicUuid(..)
@@ -80,10 +81,12 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.String (IsString)
 import Data.Text (Text, pack, toLower, unpack)
+import Data.Word (Word8)
 import Foreign.C.String (CString, peekCString, withCString)
 import Foreign.C.Types (CInt(..))
 import Foreign.Marshal.Utils (maybeWith)
-import Foreign.Ptr (Ptr, nullPtr)
+import Foreign.Ptr (Ptr, castPtr, nullPtr)
+import Hatter.BleAdvertisement
 import System.IO (hPutStrLn, stderr)
 import Unwitch.Convert.CInt qualified as CInt
 import Unwitch.Convert.Int qualified as Int
@@ -158,6 +161,9 @@ data BleScanResult = BleScanResult
   { bsrDeviceName    :: Text
   , bsrDeviceAddress :: BleDeviceAddress
   , bsrRssi          :: Int
+  , bsrAdvertisement :: BleAdvertisement
+    -- ^ Service data and manufacturer data broadcast in the
+    -- advertisement, see "Hatter.BleAdvertisement".
   } deriving (Show, Eq)
 
 -- | A connection state change delivered by the platform for the
@@ -590,8 +596,9 @@ requestBleMtu bleState mtu callback =
 -- registered Haskell callback. Called from the FFI entry point.
 -- If no scan is active (callback is 'Nothing'), the result is
 -- silently dropped.
-dispatchBleScanResult :: BleState -> CString -> CString -> CInt -> IO ()
-dispatchBleScanResult bleState cName cAddr cRssi = do
+dispatchBleScanResult
+  :: BleState -> CString -> CString -> CInt -> Ptr Word8 -> CInt -> IO ()
+dispatchBleScanResult bleState cName cAddr cRssi advPtr advLength = do
   maybeCallback <- readIORef (blesScanCallback bleState)
   case maybeCallback of
     Nothing -> pure ()  -- No active scan, drop result
@@ -602,10 +609,14 @@ dispatchBleScanResult bleState cName cAddr cRssi = do
       addrStr <- if cAddr == nullPtr
         then pure ""
         else pack <$> peekCString cAddr
+      advBytes <- if advPtr == nullPtr || advLength <= 0
+        then pure BS.empty
+        else BS.packCStringLen (castPtr advPtr, CInt.toInt advLength)
       let scanResult = BleScanResult
             { bsrDeviceName    = nameStr
             , bsrDeviceAddress = BleDeviceAddress addrStr
             , bsrRssi          = CInt.toInt cRssi
+            , bsrAdvertisement = parseBleAdvertisement advBytes
             }
       callback scanResult
 

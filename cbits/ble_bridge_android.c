@@ -21,7 +21,8 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 /* Haskell FFI exports (dispatch results back to Haskell callbacks) */
-extern void haskellOnBleScanResult(void *ctx, const char *name, const char *address, int32_t rssi);
+extern void haskellOnBleScanResult(void *ctx, const char *name, const char *address, int32_t rssi,
+                                   const uint8_t *advertisement, int32_t advertisement_length);
 extern void haskellOnBleConnectionEvent(void *ctx, int32_t event);
 extern void haskellOnBleCharacteristicDiscovered(void *ctx, const char *serviceUuid,
                                                  const char *characteristicUuid,
@@ -350,12 +351,15 @@ void setup_android_ble_bridge(JNIEnv *env, jobject activity, void *haskellCtx)
 /* ---- JNI callback from Java BLE scan result ---- */
 
 JNIEXPORT void JNICALL
-JNI_METHOD(onBleScanResult)(JNIEnv *env, jobject thiz, jstring jname, jstring jaddr, jint rssi)
+JNI_METHOD(onBleScanResult)(JNIEnv *env, jobject thiz, jstring jname, jstring jaddr, jint rssi,
+                            jbyteArray jadvertisement)
 {
     g_env = env;
 
     const char *cname = NULL;
     const char *caddr = NULL;
+    jbyte *advertisement = NULL;
+    jsize advertisement_length = 0;
 
     if (jname) {
         cname = (*env)->GetStringUTFChars(env, jname, NULL);
@@ -363,10 +367,18 @@ JNI_METHOD(onBleScanResult)(JNIEnv *env, jobject thiz, jstring jname, jstring ja
     if (jaddr) {
         caddr = (*env)->GetStringUTFChars(env, jaddr, NULL);
     }
+    if (jadvertisement) {
+        advertisement_length = (*env)->GetArrayLength(env, jadvertisement);
+        advertisement = (*env)->GetByteArrayElements(env, jadvertisement, NULL);
+    }
 
-    LOGI("onBleScanResult(name=%s, addr=%s, rssi=%d)", cname ? cname : "(null)", caddr ? caddr : "(null)", rssi);
-    haskellOnBleScanResult(g_haskell_ctx, cname, caddr, (int32_t)rssi);
+    LOGI("onBleScanResult(name=%s, addr=%s, rssi=%d, advLen=%d)", cname ? cname : "(null)", caddr ? caddr : "(null)", rssi, (int)advertisement_length);
+    haskellOnBleScanResult(g_haskell_ctx, cname, caddr, (int32_t)rssi,
+                           (const uint8_t *)advertisement, (int32_t)advertisement_length);
 
+    if (advertisement) {
+        (*env)->ReleaseByteArrayElements(env, jadvertisement, advertisement, JNI_ABORT);
+    }
     if (cname) {
         (*env)->ReleaseStringUTFChars(env, jname, cname);
     }

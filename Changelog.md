@@ -4,6 +4,16 @@
 
 ### Added
 
+- Scan results now carry the advertisement's service data and
+  manufacturer data (issue #238): `BleScanResult` gained
+  `bsrAdvertisement`, parsed by the new `Hatter.BleAdvertisement`
+  module (re-exported from `Hatter.Ble`) with `serviceDataForUuid`
+  for keyed lookup. Android passes `ScanRecord.getBytes()` through
+  the bridge; iOS re-encodes CoreBluetooth's parsed dictionary into
+  the same AD structure format. This unblocks identifying devices
+  that only advertise service data (e.g. KBeacons' 0x2080) or
+  manufacturer data (iBeacon) without connecting to them.
+
 - `Hatter.Ble` GATT operations, completing the core of issue #108 and
   unblocking the kbeacon OTA tool: `discoverBleServices`,
   `readBleCharacteristic`, `writeBleCharacteristic` (with or without

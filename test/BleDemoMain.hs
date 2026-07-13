@@ -39,6 +39,7 @@ import Hatter.AppContext (AppContext(..), derefAppContext)
 import Hatter.Ble
   ( BleState(..)
   , BleScanResult(..)
+  , BleAdvertisement(..)
   , BleDeviceAddress(..)
   , BleServiceUuid(..)
   , BleCharacteristicUuid(..)
@@ -171,11 +172,16 @@ main = do
   writeIORef bleStateRef (Just (acBleState appCtx))
   pure ctxPtr
 
--- | Scan callback: log the result and remember its address as the
--- Connect target.
+-- | Scan callback: log the result (advertisement payloads on their
+-- own line, as decimal byte lists like the GATT logs) and remember
+-- its address as the Connect target.
 logAndRememberScanResult :: IORef (Maybe BleDeviceAddress) -> BleScanResult -> IO ()
 logAndRememberScanResult lastAddressRef scanResult = do
   platformLog ("BLE scan result: " <> pack (show scanResult))
+  mapM_ (\(uuid, payload) ->
+      platformLog ("BLE adv service data: " <> uuid
+        <> "=" <> pack (show (BS.unpack payload))))
+    (advServiceData (bsrAdvertisement scanResult))
   writeIORef lastAddressRef (Just (bsrDeviceAddress scanResult))
 
 -- | Address the Connect button targets: the last discovered device,

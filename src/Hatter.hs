@@ -366,13 +366,15 @@ foreign export ccall haskellOnPermissionResult :: Ptr AppContext -> CInt -> CInt
 
 -- | Handle a BLE scan result from native code. Dispatches to the
 -- callback registered by 'Hatter.Ble.startBleScan'.
-haskellOnBleScanResult :: Ptr AppContext -> CString -> CString -> CInt -> IO ()
-haskellOnBleScanResult ctxPtr cName cAddr cRssi =
+haskellOnBleScanResult
+  :: Ptr AppContext -> CString -> CString -> CInt -> Ptr Word8 -> CInt -> IO ()
+haskellOnBleScanResult ctxPtr cName cAddr cRssi advPtr advLength =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
-    dispatchBleScanResult (acBleState appCtx) cName cAddr cRssi
+    dispatchBleScanResult (acBleState appCtx) cName cAddr cRssi advPtr advLength
 
-foreign export ccall haskellOnBleScanResult :: Ptr AppContext -> CString -> CString -> CInt -> IO ()
+foreign export ccall haskellOnBleScanResult
+  :: Ptr AppContext -> CString -> CString -> CInt -> Ptr Word8 -> CInt -> IO ()
 
 -- | Handle a BLE connection event from native code. Decodes the C
 -- event code here at the FFI boundary so 'dispatchBleConnectionEvent'

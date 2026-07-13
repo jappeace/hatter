@@ -102,6 +102,7 @@ library
       Hatter.Permission
       Hatter.SecureStorage
       Hatter.Ble
+      Hatter.BleAdvertisement
       Hatter.Dialog
       Hatter.Location
       Hatter.AuthSession

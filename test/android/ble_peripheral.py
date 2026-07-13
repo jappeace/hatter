@@ -89,6 +89,9 @@ async def run_peripheral(transport_name):
                 ],
             )
         )
+        # The 0xFEED service data entry (payload 2A 63) exercises the
+        # advertisement-payload path: the BLE test asserts the bytes
+        # arrive parsed in Haskell (Hatter.BleAdvertisement).
         device.advertising_data = bytes(
             AdvertisingData(
                 [
@@ -96,6 +99,10 @@ async def run_peripheral(transport_name):
                     (
                         AdvertisingData.COMPLETE_LIST_OF_128_BIT_SERVICE_CLASS_UUIDS,
                         UUID(TEST_SERVICE_UUID).to_bytes(),
+                    ),
+                    (
+                        AdvertisingData.SERVICE_DATA_16_BIT_UUID,
+                        bytes([0xED, 0xFE, 0x2A, 0x63]),
                     ),
                 ]
             )

@@ -99,7 +99,8 @@ extern void haskellOnUITextChange(void *ctx, int callbackId, const char *text);
 extern void haskellOnPermissionResult(void *ctx, int32_t requestId, int32_t statusCode);
 extern void haskellOnSecureStorageResult(void *ctx, int32_t requestId,
                                           int32_t statusCode, const char *value);
-extern void haskellOnBleScanResult(void *ctx, const char *name, const char *address, int32_t rssi);
+extern void haskellOnBleScanResult(void *ctx, const char *name, const char *address, int32_t rssi,
+                                   const uint8_t *advertisement, int32_t advertisement_length);
 extern void haskellOnDialogResult(void *ctx, int32_t requestId, int32_t actionCode);
 extern void haskellOnLocationUpdate(void *ctx, double lat, double lon, double alt, double acc);
 extern void haskellOnAuthSessionResult(void *ctx, int32_t requestId,
