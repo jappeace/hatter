@@ -61,7 +61,13 @@ jobs:
   # hence the long timeout.
   macos-apk:
     runs-on: macos-15-intel
-    timeout-minutes: 120
+    # 180 rather than 120: cross packages missing from
+    # nix-cache.jappie.me get built inside the TCG-emulated VM on
+    # every run (its store is ephemeral, the host cache cannot help),
+    # and the new uuid-types closure (PR #239) blew the 120-minute
+    # budget at exactly 2h00m (run 29272233710). Once the cache
+    # carries the closure this job returns to ~45 minutes.
+    timeout-minutes: 180
     steps:
     - uses: actions/checkout@v4
     - uses: cachix/install-nix-action@v31
