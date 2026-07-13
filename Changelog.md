@@ -8,7 +8,8 @@
   manufacturer data (issue #238): `BleScanResult` gained
   `bsrAdvertisement`, parsed by the new `Hatter.BleAdvertisement`
   module (re-exported from `Hatter.Ble`) with `serviceDataForUuid`
-  for keyed lookup. Android passes `ScanRecord.getBytes()` through
+  for keyed lookup; service data is keyed by `NormalizedBleUuid`,
+  which moved into that module. Android passes `ScanRecord.getBytes()` through
   the bridge; iOS re-encodes CoreBluetooth's parsed dictionary into
   the same AD structure format. This unblocks identifying devices
   that only advertise service data (e.g. KBeacons' 0x2080) or

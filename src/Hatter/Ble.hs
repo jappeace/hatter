@@ -28,7 +28,6 @@ module Hatter.Ble
   , BleDeviceAddress(..)
   , BleServiceUuid(..)
   , BleCharacteristicUuid(..)
-  , NormalizedBleUuid(..)
   , BleCharacteristicKey(..)
   , BleCharacteristicValue(..)
   , BleMtu(..)
@@ -117,24 +116,6 @@ newtype BleServiceUuid = BleServiceUuid { unBleServiceUuid :: Text }
 newtype BleCharacteristicUuid = BleCharacteristicUuid { unBleCharacteristicUuid :: Text }
   deriving (Show, Eq, Ord)
   deriving newtype (IsString)
-
--- | A UUID string normalized to lowercase for comparisons.  UUIDs are
--- case-insensitive per the Bluetooth spec, but the platforms disagree
--- on the case they report (Android lowercase, iOS uppercase), so raw
--- strings must never be compared directly.  Constructed via
--- 'normalizeBleServiceUuid' \/ 'normalizeBleCharacteristicUuid';
--- deliberately no 'IsString' instance, a literal would bypass the
--- normalization.
---
--- Decision: case-insensitivity is a dedicated normalized newtype
--- built only through smart constructors.  Alternatives considered:
--- lowercasing ad hoc at each comparison site (error-prone, exactly
--- how the original subscribe\/notify mismatch bug happened), and a
--- case-insensitive 'Ord' on the raw UUID newtypes (invisible at use
--- sites and surprising for anyone sorting or printing them).  A type
--- that cannot exist un-normalized makes the mistake unrepresentable.
-newtype NormalizedBleUuid = NormalizedBleUuid { unNormalizedBleUuid :: Text }
-  deriving (Show, Eq, Ord)
 
 -- | Identifies one characteristic on the connected device: its
 -- containing service and its own UUID, case-normalized so lookups

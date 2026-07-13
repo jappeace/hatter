@@ -40,6 +40,7 @@ import Hatter.Ble
   ( BleState(..)
   , BleScanResult(..)
   , BleAdvertisement(..)
+  , NormalizedBleUuid(..)
   , BleDeviceAddress(..)
   , BleServiceUuid(..)
   , BleCharacteristicUuid(..)
@@ -179,7 +180,7 @@ logAndRememberScanResult :: IORef (Maybe BleDeviceAddress) -> BleScanResult -> I
 logAndRememberScanResult lastAddressRef scanResult = do
   platformLog ("BLE scan result: " <> pack (show scanResult))
   mapM_ (\(uuid, payload) ->
-      platformLog ("BLE adv service data: " <> uuid
+      platformLog ("BLE adv service data: " <> unNormalizedBleUuid uuid
         <> "=" <> pack (show (BS.unpack payload))))
     (advServiceData (bsrAdvertisement scanResult))
   writeIORef lastAddressRef (Just (bsrDeviceAddress scanResult))

@@ -66,6 +66,7 @@ import Hatter.Ble
   , BleGattCompletion(..)
   , BleState(..)
   , BleAdvertisement(..)
+  , NormalizedBleUuid(..)
   , ManufacturerId(..)
   , emptyBleAdvertisement
   , parseBleAdvertisement
@@ -526,7 +527,7 @@ bleTests ffiBleState = testGroup "BLE"
           (BS.pack [0x02, 0x01, 0x06, 0x05, 0x16, 0xED, 0xFE, 0x2A, 0x63])
         @?= BleAdvertisement
           { advServiceData =
-              [("0000feed-0000-1000-8000-00805f9b34fb", BS.pack [0x2A, 0x63])]
+              [(NormalizedBleUuid "0000feed-0000-1000-8000-00805f9b34fb", BS.pack [0x2A, 0x63])]
           , advManufacturerData = []
           }
 
@@ -542,7 +543,7 @@ bleTests ffiBleState = testGroup "BLE"
             ])
         @?= BleAdvertisement
           { advServiceData =
-              [("50db505c-8ac4-4738-8448-3b1d9cc09cc5", BS.pack [0x7F])]
+              [(NormalizedBleUuid "50db505c-8ac4-4738-8448-3b1d9cc09cc5", BS.pack [0x7F])]
           , advManufacturerData = []
           }
 
@@ -563,8 +564,8 @@ bleTests ffiBleState = testGroup "BLE"
             ])
         @?= BleAdvertisement
           { advServiceData =
-              [ ("0000feaa-0000-1000-8000-00805f9b34fb", BS.pack [0x01])
-              , ("00002080-0000-1000-8000-00805f9b34fb", BS.pack [0x02])
+              [ (NormalizedBleUuid "0000feaa-0000-1000-8000-00805f9b34fb", BS.pack [0x01])
+              , (NormalizedBleUuid "00002080-0000-1000-8000-00805f9b34fb", BS.pack [0x02])
               ]
           , advManufacturerData = [(ManufacturerId 0x004C, BS.empty)]
           }
@@ -576,7 +577,7 @@ bleTests ffiBleState = testGroup "BLE"
           (BS.pack [0x05, 0x16, 0xED, 0xFE, 0x2A, 0x63, 0x00, 0x00, 0x00, 0x00])
         @?= BleAdvertisement
           { advServiceData =
-              [("0000feed-0000-1000-8000-00805f9b34fb", BS.pack [0x2A, 0x63])]
+              [(NormalizedBleUuid "0000feed-0000-1000-8000-00805f9b34fb", BS.pack [0x2A, 0x63])]
           , advManufacturerData = []
           }
 
