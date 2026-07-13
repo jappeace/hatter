@@ -68,6 +68,8 @@ parseBleAdvertisement bytes =
     Nothing -> emptyBleAdvertisement
     Just (lengthByte, afterLength) ->
       let structureLength = Word8.toInt lengthByte
+      -- The zero check also guards the recursion: a zero-length
+      -- structure would drop zero bytes and loop here forever.
       in if lengthByte == 0 || BS.length afterLength < structureLength
         then emptyBleAdvertisement
         else
