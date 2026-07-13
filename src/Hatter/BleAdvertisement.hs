@@ -18,6 +18,7 @@ module Hatter.BleAdvertisement
   , ManufacturerId(..)
   , AdvertisementParseError(..)
   , AdvertisementParseErrors(..)
+  , AdStructureOffset(..)
   , emptyBleAdvertisement
   , parseBleAdvertisement
   , serviceDataForUuid
@@ -68,27 +69,31 @@ data BleAdvertisement = BleAdvertisement
 newtype ManufacturerId = ManufacturerId { unManufacturerId :: Word16 }
   deriving (Show, Eq, Ord)
 
--- | One malformed AD structure: what failed, why, and where (every
--- constructor carries the byte offset of the offending structure's
--- length byte within the raw advertisement).
+-- | Byte offset of an AD structure's length byte within the raw
+-- advertisement: every parse error carries one, so a defect points
+-- at the exact spot in the bytes.
+newtype AdStructureOffset = AdStructureOffset { unAdStructureOffset :: Int }
+  deriving (Show, Eq)
+
+-- | One malformed AD structure: what failed, why, and where.
 data AdvertisementParseError
   = -- | A structure declares more bytes than the advertisement still
     -- holds, so it (and anything after it) cannot be framed.
     AdStructureTruncated
-      Int -- ^ Byte offset of the structure's length byte.
+      AdStructureOffset -- ^ Where the structure starts.
       Int -- ^ Length the structure declares.
       Int -- ^ Bytes actually remaining after the length byte.
   | -- | A service data structure too short to hold the UUID its AD
     -- type promises.
     ServiceDataUuidTruncated
-      Int   -- ^ Byte offset of the structure's length byte.
+      AdStructureOffset -- ^ Where the structure starts.
       Word8 -- ^ The AD type (0x16, 0x20 or 0x21).
       Int   -- ^ UUID width in bytes that AD type requires.
       Int   -- ^ Bytes the structure actually carries after the type.
   | -- | A manufacturer data structure too short to hold the 2-byte
     -- company identifier.
     ManufacturerDataTooShort
-      Int -- ^ Byte offset of the structure's length byte.
+      AdStructureOffset -- ^ Where the structure starts.
       Int -- ^ Bytes the structure actually carries after the type.
   deriving (Show, Eq)
 
@@ -121,7 +126,7 @@ emptyBleAdvertisement = BleAdvertisement
 -- hides the device that sent it.
 parseBleAdvertisement :: ByteString -> Either AdvertisementParseErrors BleAdvertisement
 parseBleAdvertisement bytes =
-  case parseAdStructuresFrom 0 bytes of
+  case parseAdStructuresFrom (AdStructureOffset 0) bytes of
     (advertisement, []) -> Right advertisement
     (_, firstDefect : moreDefects) ->
       Left (AdvertisementParseErrors (firstDefect :| moreDefects))
@@ -130,7 +135,8 @@ parseBleAdvertisement bytes =
 -- every defect, with the byte offset threaded through for the error
 -- reports. A truncated structure ends the walk (framing is lost); a
 -- defect inside a well-framed structure skips only that structure.
-parseAdStructuresFrom :: Int -> ByteString -> (BleAdvertisement, [AdvertisementParseError])
+parseAdStructuresFrom
+  :: AdStructureOffset -> ByteString -> (BleAdvertisement, [AdvertisementParseError])
 parseAdStructuresFrom offset bytes =
   case BS.uncons bytes of
     Nothing -> (emptyBleAdvertisement, [])
@@ -150,7 +156,7 @@ parseAdStructuresFrom offset bytes =
             let adType = BS.index afterLength 0
                 payload = BS.take (structureLength - 1) (BS.drop 1 afterLength)
                 (restAdvertisement, restDefects) =
-                  parseAdStructuresFrom (offset + 1 + structureLength)
+                  parseAdStructuresFrom (nextStructureOffset offset structureLength)
                     (BS.drop structureLength afterLength)
             in case addAdStructure offset adType payload restAdvertisement of
               Right grown -> (grown, restDefects)
@@ -164,7 +170,7 @@ parseAdStructuresFrom offset bytes =
 -- service-class UUID lists), not defects: the platforms already
 -- deliver the name and the rest carries no payload.
 addAdStructure
-  :: Int
+  :: AdStructureOffset
   -> Word8
   -> ByteString
   -> BleAdvertisement
@@ -180,7 +186,7 @@ addAdStructure offset adType payload advertisement = if
 -- byte width, then the payload. A structure too short to hold its
 -- UUID is reported with the widths involved.
 addServiceData
-  :: Int
+  :: AdStructureOffset
   -> Word8
   -> Int
   -> ByteString
@@ -199,7 +205,7 @@ addServiceData offset adType uuidWidth payload advertisement =
 -- identifier, then the payload. A structure too short to hold the
 -- company identifier is reported with its actual size.
 addManufacturerData
-  :: Int
+  :: AdStructureOffset
   -> ByteString
   -> BleAdvertisement
   -> Either AdvertisementParseError BleAdvertisement
@@ -213,6 +219,12 @@ addManufacturerData offset payload advertisement =
       in Right advertisement { advManufacturerData =
            (ManufacturerId companyId, dataBytes)
              : advManufacturerData advertisement }
+
+-- | The offset of the structure after the current one: past the
+-- length byte and the bytes it declares.
+nextStructureOffset :: AdStructureOffset -> Int -> AdStructureOffset
+nextStructureOffset (AdStructureOffset offset) structureLength =
+  AdStructureOffset (offset + 1 + structureLength)
 
 -- | Look up a service data payload by UUID text
 -- (case-insensitively). Accepts the same 128-bit form used across

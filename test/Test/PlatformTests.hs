@@ -71,6 +71,7 @@ import Hatter.Ble
   , ManufacturerId(..)
   , AdvertisementParseError(..)
   , AdvertisementParseErrors(..)
+  , AdStructureOffset(..)
   , emptyBleAdvertisement
   , parseBleAdvertisement
   , serviceDataForUuid
@@ -589,7 +590,7 @@ bleTests ffiBleState = testGroup "BLE"
       -- bytes but only 3 follow.
       parseBleAdvertisement
           (BS.pack [0x04, 0xFF, 0x53, 0x0A, 0x21, 0x09, 0x16, 0xED, 0xFE])
-        @?= Left (AdvertisementParseErrors (AdStructureTruncated 5 9 3 :| []))
+        @?= Left (AdvertisementParseErrors (AdStructureTruncated (AdStructureOffset 5) 9 3 :| []))
 
   , testCase "parseBleAdvertisement accumulates every defect" $
       -- Service data too short for its 16-bit UUID at offset 0, then
@@ -597,8 +598,8 @@ bleTests ffiBleState = testGroup "BLE"
       parseBleAdvertisement
           (BS.pack [0x02, 0x16, 0xED, 0x02, 0xFF, 0x53])
         @?= Left (AdvertisementParseErrors
-              (ServiceDataUuidTruncated 0 0x16 2 1
-                :| [ManufacturerDataTooShort 3 1]))
+              (ServiceDataUuidTruncated (AdStructureOffset 0) 0x16 2 1
+                :| [ManufacturerDataTooShort (AdStructureOffset 3) 1]))
 
   , testCase "serviceDataForUuid is case-insensitive" $ do
       let parsed = parseBleAdvertisement
