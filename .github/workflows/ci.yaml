@@ -167,9 +167,10 @@ jobs:
     # 70 rather than 45: like the android job, this only READS
     # nix-cache.jappie.me, so a ghc-options change builds cold until
     # the cache is fed externally, and the leftover budget must still
-    # fit the simulator test (which is also the #235 flake); runs
-    # 29334286560 and 29344658446 both lost the simulator test to the
-    # 45-minute cutoff after cold-ish builds.
+    # fit the simulator test (which is also the #235 flake). The
+    # cutoff has eaten the simulator test after a successful build
+    # twice (run 29281533228 on #239, run 29344658446 on #244) and
+    # once mid-compile before that (9dcf105).
     timeout-minutes: 70
     steps:
     - uses: actions/checkout@v4
