@@ -6,8 +6,10 @@
 
 - Scan results now carry the advertisement's service data and
   manufacturer data (issue #238): `BleScanResult` gained
-  `bsrAdvertisement :: Either AdvertisementParseErrors
-  BleAdvertisement`, parsed by the new `Hatter.BleAdvertisement`
+  `bsrAdvertisement :: Either BleAdvertisementWithErrors
+  BleAdvertisement` (the Left carries every defect found alongside
+  the salvaged partial advertisement, since AD structures are
+  independent), parsed by the new `Hatter.BleAdvertisement`
   module (re-exported from `Hatter.Ble`) with `serviceDataForUuid`
   for keyed lookup; service data is keyed by the binary `UUID` from
   `uuid-types` (constants build with the total `fromWords`), so

@@ -161,9 +161,10 @@ data BleScanResult = BleScanResult
   { bsrDeviceName    :: Text
   , bsrDeviceAddress :: BleDeviceAddress
   , bsrRssi          :: Int
-  , bsrAdvertisement :: Either AdvertisementParseErrors BleAdvertisement
+  , bsrAdvertisement :: Either BleAdvertisementWithErrors BleAdvertisement
     -- ^ Service data and manufacturer data broadcast in the
-    -- advertisement, or every defect found in a malformed one, see
+    -- advertisement; a malformed advertisement delivers every defect
+    -- found alongside the salvaged partial advertisement, see
     -- "Hatter.BleAdvertisement". 'dispatchBleScanResult' has already
     -- logged the defects; they are passed on so applications can
     -- also surface them.
@@ -620,9 +621,10 @@ dispatchBleScanResult bleState cName cAddr cRssi advPtr advLength = do
       -- device sent them) but still deliver the scan result: a
       -- garbled advertisement must never hide the device.
       case parsedAdvertisement of
-        Left defects -> hPutStrLn stderr
+        Left withErrors -> hPutStrLn stderr
           ("dispatchBleScanResult: malformed advertisement from "
-            ++ unpack addrStr ++ ": " ++ show defects)
+            ++ unpack addrStr ++ ": "
+            ++ show (advertisementParseErrors withErrors))
         Right _ -> pure ()
       callback BleScanResult
         { bsrDeviceName    = nameStr

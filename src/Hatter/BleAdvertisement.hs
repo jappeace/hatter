@@ -14,6 +14,7 @@
 -- parser is the single decoding path for both platforms.
 module Hatter.BleAdvertisement
   ( BleAdvertisement(..)
+  , BleAdvertisementWithErrors(..)
   , UUID
   , ManufacturerId(..)
   , AdvertisementParseError(..)
@@ -109,6 +110,15 @@ newtype AdvertisementParseErrors = AdvertisementParseErrors
   { unAdvertisementParseErrors :: NonEmpty AdvertisementParseError }
   deriving (Show, Eq)
 
+-- | A parse that found defects, without discarding the salvage: AD
+-- structures are independent, so the partial advertisement carries
+-- every structure that still parsed. It is only empty when the very
+-- first structure was truncated or every structure was defective.
+data BleAdvertisementWithErrors = BleAdvertisementWithErrors
+  { partialAdvertisement :: BleAdvertisement
+  , advertisementParseErrors :: AdvertisementParseErrors
+  } deriving (Show, Eq)
+
 -- | An advertisement carrying no service or manufacturer data (also
 -- what desktop's stubbed scan and payload-less advertisements parse
 -- to).
@@ -128,15 +138,21 @@ emptyBleAdvertisement = BleAdvertisement
 -- want to know what fails, why and where (each error carries its
 -- byte offset and the sizes involved), and the bytes come off the
 -- air from arbitrary third-party devices, so defects WILL occur in
--- the field. The scan dispatch in "Hatter.Ble" logs the defects and
--- still delivers the scan result, so a garbled advertisement never
--- hides the device that sent it.
-parseBleAdvertisement :: ByteString -> Either AdvertisementParseErrors BleAdvertisement
+-- the field. The Left still carries the salvaged partial
+-- advertisement ('BleAdvertisementWithErrors'): the link layer's CRC
+-- already dropped radio corruption, so a defect here is a firmware
+-- quirk in one structure and the well-formed rest remains
+-- trustworthy (a beacon with one garbled structure must not lose its
+-- valid service data). The scan dispatch in "Hatter.Ble" logs the
+-- defects and still delivers the scan result, so a garbled
+-- advertisement never hides the device that sent it.
+parseBleAdvertisement :: ByteString -> Either BleAdvertisementWithErrors BleAdvertisement
 parseBleAdvertisement bytes =
   case parseAdStructuresFrom (AdStructureOffset 0) bytes of
     (advertisement, []) -> Right advertisement
-    (_, firstDefect : moreDefects) ->
-      Left (AdvertisementParseErrors (firstDefect :| moreDefects))
+    (advertisement, firstDefect : moreDefects) ->
+      Left (BleAdvertisementWithErrors advertisement
+        (AdvertisementParseErrors (firstDefect :| moreDefects)))
 
 -- | Walk the AD structures, accumulating both the parsed entries and
 -- every defect, with the byte offset threaded through for the error

@@ -71,6 +71,7 @@ import Hatter.Ble
   , ManufacturerId(..)
   , AdvertisementParseError(..)
   , AdvertisementParseErrors(..)
+  , BleAdvertisementWithErrors(..)
   , AdStructureOffset(..)
   , AdStructureTruncation(..)
   , ServiceDataTruncation(..)
@@ -593,40 +594,68 @@ bleTests ffiBleState = testGroup "BLE"
           , advManufacturerData = []
           }
 
-  , testCase "parseBleAdvertisement reports a truncated structure with its offset" $
+  , testCase "a truncated structure reports its offset and keeps the salvage" $
       -- The second structure (length byte at offset 5) claims 9
-      -- bytes but only 3 follow.
+      -- bytes but only 3 follow; the well-formed manufacturer data
+      -- before it survives in the partial advertisement.
       parseBleAdvertisement
           (BS.pack [0x04, 0xFF, 0x53, 0x0A, 0x21, 0x09, 0x16, 0xED, 0xFE])
-        @?= Left (AdvertisementParseErrors (AdStructureTruncated (AdStructureTruncation (AdStructureOffset 5) 9 3) :| []))
+        @?= Left BleAdvertisementWithErrors
+          { partialAdvertisement = BleAdvertisement
+              { advServiceData = []
+              , advManufacturerData = [(ManufacturerId 0x0A53, BS.pack [0x21])]
+              }
+          , advertisementParseErrors = AdvertisementParseErrors
+              (AdStructureTruncated (AdStructureTruncation (AdStructureOffset 5) 9 3) :| [])
+          }
+
+  , testCase "a mid-stream defect keeps the structures around it" $
+      -- Defective service data first, valid manufacturer data after:
+      -- the defect skips only its own structure.
+      parseBleAdvertisement
+          (BS.pack [0x02, 0x16, 0xED, 0x04, 0xFF, 0x53, 0x0A, 0x21])
+        @?= Left BleAdvertisementWithErrors
+          { partialAdvertisement = BleAdvertisement
+              { advServiceData = []
+              , advManufacturerData = [(ManufacturerId 0x0A53, BS.pack [0x21])]
+              }
+          , advertisementParseErrors = AdvertisementParseErrors
+              (ServiceDataUuidTruncated
+                 (ServiceDataTruncation (AdStructureOffset 0) 0x16 2 1) :| [])
+          }
 
   , testCase "a truncated 128-bit service data UUID never passes as narrower" $ do
       -- A 0x21 structure promises a 16-byte UUID; truncated to two
       -- bytes it must NOT parse as the 16-bit UUID those bytes spell
       -- (regression: [0x80, 0x20] would otherwise read as 0x2080).
       parseBleAdvertisement (BS.pack [0x03, 0x21, 0x80, 0x20])
-        @?= Left (AdvertisementParseErrors
-              (ServiceDataUuidTruncated
-                 (ServiceDataTruncation (AdStructureOffset 0) 0x21 16 2) :| []))
+        @?= Left (BleAdvertisementWithErrors emptyBleAdvertisement
+              (AdvertisementParseErrors
+                (ServiceDataUuidTruncated
+                   (ServiceDataTruncation (AdStructureOffset 0) 0x21 16 2) :| [])))
       parseBleAdvertisement (BS.pack [0x05, 0x21, 0x01, 0x02, 0x03, 0x04])
-        @?= Left (AdvertisementParseErrors
-              (ServiceDataUuidTruncated
-                 (ServiceDataTruncation (AdStructureOffset 0) 0x21 16 4) :| []))
+        @?= Left (BleAdvertisementWithErrors emptyBleAdvertisement
+              (AdvertisementParseErrors
+                (ServiceDataUuidTruncated
+                   (ServiceDataTruncation (AdStructureOffset 0) 0x21 16 4) :| [])))
       parseBleAdvertisement (BS.pack [0x03, 0x20, 0x80, 0x20])
-        @?= Left (AdvertisementParseErrors
-              (ServiceDataUuidTruncated
-                 (ServiceDataTruncation (AdStructureOffset 0) 0x20 4 2) :| []))
+        @?= Left (BleAdvertisementWithErrors emptyBleAdvertisement
+              (AdvertisementParseErrors
+                (ServiceDataUuidTruncated
+                   (ServiceDataTruncation (AdStructureOffset 0) 0x20 4 2) :| [])))
 
   , testCase "parseBleAdvertisement accumulates every defect" $
       -- Service data too short for its 16-bit UUID at offset 0, then
-      -- manufacturer data too short for its company id at offset 3.
+      -- manufacturer data too short for its company id at offset 3:
+      -- all structures defective, so the salvage is empty.
       parseBleAdvertisement
           (BS.pack [0x02, 0x16, 0xED, 0x02, 0xFF, 0x53])
-        @?= Left (AdvertisementParseErrors
-              (ServiceDataUuidTruncated
-                  (ServiceDataTruncation (AdStructureOffset 0) 0x16 2 1)
-                :| [ManufacturerDataTooShort
-                     (ManufacturerDataTruncation (AdStructureOffset 3) 1)]))
+        @?= Left (BleAdvertisementWithErrors emptyBleAdvertisement
+              (AdvertisementParseErrors
+                (ServiceDataUuidTruncated
+                    (ServiceDataTruncation (AdStructureOffset 0) 0x16 2 1)
+                  :| [ManufacturerDataTooShort
+                       (ManufacturerDataTruncation (AdStructureOffset 3) 1)])))
 
   , testCase "serviceDataForUuid keys on the UUID value" $ do
       let parsed = parseBleAdvertisement
