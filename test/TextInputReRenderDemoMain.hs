@@ -47,10 +47,12 @@ textInputReRenderView typedRef onChange = do
         , tiValue      = typed
         , tiOnChange   = onChange
         , tiFontConfig = Nothing
+        , tiTextColor  = Nothing
         , tiAutoFocus  = True
         }
     , Text TextConfig
         { tcLabel      = displayLabel
         , tcFontConfig = Nothing
+        , tcTextColor = Nothing
         }
     ]

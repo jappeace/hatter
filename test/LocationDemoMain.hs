@@ -58,9 +58,9 @@ main = do
 -- | Builds a Column with a label and start/stop location buttons.
 locationDemoView :: Action -> Action -> IO Widget
 locationDemoView onStartLocation onStopLocation = pure $ column
-  [ Text TextConfig { tcLabel = "Location Demo", tcFontConfig = Nothing }
+  [ Text TextConfig { tcLabel = "Location Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
   , Button ButtonConfig
-      { bcLabel = "Start Location", bcAction = onStartLocation, bcFontConfig = Nothing }
+      { bcLabel = "Start Location", bcAction = onStartLocation, bcFontConfig = Nothing, bcTextColor = Nothing }
   , Button ButtonConfig
-      { bcLabel = "Stop Location", bcAction = onStopLocation, bcFontConfig = Nothing }
+      { bcLabel = "Stop Location", bcAction = onStopLocation, bcFontConfig = Nothing, bcTextColor = Nothing }
   ]

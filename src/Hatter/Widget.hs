@@ -61,6 +61,7 @@ module Hatter.Widget
   , scrollColumn
   , scrollRow
   , text
+  , coloredText
   , stack
   )
 where
@@ -89,6 +90,13 @@ data TextConfig = TextConfig
     -- ^ The text content to display.
   , tcFontConfig :: Maybe FontConfig
     -- ^ Optional font override.
+  , tcTextColor  :: Maybe Color
+    -- ^ Optional text color. Lives on the text-bearing configs (like
+    -- 'tcFontConfig') rather than in 'WidgetStyle', so a text color
+    -- can never be attached to a container node, where it would
+    -- silently change nothing (issue #242). Like the font override,
+    -- a previously set color stays on the native node until another
+    -- color replaces it.
   } deriving (Show, Eq)
 
 -- | Configuration for a tappable button.
@@ -99,6 +107,8 @@ data ButtonConfig = ButtonConfig
     -- ^ Handle for the callback fired when the button is tapped.
   , bcFontConfig :: Maybe FontConfig
     -- ^ Optional font override.
+  , bcTextColor  :: Maybe Color
+    -- ^ Optional label color, see 'tcTextColor'.
   } deriving (Show, Eq)
 
 -- | The kind of on-screen keyboard to show for a 'TextInput'.
@@ -120,6 +130,8 @@ data TextInputConfig = TextInputConfig
     -- ^ Handle for the callback fired when the user edits the field.
   , tiFontConfig :: Maybe FontConfig
     -- ^ Optional font override.
+  , tiTextColor  :: Maybe Color
+    -- ^ Optional text color, see 'tcTextColor'.
   , tiAutoFocus  :: Bool
     -- ^ Whether this input should receive focus when rendered.
     -- On Android, defers @requestFocus()@ via @View.post()@ to ensure the
@@ -179,8 +191,6 @@ data WidgetStyle = WidgetStyle
     -- ^ Uniform padding in platform-native units (px on Android, pt on iOS).
   , wsTextAlign       :: Maybe TextAlignment
     -- ^ Horizontal text alignment override.
-  , wsTextColor       :: Maybe Color
-    -- ^ Text color.
   , wsBackgroundColor :: Maybe Color
     -- ^ Background color.
   , wsTranslateX      :: Maybe Double
@@ -204,7 +214,6 @@ defaultStyle :: WidgetStyle
 defaultStyle = WidgetStyle
   { wsPadding          = Nothing
   , wsTextAlign        = Nothing
-  , wsTextColor        = Nothing
   , wsBackgroundColor  = Nothing
   , wsTranslateX       = Nothing
   , wsTranslateY       = Nothing
@@ -313,7 +322,6 @@ lerpStyle :: Double -> WidgetStyle -> WidgetStyle -> WidgetStyle
 lerpStyle t from to = WidgetStyle
   { wsPadding          = lerpMaybeDouble (wsPadding from) (wsPadding to)
   , wsTextAlign        = snapMaybe (wsTextAlign from) (wsTextAlign to)
-  , wsTextColor        = lerpMaybeColor (wsTextColor from) (wsTextColor to)
   , wsBackgroundColor  = lerpMaybeColor (wsBackgroundColor from) (wsBackgroundColor to)
   , wsTranslateX       = lerpMaybeDouble (wsTranslateX from) (wsTranslateX to)
   , wsTranslateY       = lerpMaybeDouble (wsTranslateY from) (wsTranslateY to)
@@ -488,10 +496,16 @@ data LayoutSettings = LayoutSettings
   } deriving (Show, Eq)
 
 text :: Text -> Widget
-text txt = Text $ TextConfig { tcLabel =  txt, tcFontConfig = Nothing }
+text txt = Text $ TextConfig { tcLabel = txt, tcFontConfig = Nothing, tcTextColor = Nothing }
+
+-- | Build a read-only text label with a text color.
+coloredText :: Color -> Text -> Widget
+coloredText color txt =
+  Text $ TextConfig { tcLabel = txt, tcFontConfig = Nothing, tcTextColor = Just color }
 
 button :: Text -> Action -> Widget
-button txt action = Button $ ButtonConfig { bcLabel = txt, bcAction = action, bcFontConfig = Nothing }
+button txt action = Button $ ButtonConfig
+  { bcLabel = txt, bcAction = action, bcFontConfig = Nothing, bcTextColor = Nothing }
 
 -- | Wrap a widget in a 'LayoutItem' with no explicit key.
 -- The diff algorithm will use the child's list index as its key.

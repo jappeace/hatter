@@ -27,13 +27,14 @@ main = do
 -- | Builds a Column with a label and two TextInputs of different InputType.
 textInputDemoView :: OnChange -> OnChange -> IO Widget
 textInputDemoView onWeightChange onNameChange = pure $ column
-  [ Text TextConfig { tcLabel = "TextInput Demo", tcFontConfig = Nothing }
+  [ Text TextConfig { tcLabel = "TextInput Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
   , TextInput TextInputConfig
       { tiInputType  = InputNumber
       , tiHint       = "enter weight (kg)"
       , tiValue      = ""
       , tiOnChange   = onWeightChange
       , tiFontConfig = Nothing
+      , tiTextColor  = Nothing
       , tiAutoFocus  = True
       }
   , TextInput TextInputConfig
@@ -42,6 +43,7 @@ textInputDemoView onWeightChange onNameChange = pure $ column
       , tiValue      = ""
       , tiOnChange   = onNameChange
       , tiFontConfig = Nothing
+      , tiTextColor  = Nothing
       , tiAutoFocus  = False
       }
   ]

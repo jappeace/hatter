@@ -66,15 +66,17 @@ main = do
 -- | Builds a Column with a label, a "Show Alert" button, and a "Show Confirm" button.
 dialogDemoView :: Action -> Action -> IO Widget
 dialogDemoView onShowAlert onShowConfirm = pure $ column
-  [ Text TextConfig { tcLabel = "Dialog Demo", tcFontConfig = Nothing }
+  [ Text TextConfig { tcLabel = "Dialog Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
   , Button ButtonConfig
       { bcLabel      = "Show Alert"
       , bcAction     = onShowAlert
       , bcFontConfig = Nothing
+      , bcTextColor = Nothing
       }
   , Button ButtonConfig
       { bcLabel      = "Show Confirm"
       , bcAction     = onShowConfirm
       , bcFontConfig = Nothing
+      , bcTextColor = Nothing
       }
   ]

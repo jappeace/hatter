@@ -50,7 +50,7 @@ webViewDemoView :: IORef String -> Action -> Action -> UserState -> IO Widget
 webViewDemoView urlRef onPageLoad onLoadExampleOrg _userState = do
   currentUrl <- readIORef urlRef
   pure $ column
-    [ Text TextConfig { tcLabel = "WebView Demo", tcFontConfig = Nothing }
+    [ Text TextConfig { tcLabel = "WebView Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
     , WebView WebViewConfig
         { wvUrl = pack currentUrl
         , wvOnPageLoad = Just onPageLoad
@@ -59,5 +59,6 @@ webViewDemoView urlRef onPageLoad onLoadExampleOrg _userState = do
         { bcLabel = "Load example.org"
         , bcAction = onLoadExampleOrg
         , bcFontConfig = Nothing
+        , bcTextColor = Nothing
         }
     ]

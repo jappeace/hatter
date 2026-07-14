@@ -24,7 +24,7 @@ main = do
 -- | Builds a Column with a label and three Image widgets (resource, data, file).
 imageDemoView :: IO Widget
 imageDemoView = pure $ column
-  [ Text TextConfig { tcLabel = "Image Demo", tcFontConfig = Nothing }
+  [ Text TextConfig { tcLabel = "Image Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
   , Image ImageConfig
       { icSource    = ImageResource (ResourceName "ic_launcher")
       , icScaleType = ScaleFit

@@ -43,7 +43,7 @@ main = do
 mapViewDemoView :: OnChange -> UserState -> IO Widget
 mapViewDemoView onRegionChange _userState =
   pure $ column
-    [ Text TextConfig { tcLabel = "MapView Demo", tcFontConfig = Nothing }
+    [ Text TextConfig { tcLabel = "MapView Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
     , MapView MapViewConfig
         { mvLatitude         = 52.3676
         , mvLongitude        = 4.9041

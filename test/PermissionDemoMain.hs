@@ -44,10 +44,11 @@ main = do
 -- | Builds a Column with a label and a "Request Camera" button.
 permissionDemoView :: Action -> IO Widget
 permissionDemoView onRequestCamera = pure $ column
-  [ Text TextConfig { tcLabel = "Permission Demo", tcFontConfig = Nothing }
+  [ Text TextConfig { tcLabel = "Permission Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
   , Button ButtonConfig
       { bcLabel      = "Request Camera"
       , bcAction     = onRequestCamera
       , bcFontConfig = Nothing
+      , bcTextColor = Nothing
       }
   ]

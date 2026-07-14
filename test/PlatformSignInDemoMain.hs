@@ -74,15 +74,17 @@ main = do
 -- | Builds a Column with a label and two sign-in buttons.
 platformSignInDemoView :: Action -> Action -> IO Widget
 platformSignInDemoView onAppleSignIn onGoogleSignIn = pure $ column
-  [ Text TextConfig { tcLabel = "PlatformSignIn Demo", tcFontConfig = Nothing }
+  [ Text TextConfig { tcLabel = "PlatformSignIn Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
   , Button ButtonConfig
       { bcLabel      = "Sign in with Apple"
       , bcAction     = onAppleSignIn
       , bcFontConfig = Nothing
+      , bcTextColor = Nothing
       }
   , Button ButtonConfig
       { bcLabel      = "Sign in with Google"
       , bcAction     = onGoogleSignIn
       , bcFontConfig = Nothing
+      , bcTextColor = Nothing
       }
   ]

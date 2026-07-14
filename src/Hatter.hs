@@ -305,15 +305,18 @@ errorWidget dismissAction exc = column
   [ Text TextConfig
       { tcLabel      = "An error occurred"
       , tcFontConfig = Just (FontConfig 20.0)
+      , tcTextColor  = Nothing
       }
   , Text TextConfig
       { tcLabel      = pack (show exc)
       , tcFontConfig = Nothing
+      , tcTextColor  = Nothing
       }
   , Button ButtonConfig
       { bcLabel      = "Dismiss"
       , bcAction     = dismissAction
       , bcFontConfig = Nothing
+      , bcTextColor  = Nothing
       }
   ]
 

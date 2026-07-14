@@ -25,6 +25,6 @@ main = do
   actionState <- newActionState
   startMobileApp MobileApp
     { maContext     = loggingMobileContext
-    , maView        = \_userState -> pure (Text TextConfig { tcLabel = "Async loaded", tcFontConfig = Nothing })
+    , maView        = \_userState -> pure (Text TextConfig { tcLabel = "Async loaded", tcFontConfig = Nothing, tcTextColor = Nothing })
     , maActionState = actionState
     }

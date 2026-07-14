@@ -56,9 +56,9 @@ main = do
 -- | Builds a Column with a label and start/stop monitoring buttons.
 networkStatusDemoView :: Action -> Action -> IO Widget
 networkStatusDemoView onStartMonitoring onStopMonitoring = pure $ column
-  [ Text TextConfig { tcLabel = "Network Status Demo", tcFontConfig = Nothing }
+  [ Text TextConfig { tcLabel = "Network Status Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
   , Button ButtonConfig
-      { bcLabel = "Start Monitoring", bcAction = onStartMonitoring, bcFontConfig = Nothing }
+      { bcLabel = "Start Monitoring", bcAction = onStartMonitoring, bcFontConfig = Nothing, bcTextColor = Nothing }
   , Button ButtonConfig
-      { bcLabel = "Stop Monitoring", bcAction = onStopMonitoring, bcFontConfig = Nothing }
+      { bcLabel = "Stop Monitoring", bcAction = onStopMonitoring, bcFontConfig = Nothing, bcTextColor = Nothing }
   ]

@@ -184,7 +184,6 @@ defaultStyleEmpty :: WidgetStyle
 defaultStyleEmpty = WidgetStyle
   { wsPadding          = Nothing
   , wsTextAlign        = Nothing
-  , wsTextColor        = Nothing
   , wsBackgroundColor  = Nothing
   , wsTranslateX       = Nothing
   , wsTranslateY       = Nothing
@@ -212,8 +211,6 @@ interpolateStyle :: Int32 -> WidgetStyle -> WidgetStyle -> Double -> IO ()
 interpolateStyle nodeId fromStyle toStyle progress = do
   lerpNumProp Bridge.PropPadding
     (wsPadding fromStyle) (wsPadding toStyle)
-  lerpColorProp Bridge.PropColor
-    (wsTextColor fromStyle) (wsTextColor toStyle)
   lerpColorProp Bridge.PropBgColor
     (wsBackgroundColor fromStyle) (wsBackgroundColor toStyle)
   lerpNumProp Bridge.PropTranslateX

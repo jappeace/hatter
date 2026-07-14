@@ -33,7 +33,7 @@ import Data.List (sortBy)
 import Data.Ord (comparing)
 import Unwitch.Convert.Int32 qualified as Int32
 import Hatter.Animation (AnimationState, registerTween)
-import Hatter.Widget (AnimatedConfig(..), ButtonConfig(..), FontConfig(..), ImageConfig(..), ImageSource(..), InputType(..), Keyframe(..), LayoutItem(..), LayoutSettings(..), MapViewConfig(..), ResourceName(..), ScaleType(..), TextAlignment(..), TextConfig(..), TextInputConfig(..), WebViewConfig(..), Widget(..), WidgetStyle(..), colorToHex, normalizeAnimated, resolveKeyAtIndex)
+import Hatter.Widget (AnimatedConfig(..), ButtonConfig(..), Color, FontConfig(..), ImageConfig(..), ImageSource(..), InputType(..), Keyframe(..), LayoutItem(..), LayoutSettings(..), MapViewConfig(..), ResourceName(..), ScaleType(..), TextAlignment(..), TextConfig(..), TextInputConfig(..), WebViewConfig(..), Widget(..), WidgetStyle(..), colorToHex, normalizeAnimated, resolveKeyAtIndex)
 
 import Hatter.UIBridge qualified as Bridge
 import System.IO (hPutStrLn, stderr)
@@ -132,6 +132,13 @@ applyFontConfig nodeId (Just (FontConfig size)) =
   Bridge.setNumProp nodeId Bridge.PropFontSize size
 applyFontConfig _nodeId Nothing = pure ()
 
+-- | Apply a text color to a rendered node if present (the per-config
+-- color, see 'tcTextColor').
+applyTextColor :: Int32 -> Maybe Color -> IO ()
+applyTextColor nodeId (Just color) =
+  Bridge.setStrProp nodeId Bridge.PropColor (colorToHex color)
+applyTextColor _nodeId Nothing = pure ()
+
 -- | Map a 'ScaleType' to the numeric code sent to the platform bridge.
 scaleTypeToDouble :: ScaleType -> Double
 scaleTypeToDouble ScaleFit  = 0
@@ -154,9 +161,6 @@ applyStyle nodeId style = do
   case wsTextAlign style of
     Just alignment -> Bridge.setNumProp nodeId Bridge.PropGravity (textAlignToDouble alignment)
     Nothing        -> pure ()
-  case wsTextColor style of
-    Just color -> Bridge.setStrProp nodeId Bridge.PropColor (colorToHex color)
-    Nothing    -> pure ()
   case wsBackgroundColor style of
     Just color -> Bridge.setStrProp nodeId Bridge.PropBgColor (colorToHex color)
     Nothing    -> pure ()
@@ -197,12 +201,14 @@ createRenderedNode _animState widget@(Text config) = do
   nodeId <- Bridge.createNode Bridge.NodeText
   Bridge.setStrProp nodeId Bridge.PropText (tcLabel config)
   applyFontConfig nodeId (tcFontConfig config)
+  applyTextColor nodeId (tcTextColor config)
   pure (RenderedLeaf widget nodeId)
 createRenderedNode _animState widget@(Button config) = do
   nodeId <- Bridge.createNode Bridge.NodeButton
   Bridge.setStrProp nodeId Bridge.PropText (bcLabel config)
   Bridge.setHandler nodeId Bridge.EventClick (actionId (bcAction config))
   applyFontConfig nodeId (bcFontConfig config)
+  applyTextColor nodeId (bcTextColor config)
   pure (RenderedLeaf widget nodeId)
 createRenderedNode _animState widget@(TextInput config) = do
   nodeId <- Bridge.createNode Bridge.NodeTextInput
@@ -211,6 +217,7 @@ createRenderedNode _animState widget@(TextInput config) = do
   Bridge.setNumProp nodeId Bridge.PropInputType (Int32.toDouble (inputTypeToInt (tiInputType config)))
   Bridge.setHandler nodeId Bridge.EventTextChange (onChangeId (tiOnChange config))
   applyFontConfig nodeId (tiFontConfig config)
+  applyTextColor nodeId (tiTextColor config)
   when (tiAutoFocus config) $
     Bridge.setNumProp nodeId Bridge.PropAutoFocus 1.0
   pure (RenderedLeaf widget nodeId)
@@ -404,6 +411,9 @@ diffRenderNode _animState (Just (RenderedLeaf (Text oldConfig) nodeId)) newWidge
   if tcFontConfig oldConfig /= tcFontConfig newConfig
     then applyFontConfig nodeId (tcFontConfig newConfig)
     else pure ()
+  if tcTextColor oldConfig /= tcTextColor newConfig
+    then applyTextColor nodeId (tcTextColor newConfig)
+    else pure ()
   pure (RenderedLeaf newWidget nodeId)
 
 -- Case: Button in-place update — keep native node, only update changed
@@ -417,6 +427,9 @@ diffRenderNode _animState (Just (RenderedLeaf (Button oldConfig) nodeId)) newWid
     else pure ()
   if bcFontConfig oldConfig /= bcFontConfig newConfig
     then applyFontConfig nodeId (bcFontConfig newConfig)
+    else pure ()
+  if bcTextColor oldConfig /= bcTextColor newConfig
+    then applyTextColor nodeId (bcTextColor newConfig)
     else pure ()
   pure (RenderedLeaf newWidget nodeId)
 
@@ -440,6 +453,9 @@ diffRenderNode _animState (Just (RenderedLeaf (TextInput oldConfig) nodeId)) new
     else pure ()
   if tiFontConfig oldConfig /= tiFontConfig newConfig
     then applyFontConfig nodeId (tiFontConfig newConfig)
+    else pure ()
+  if tiTextColor oldConfig /= tiTextColor newConfig
+    then applyTextColor nodeId (tiTextColor newConfig)
     else pure ()
   pure (RenderedLeaf newWidget nodeId)
 

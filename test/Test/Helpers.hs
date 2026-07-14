@@ -67,7 +67,7 @@ makeDummyApp callback = do
   actionState <- newActionState
   pure MobileApp
     { maContext     = MobileContext { onLifecycle = callback, onError = \_ -> pure () }
-    , maView        = \_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing })
+    , maView        = \_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing })
     , maActionState = actionState
     }
 
@@ -87,7 +87,7 @@ testApp = do
   actionState <- newActionState
   pure MobileApp
     { maContext     = loggingMobileContext
-    , maView        = \_userState -> pure (Text TextConfig { tcLabel = "test", tcFontConfig = Nothing })
+    , maView        = \_userState -> pure (Text TextConfig { tcLabel = "test", tcFontConfig = Nothing, tcTextColor = Nothing })
     , maActionState = actionState
     }
 

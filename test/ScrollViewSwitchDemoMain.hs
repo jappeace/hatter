@@ -58,6 +58,7 @@ switchDemoView screenState switchAction noopAction = do
               { bcLabel = "SCREENA_BTN"
               , bcAction = noopAction
               , bcFontConfig = Nothing
+              , bcTextColor = Nothing
               })
           , item (text "SCREENA_TXT1")
           , item (text "SCREENA_TXT2")
@@ -68,6 +69,7 @@ switchDemoView screenState switchAction noopAction = do
               { bcLabel = "SCREENB_BTN"
               , bcAction = noopAction
               , bcFontConfig = Nothing
+              , bcTextColor = Nothing
               })
           ] True)
   pure $ column
@@ -75,6 +77,7 @@ switchDemoView screenState switchAction noopAction = do
         { bcLabel = "Switch screen"
         , bcAction = switchAction
         , bcFontConfig = Nothing
+        , bcTextColor = Nothing
         }
     , inner
     ]

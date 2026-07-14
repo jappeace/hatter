@@ -49,9 +49,9 @@ main = do
 -- | Builds a Column with a label, a "Store Token" button, and a "Read Token" button.
 secureStorageDemoView :: Action -> Action -> IO Widget
 secureStorageDemoView onStoreToken onReadToken = pure $ column
-  [ Text TextConfig { tcLabel = "SecureStorage Demo", tcFontConfig = Nothing }
+  [ Text TextConfig { tcLabel = "SecureStorage Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
   , Button ButtonConfig
-      { bcLabel = "Store Token", bcAction = onStoreToken, bcFontConfig = Nothing }
+      { bcLabel = "Store Token", bcAction = onStoreToken, bcFontConfig = Nothing, bcTextColor = Nothing }
   , Button ButtonConfig
-      { bcLabel = "Read Token", bcAction = onReadToken, bcFontConfig = Nothing }
+      { bcLabel = "Read Token", bcAction = onReadToken, bcFontConfig = Nothing, bcTextColor = Nothing }
   ]

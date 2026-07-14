@@ -69,22 +69,26 @@ main = do
                   Text TextConfig
                     { tcLabel = "*"
                     , tcFontConfig = Nothing
+                    , tcTextColor = Nothing
                     }
             , Button ButtonConfig
                 { bcLabel = "Trigger Keyframe"
                 , bcAction = triggerAction
                 , bcFontConfig = Nothing
+                , bcTextColor = Nothing
                 }
             ]
           else column
             [ Text TextConfig
                 { tcLabel = "*"
                 , tcFontConfig = Nothing
+                , tcTextColor = Nothing
                 }
             , Button ButtonConfig
                 { bcLabel = "Trigger Keyframe"
                 , bcAction = triggerAction
                 , bcFontConfig = Nothing
+                , bcTextColor = Nothing
                 }
             ]
       app = MobileApp

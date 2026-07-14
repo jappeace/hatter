@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changed
+
+- BREAKING: text color moved from `WidgetStyle` into the text-bearing
+  configs (`tcTextColor` / `bcTextColor` / `tiTextColor`, next to the
+  font override), following the `tcFontConfig` precedent. A text
+  color can no longer be attached to a container node, where it
+  silently changed nothing (#242); the new `coloredText` smart
+  constructor covers the common case. Keyframe animation of text
+  color went with the field (nothing used it; animate the background
+  color instead).
+
 ### Added
 
 - Scan results now carry the advertisement's service data and

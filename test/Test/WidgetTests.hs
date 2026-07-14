@@ -29,6 +29,7 @@ import Hatter
 import Hatter.Widget
   ( ButtonConfig(..)
   , Color(..)
+  , coloredText
   , FontConfig(..)
   , ImageConfig(..)
   , ImageSource(..)
@@ -74,7 +75,7 @@ uiTests = testGroup "UI"
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
       let widget = Button ButtonConfig
-            { bcLabel = "click me", bcAction = clickHandle, bcFontConfig = Nothing }
+            { bcLabel = "click me", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing }
       renderWidget rs widget
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
@@ -89,9 +90,9 @@ uiTests = testGroup "UI"
         pure (hA, hB)
       let widget = row
             [ Button ButtonConfig
-                { bcLabel = "A", bcAction = handleA, bcFontConfig = Nothing }
+                { bcLabel = "A", bcAction = handleA, bcFontConfig = Nothing, bcTextColor = Nothing }
             , Button ButtonConfig
-                { bcLabel = "B", bcAction = handleB, bcFontConfig = Nothing }
+                { bcLabel = "B", bcAction = handleB, bcFontConfig = Nothing, bcTextColor = Nothing }
             ]
       renderWidget rs widget
       -- Only fire A
@@ -111,17 +112,17 @@ uiTests = testGroup "UI"
         createAction (modifyIORef' ref (+ 1))
       -- First render
       renderWidget rs (Button ButtonConfig
-        { bcLabel = "old", bcAction = clickHandle, bcFontConfig = Nothing })
+        { bcLabel = "old", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing })
       -- Second render (same handle)
       renderWidget rs (Button ButtonConfig
-        { bcLabel = "new", bcAction = clickHandle, bcFontConfig = Nothing })
+        { bcLabel = "new", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing })
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
       count @?= 1
 
   , testCase "dispatching unknown callback ID logs error" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs (Text TextConfig { tcLabel = "no buttons", tcFontConfig = Nothing })
+      renderWidget rs (Text TextConfig { tcLabel = "no buttons", tcFontConfig = Nothing, tcTextColor = Nothing })
       -- Should not throw (logs to stderr)
       dispatchEvent rs 42
       dispatchEvent rs 999
@@ -132,17 +133,17 @@ uiTests = testGroup "UI"
         hB <- createAction (pure ())
         pure (hA, hB)
       let widget = column
-            [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing }
+            [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing, tcTextColor = Nothing }
             , row
               [ Button ButtonConfig
-                  { bcLabel = "a", bcAction = handleA, bcFontConfig = Nothing }
+                  { bcLabel = "a", bcAction = handleA, bcFontConfig = Nothing, bcTextColor = Nothing }
               , column
-                [ Text TextConfig { tcLabel = "nested", tcFontConfig = Nothing }
+                [ Text TextConfig { tcLabel = "nested", tcFontConfig = Nothing, tcTextColor = Nothing }
                 , Button ButtonConfig
-                    { bcLabel = "b", bcAction = handleB, bcFontConfig = Nothing }
+                    { bcLabel = "b", bcAction = handleB, bcFontConfig = Nothing, bcTextColor = Nothing }
                 ]
               ]
-            , Text TextConfig { tcLabel = "footer", tcFontConfig = Nothing }
+            , Text TextConfig { tcLabel = "footer", tcFontConfig = Nothing, tcTextColor = Nothing }
             ]
       -- Should not throw — exercises all node types
       renderWidget rs widget
@@ -198,8 +199,8 @@ scrollViewTests = testGroup "ScrollView"
   [ testCase "scrollable Column renders without error" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs (Column (LayoutSettings
-        [ item (Text TextConfig { tcLabel = "item 1", tcFontConfig = Nothing })
-        , item (Text TextConfig { tcLabel = "item 2", tcFontConfig = Nothing })
+        [ item (Text TextConfig { tcLabel = "item 1", tcFontConfig = Nothing, tcTextColor = Nothing })
+        , item (Text TextConfig { tcLabel = "item 2", tcFontConfig = Nothing, tcTextColor = Nothing })
         ] True))
 
   , testCase "button inside scrollable Column fires its callback" $ do
@@ -208,7 +209,7 @@ scrollViewTests = testGroup "ScrollView"
         createAction (modifyIORef' ref (+ 1))
       renderWidget rs $ Column (LayoutSettings
         [ item (Button ButtonConfig
-            { bcLabel = "press me", bcAction = clickHandle, bcFontConfig = Nothing }) ]
+            { bcLabel = "press me", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing }) ]
         True)
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
@@ -220,9 +221,9 @@ scrollViewTests = testGroup "ScrollView"
         createAction (modifyIORef' ref (const True))
       renderWidget rs $ Column (LayoutSettings
         [ item (column
-          [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing }
+          [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing, tcTextColor = Nothing }
           , Button ButtonConfig
-              { bcLabel = "action", bcAction = clickHandle, bcFontConfig = Nothing }
+              { bcLabel = "action", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing }
           ])
         ] True)
       dispatchEvent rs (actionId clickHandle)
@@ -234,16 +235,16 @@ scrollViewTests = testGroup "ScrollView"
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
       renderWidget rs $ Column (LayoutSettings [item (Button ButtonConfig
-        { bcLabel = "old", bcAction = clickHandle, bcFontConfig = Nothing })] True)
+        { bcLabel = "old", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing })] True)
       renderWidget rs $ Column (LayoutSettings [item (Button ButtonConfig
-        { bcLabel = "new", bcAction = clickHandle, bcFontConfig = Nothing })] True)
+        { bcLabel = "new", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing })] True)
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
       count @?= 1
 
   , testCase "scrollable flag change recreates native node" $ do
       ((), rs) <- withActions (pure ())
-      let nonScrollable = column [Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }]
+      let nonScrollable = column [Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing }]
       renderWidget rs nonScrollable
       tree1 <- readIORef (rsRenderedTree rs)
       let nodeId1 = case tree1 of
@@ -252,7 +253,7 @@ scrollViewTests = testGroup "ScrollView"
             Just (RenderedStyled _ _ _)      -> -1
             Just (RenderedAnimated _ _)      -> -1
             Nothing                          -> -1
-      let scrollable = Column (LayoutSettings [item (Text TextConfig { tcLabel = "a", tcFontConfig = Nothing })] True)
+      let scrollable = Column (LayoutSettings [item (Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing })] True)
       renderWidget rs scrollable
       tree2 <- readIORef (rsRenderedTree rs)
       let nodeId2 = case tree2 of
@@ -265,22 +266,22 @@ scrollViewTests = testGroup "ScrollView"
 
   , testCase "scrollColumn creates a scrollable Column" $ do
       let widget = scrollColumn
-            [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
-            , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
+            [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing }
+            , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing, tcTextColor = Nothing }
             ]
       widget @?= Column (LayoutSettings
-        [ item (Text TextConfig { tcLabel = "a", tcFontConfig = Nothing })
-        , item (Text TextConfig { tcLabel = "b", tcFontConfig = Nothing })
+        [ item (Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing })
+        , item (Text TextConfig { tcLabel = "b", tcFontConfig = Nothing, tcTextColor = Nothing })
         ] True)
 
   , testCase "scrollRow creates a scrollable Row" $ do
       let widget = scrollRow
-            [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
-            , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
+            [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing }
+            , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing, tcTextColor = Nothing }
             ]
       widget @?= Row (LayoutSettings
-        [ item (Text TextConfig { tcLabel = "a", tcFontConfig = Nothing })
-        , item (Text TextConfig { tcLabel = "b", tcFontConfig = Nothing })
+        [ item (Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing })
+        , item (Text TextConfig { tcLabel = "b", tcFontConfig = Nothing, tcTextColor = Nothing })
         ] True)
 
   , testCase "scrollColumn button dispatches correctly" $ do
@@ -289,7 +290,7 @@ scrollViewTests = testGroup "ScrollView"
         createAction (modifyIORef' ref (const True))
       renderWidget rs $ scrollColumn
         [ Button ButtonConfig
-            { bcLabel = "click", bcAction = clickHandle, bcFontConfig = Nothing }
+            { bcLabel = "click", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing }
         ]
       dispatchEvent rs (actionId clickHandle)
       fired <- readIORef ref
@@ -302,8 +303,8 @@ stackTests = testGroup "Stack"
   [ testCase "Stack renders without error" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs (Stack
-        [ item (Text TextConfig { tcLabel = "background", tcFontConfig = Nothing })
-        , item (Text TextConfig { tcLabel = "foreground", tcFontConfig = Nothing })
+        [ item (Text TextConfig { tcLabel = "background", tcFontConfig = Nothing, tcTextColor = Nothing })
+        , item (Text TextConfig { tcLabel = "foreground", tcFontConfig = Nothing, tcTextColor = Nothing })
         ])
 
   , testCase "button inside Stack fires its callback" $ do
@@ -311,9 +312,9 @@ stackTests = testGroup "Stack"
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
       renderWidget rs $ Stack
-        [ item (Text TextConfig { tcLabel = "bg", tcFontConfig = Nothing })
+        [ item (Text TextConfig { tcLabel = "bg", tcFontConfig = Nothing, tcTextColor = Nothing })
         , item (Button ButtonConfig
-            { bcLabel = "overlay", bcAction = clickHandle, bcFontConfig = Nothing })
+            { bcLabel = "overlay", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing })
         ]
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
@@ -324,11 +325,11 @@ stackTests = testGroup "Stack"
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (const True))
       renderWidget rs $ Stack
-        [ item (Text TextConfig { tcLabel = "bg", tcFontConfig = Nothing })
+        [ item (Text TextConfig { tcLabel = "bg", tcFontConfig = Nothing, tcTextColor = Nothing })
         , item (column
-          [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing }
+          [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing, tcTextColor = Nothing }
           , Button ButtonConfig
-              { bcLabel = "action", bcAction = clickHandle, bcFontConfig = Nothing }
+              { bcLabel = "action", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing }
           ])
         ]
       dispatchEvent rs (actionId clickHandle)
@@ -340,9 +341,9 @@ stackTests = testGroup "Stack"
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
       renderWidget rs $ Stack [item (Button ButtonConfig
-        { bcLabel = "old", bcAction = clickHandle, bcFontConfig = Nothing })]
+        { bcLabel = "old", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing })]
       renderWidget rs $ Stack [item (Button ButtonConfig
-        { bcLabel = "new", bcAction = clickHandle, bcFontConfig = Nothing })]
+        { bcLabel = "new", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing })]
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
       count @?= 1
@@ -357,7 +358,8 @@ textInputTests = testGroup "TextInput"
       let widget = TextInput TextInputConfig
             { tiInputType = InputText, tiHint = "hint", tiValue = ""
             , tiOnChange = changeHandle
-            , tiFontConfig = Nothing, tiAutoFocus = False }
+            , tiFontConfig = Nothing
+            , tiTextColor  = Nothing, tiAutoFocus = False }
       renderWidget rs widget
       dispatchTextEvent rs (onChangeId changeHandle) "hello"
       val <- readIORef ref
@@ -370,7 +372,8 @@ textInputTests = testGroup "TextInput"
       let widget = TextInput TextInputConfig
             { tiInputType = InputText, tiHint = "enter weight", tiValue = "80"
             , tiOnChange = changeHandle
-            , tiFontConfig = Nothing, tiAutoFocus = False }
+            , tiFontConfig = Nothing
+            , tiTextColor  = Nothing, tiAutoFocus = False }
       renderWidget rs widget
       dispatchTextEvent rs (onChangeId changeHandle) "95.5"
       val <- readIORef ref
@@ -378,7 +381,7 @@ textInputTests = testGroup "TextInput"
 
   , testCase "dispatchTextEvent with unknown ID does not crash" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs (Text TextConfig { tcLabel = "no inputs", tcFontConfig = Nothing })
+      renderWidget rs (Text TextConfig { tcLabel = "no inputs", tcFontConfig = Nothing, tcTextColor = Nothing })
       -- Should not throw
       dispatchTextEvent rs 42 "ignored"
       dispatchTextEvent rs 999 "also ignored"
@@ -392,11 +395,12 @@ textInputTests = testGroup "TextInput"
         pure (ch, th)
       let widget = column
             [ Button ButtonConfig
-                { bcLabel = "ok", bcAction = clickHandle, bcFontConfig = Nothing }
+                { bcLabel = "ok", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing }
             , TextInput TextInputConfig
                 { tiInputType = InputText, tiHint = "hint", tiValue = ""
                 , tiOnChange = changeHandle
-                , tiFontConfig = Nothing, tiAutoFocus = False }
+                , tiFontConfig = Nothing
+                , tiTextColor  = Nothing, tiAutoFocus = False }
             ]
       renderWidget rs widget
       dispatchEvent rs (actionId clickHandle)
@@ -413,11 +417,13 @@ textInputTests = testGroup "TextInput"
       renderWidget rs $ TextInput TextInputConfig
         { tiInputType = InputText, tiHint = "old", tiValue = ""
         , tiOnChange = changeHandle
-        , tiFontConfig = Nothing, tiAutoFocus = False }
+        , tiFontConfig = Nothing
+        , tiTextColor  = Nothing, tiAutoFocus = False }
       renderWidget rs $ TextInput TextInputConfig
         { tiInputType = InputText, tiHint = "new", tiValue = ""
         , tiOnChange = changeHandle
-        , tiFontConfig = Nothing, tiAutoFocus = False }
+        , tiFontConfig = Nothing
+        , tiTextColor  = Nothing, tiAutoFocus = False }
       dispatchTextEvent rs (onChangeId changeHandle) "val"
       val <- readIORef ref
       val @?= show ("val" :: String)
@@ -429,7 +435,8 @@ textInputTests = testGroup "TextInput"
       let widget = TextInput TextInputConfig
             { tiInputType = InputNumber, tiHint = "weight", tiValue = ""
             , tiOnChange = changeHandle
-            , tiFontConfig = Nothing, tiAutoFocus = False }
+            , tiFontConfig = Nothing
+            , tiTextColor  = Nothing, tiAutoFocus = False }
       renderWidget rs widget
       dispatchTextEvent rs (onChangeId changeHandle) "72.5"
       val <- readIORef ref
@@ -446,11 +453,13 @@ textInputTests = testGroup "TextInput"
             [ TextInput TextInputConfig
                 { tiInputType = InputText, tiHint = "name", tiValue = ""
                 , tiOnChange = textHandle
-                , tiFontConfig = Nothing, tiAutoFocus = False }
+                , tiFontConfig = Nothing
+                , tiTextColor  = Nothing, tiAutoFocus = False }
             , TextInput TextInputConfig
                 { tiInputType = InputNumber, tiHint = "weight", tiValue = ""
                 , tiOnChange = numberHandle
-                , tiFontConfig = Nothing, tiAutoFocus = False }
+                , tiFontConfig = Nothing
+                , tiTextColor  = Nothing, tiAutoFocus = False }
             ]
       renderWidget rs widget
       dispatchTextEvent rs (onChangeId textHandle) "Alice"
@@ -483,7 +492,7 @@ imageTests = testGroup "Image"
   , testCase "Image inside Column renders" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs $ column
-        [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing }
+        [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing, tcTextColor = Nothing }
         , Image ImageConfig
             { icSource = ImageResource (ResourceName "logo"), icScaleType = ScaleFit }
         ]
@@ -540,7 +549,7 @@ webViewTests = testGroup "WebView"
   , testCase "WebView inside Column renders" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs $ column
-        [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing }
+        [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing, tcTextColor = Nothing }
         , WebView WebViewConfig
             { wvUrl = "https://example.com", wvOnPageLoad = Nothing }
         ]
@@ -557,17 +566,17 @@ styledTests :: TestTree
 styledTests = testGroup "Styled"
   [ testCase "Styled Text renders without error" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs $ Styled (WidgetStyle (Just 8.0) Nothing Nothing Nothing Nothing Nothing Nothing)
-        (Text TextConfig { tcLabel = "styled", tcFontConfig = Just (FontConfig 20.0) })
+      renderWidget rs $ Styled (WidgetStyle (Just 8.0) Nothing Nothing Nothing Nothing Nothing)
+        (Text TextConfig { tcLabel = "styled", tcFontConfig = Just (FontConfig 20.0), tcTextColor = Nothing })
 
   , testCase "Styled Button fires callback" $ do
       ref <- newIORef (0 :: Int)
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
-      renderWidget rs $ Styled (WidgetStyle Nothing Nothing Nothing Nothing Nothing Nothing Nothing)
+      renderWidget rs $ Styled (WidgetStyle Nothing Nothing Nothing Nothing Nothing Nothing)
         (Button ButtonConfig
           { bcLabel = "tap", bcAction = clickHandle
-          , bcFontConfig = Just (FontConfig 16.0) })
+          , bcFontConfig = Just (FontConfig 16.0), bcTextColor = Nothing })
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
       count @?= 1
@@ -577,9 +586,9 @@ styledTests = testGroup "Styled"
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (const True))
       renderWidget rs $ Styled defaultStyle
-        (column [ Text TextConfig { tcLabel = "info", tcFontConfig = Nothing }
+        (column [ Text TextConfig { tcLabel = "info", tcFontConfig = Nothing, tcTextColor = Nothing }
                 , Button ButtonConfig
-                    { bcLabel = "go", bcAction = clickHandle, bcFontConfig = Nothing }
+                    { bcLabel = "go", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing }
                 ])
       dispatchEvent rs (actionId clickHandle)
       fired <- readIORef ref
@@ -588,14 +597,14 @@ styledTests = testGroup "Styled"
   , testCase "nested Styled applies both styles" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs $
-        Styled (WidgetStyle (Just 12.0) Nothing Nothing Nothing Nothing Nothing Nothing)
-          (Styled (WidgetStyle Nothing Nothing Nothing Nothing Nothing Nothing Nothing)
-            (Text TextConfig { tcLabel = "double styled", tcFontConfig = Just (FontConfig 18.0) }))
+        Styled (WidgetStyle (Just 12.0) Nothing Nothing Nothing Nothing Nothing)
+          (Styled (WidgetStyle Nothing Nothing Nothing Nothing Nothing Nothing)
+            (Text TextConfig { tcLabel = "double styled", tcFontConfig = Just (FontConfig 18.0), tcTextColor = Nothing }))
 
   , testCase "defaultStyle is a no-op" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs $ Styled defaultStyle
-        (Text TextConfig { tcLabel = "plain", tcFontConfig = Nothing })
+        (Text TextConfig { tcLabel = "plain", tcFontConfig = Nothing, tcTextColor = Nothing })
 
   , testCase "re-render preserves callbacks through Styled" $ do
       ref <- newIORef (0 :: Int)
@@ -603,10 +612,10 @@ styledTests = testGroup "Styled"
         createAction (modifyIORef' ref (+ 1))
       renderWidget rs $ Styled defaultStyle
         (Button ButtonConfig
-          { bcLabel = "old", bcAction = clickHandle, bcFontConfig = Nothing })
+          { bcLabel = "old", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing })
       renderWidget rs $ Styled defaultStyle
         (Button ButtonConfig
-          { bcLabel = "new", bcAction = clickHandle, bcFontConfig = Nothing })
+          { bcLabel = "new", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing })
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
       count @?= 1
@@ -617,16 +626,16 @@ textAlignTests :: TestTree
 textAlignTests = testGroup "TextAlignment"
   [ testCase "Styled with AlignCenter renders without error" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignCenter) Nothing Nothing Nothing Nothing Nothing)
-        (Text TextConfig { tcLabel = "centered", tcFontConfig = Nothing })
+      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignCenter) Nothing Nothing Nothing Nothing)
+        (Text TextConfig { tcLabel = "centered", tcFontConfig = Nothing, tcTextColor = Nothing })
 
   , testCase "Styled with AlignCenter on Button fires callback" $ do
       ref <- newIORef (0 :: Int)
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
-      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignCenter) Nothing Nothing Nothing Nothing Nothing)
+      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignCenter) Nothing Nothing Nothing Nothing)
         (Button ButtonConfig
-          { bcLabel = "tap", bcAction = clickHandle, bcFontConfig = Nothing })
+          { bcLabel = "tap", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing })
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
       count @?= 1
@@ -636,50 +645,54 @@ textAlignTests = testGroup "TextAlignment"
 
   , testCase "Styled with AlignEnd renders without error" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignEnd) Nothing Nothing Nothing Nothing Nothing)
-        (Text TextConfig { tcLabel = "end aligned", tcFontConfig = Nothing })
+      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignEnd) Nothing Nothing Nothing Nothing)
+        (Text TextConfig { tcLabel = "end aligned", tcFontConfig = Nothing, tcTextColor = Nothing })
   ]
 
 -- | Tests for color support in Styled widgets.
 colorTests :: TestTree
 colorTests = testGroup "Colors"
-  [ testCase "Styled with textColor renders and callback fires" $ do
+  [ testCase "a Button label color renders and the callback fires" $ do
       ref <- newIORef (0 :: Int)
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
-      renderWidget rs $ Styled (WidgetStyle Nothing Nothing (Just (Color 255 0 0 255)) Nothing Nothing Nothing Nothing)
-        (Button ButtonConfig
-          { bcLabel = "red", bcAction = clickHandle, bcFontConfig = Nothing })
+      renderWidget rs $ Button ButtonConfig
+        { bcLabel = "red", bcAction = clickHandle
+        , bcFontConfig = Nothing, bcTextColor = Just (Color 255 0 0 255) }
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
       count @?= 1
 
+  , testCase "coloredText renders without error" $ do
+      ((), rs) <- withActions (pure ())
+      renderWidget rs $ coloredText (Color 255 0 0 255) "red text"
+
   , testCase "Styled with backgroundColor renders without error" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs $ Styled (WidgetStyle Nothing Nothing Nothing (Just (Color 0 255 0 255)) Nothing Nothing Nothing)
-        (Text TextConfig { tcLabel = "green bg", tcFontConfig = Nothing })
+      renderWidget rs $ Styled (WidgetStyle Nothing Nothing (Just (Color 0 255 0 255)) Nothing Nothing Nothing)
+        (Text TextConfig { tcLabel = "green bg", tcFontConfig = Nothing, tcTextColor = Nothing })
 
-  , testCase "both textColor and backgroundColor together" $ do
+  , testCase "config text color and styled background together" $ do
       ref <- newIORef (0 :: Int)
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
-      renderWidget rs $ Styled (WidgetStyle Nothing Nothing (Just (Color 255 0 0 255)) (Just (Color 0 255 0 255)) Nothing Nothing Nothing)
+      renderWidget rs $ Styled (WidgetStyle Nothing Nothing (Just (Color 0 255 0 255)) Nothing Nothing Nothing)
         (Button ButtonConfig
-          { bcLabel = "colored", bcAction = clickHandle, bcFontConfig = Nothing })
+          { bcLabel = "colored", bcAction = clickHandle
+          , bcFontConfig = Nothing, bcTextColor = Just (Color 255 0 0 255) })
       dispatchEvent rs (actionId clickHandle)
       count <- readIORef ref
       count @?= 1
 
   , testCase "defaultStyle has no colors" $ do
-      wsTextColor defaultStyle @?= Nothing
       wsBackgroundColor defaultStyle @?= Nothing
 
-  , testCase "nested Styled with different colors renders" $ do
+  , testCase "nested Styled with a colored text child renders" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs $
-        Styled (WidgetStyle Nothing Nothing (Just (Color 255 0 0 255)) Nothing Nothing Nothing Nothing)
-          (Styled (WidgetStyle Nothing Nothing Nothing (Just (Color 0 0 255 255)) Nothing Nothing Nothing)
-            (Text TextConfig { tcLabel = "nested colors", tcFontConfig = Nothing }))
+        Styled (WidgetStyle (Just 4.0) Nothing Nothing Nothing Nothing Nothing)
+          (Styled (WidgetStyle Nothing Nothing (Just (Color 0 0 255 255)) Nothing Nothing Nothing)
+            (coloredText (Color 255 0 0 255) "nested colors"))
 
   , testCase "colorFromText parses #RRGGBB" $
       colorFromText "#FF0000" @?= Just (Color 255 0 0 255)
@@ -737,7 +750,7 @@ mapViewTests = testGroup "MapView"
   , testCase "MapView inside Column renders" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs $ column
-        [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing }
+        [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing, tcTextColor = Nothing }
         , MapView MapViewConfig
             { mvLatitude = 52.3676, mvLongitude = 4.9041
             , mvZoom = 12.0, mvShowUserLocation = False

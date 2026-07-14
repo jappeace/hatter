@@ -41,6 +41,7 @@ confettiParticle offsetX offsetY =
          Text TextConfig
            { tcLabel = "*"
            , tcFontConfig = Nothing
+           , tcTextColor = Nothing
            }
 
 -- | Five confetti particles with fixed offsets.
@@ -72,6 +73,7 @@ main = do
                 { bcLabel = "Confetti Active"
                 , bcAction = triggerAction
                 , bcFontConfig = Nothing
+                , bcTextColor = Nothing
                 }
             ])
           else column
@@ -79,6 +81,7 @@ main = do
                 { bcLabel = "Trigger Confetti"
                 , bcAction = triggerAction
                 , bcFontConfig = Nothing
+                , bcTextColor = Nothing
                 }
             ]
       app = MobileApp

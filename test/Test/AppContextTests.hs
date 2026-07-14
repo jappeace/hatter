@@ -60,7 +60,7 @@ registrationTests = testGroup "Registration"
       actionState <- newActionState
       let customApp = MobileApp
             { maContext     = MobileContext { onLifecycle = \_ -> pure (), onError = \_ -> pure () }
-            , maView        = \_userState -> pure (Text TextConfig { tcLabel = "custom", tcFontConfig = Nothing })
+            , maView        = \_userState -> pure (Text TextConfig { tcLabel = "custom", tcFontConfig = Nothing, tcTextColor = Nothing })
             , maActionState = actionState
             }
       ctxPtr <- newAppContext customApp
@@ -101,12 +101,12 @@ registrationTests = testGroup "Registration"
       actionStateB <- newActionState
       let appA = MobileApp
             { maContext     = defaultMobileContext
-            , maView        = \_userState -> pure (Text TextConfig { tcLabel = "A", tcFontConfig = Nothing })
+            , maView        = \_userState -> pure (Text TextConfig { tcLabel = "A", tcFontConfig = Nothing, tcTextColor = Nothing })
             , maActionState = actionStateA
             }
           appB = MobileApp
             { maContext     = defaultMobileContext
-            , maView        = \_userState -> pure (Text TextConfig { tcLabel = "B", tcFontConfig = Nothing })
+            , maView        = \_userState -> pure (Text TextConfig { tcLabel = "B", tcFontConfig = Nothing, tcTextColor = Nothing })
             , maActionState = actionStateB
             }
       ctxPtrA <- newAppContext appA
@@ -158,7 +158,7 @@ appContextTests = testGroup "AppContext"
       actionState <- newActionState
       let app = MobileApp
             { maContext     = MobileContext { onLifecycle = \event -> modifyIORef' ref (++ [event]), onError = \_ -> pure () }
-            , maView        = \_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing })
+            , maView        = \_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing })
             , maActionState = actionState
             }
       ctxPtr <- newAppContext app
@@ -197,6 +197,7 @@ exceptionHandlerTests = testGroup "ExceptionHandler"
                 { bcLabel  = "crash"
                 , bcAction = crashHandle
                 , bcFontConfig = Nothing
+                , bcTextColor = Nothing
                 }
             , maActionState = actionState
             }
@@ -219,7 +220,7 @@ exceptionHandlerTests = testGroup "ExceptionHandler"
               then do
                 writeIORef shouldThrow False
                 throwIO (userError "transient-error")
-              else pure $ Text TextConfig { tcLabel = "recovered", tcFontConfig = Nothing }
+              else pure $ Text TextConfig { tcLabel = "recovered", tcFontConfig = Nothing, tcTextColor = Nothing }
           transientApp = MobileApp
             { maContext     = defaultMobileContext
             , maView        = transientView
@@ -284,7 +285,7 @@ exceptionHandlerTests = testGroup "ExceptionHandler"
                 { onLifecycle = \_ -> throwIO (userError "lifecycle-boom")
                 , onError     = \_ -> pure ()
                 }
-            , maView        = \_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing })
+            , maView        = \_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing })
             , maActionState = actionState
             }
       ctxPtr <- newAppContext crashingApp

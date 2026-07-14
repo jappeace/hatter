@@ -81,8 +81,8 @@ widgetEqTests = testGroup "WidgetEq"
   [ testCase "same widget with same handle is equal" $ do
       actionState <- newActionState
       handle <- runActionM actionState $ createAction (pure ())
-      let widgetA = Button ButtonConfig { bcLabel = "tap", bcAction = handle, bcFontConfig = Nothing }
-          widgetB = Button ButtonConfig { bcLabel = "tap", bcAction = handle, bcFontConfig = Nothing }
+      let widgetA = Button ButtonConfig { bcLabel = "tap", bcAction = handle, bcFontConfig = Nothing, bcTextColor = Nothing }
+          widgetB = Button ButtonConfig { bcLabel = "tap", bcAction = handle, bcFontConfig = Nothing, bcTextColor = Nothing }
       widgetA @?= widgetB
 
   , testCase "same widget with different handles is not equal" $ do
@@ -91,24 +91,24 @@ widgetEqTests = testGroup "WidgetEq"
         hA <- createAction (pure ())
         hB <- createAction (pure ())
         pure (hA, hB)
-      let widgetA = Button ButtonConfig { bcLabel = "tap", bcAction = handleA, bcFontConfig = Nothing }
-          widgetB = Button ButtonConfig { bcLabel = "tap", bcAction = handleB, bcFontConfig = Nothing }
+      let widgetA = Button ButtonConfig { bcLabel = "tap", bcAction = handleA, bcFontConfig = Nothing, bcTextColor = Nothing }
+          widgetB = Button ButtonConfig { bcLabel = "tap", bcAction = handleB, bcFontConfig = Nothing, bcTextColor = Nothing }
       assertBool "different handles means different widgets" (widgetA /= widgetB)
 
   , testCase "Text widgets with same content are equal" $ do
-      let widgetA = Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing }
-          widgetB = Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing }
+      let widgetA = Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing, tcTextColor = Nothing }
+          widgetB = Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing, tcTextColor = Nothing }
       widgetA @?= widgetB
 
   , testCase "Text widgets with different content are not equal" $ do
-      let widgetA = Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing }
-          widgetB = Text TextConfig { tcLabel = "world", tcFontConfig = Nothing }
+      let widgetA = Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing, tcTextColor = Nothing }
+          widgetB = Text TextConfig { tcLabel = "world", tcFontConfig = Nothing, tcTextColor = Nothing }
       assertBool "different labels means different widgets" (widgetA /= widgetB)
 
   , testCase "Column equality is structural" $ do
-      let widgetA = column [Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }]
-          widgetB = column [Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }]
-          widgetC = column [Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }]
+      let widgetA = column [Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing }]
+          widgetB = column [Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing }]
+          widgetC = column [Text TextConfig { tcLabel = "b", tcFontConfig = Nothing, tcTextColor = Nothing }]
       widgetA @?= widgetB
       assertBool "different children means different Column" (widgetA /= widgetC)
   ]
@@ -136,7 +136,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
   [ testGroup "Node reuse"
       [ testCase "identical re-render retains same node ID" $ do
           ((), rs) <- withActions (pure ())
-          let widget = Text TextConfig { tcLabel = "static", tcFontConfig = Nothing }
+          let widget = Text TextConfig { tcLabel = "static", tcFontConfig = Nothing, tcTextColor = Nothing }
           renderWidget rs widget
           tree1 <- readIORef (rsRenderedTree rs)
           let nodeId1 = case tree1 of
@@ -152,8 +152,8 @@ incrementalRenderTests = testGroup "Incremental rendering"
       , testCase "single child change updates in-place, preserving node IDs" $ do
           ((), rs) <- withActions (pure ())
           let widget1 = column
-                [ Text TextConfig { tcLabel = "stable", tcFontConfig = Nothing }
-                , Text TextConfig { tcLabel = "will change", tcFontConfig = Nothing }
+                [ Text TextConfig { tcLabel = "stable", tcFontConfig = Nothing, tcTextColor = Nothing }
+                , Text TextConfig { tcLabel = "will change", tcFontConfig = Nothing, tcTextColor = Nothing }
                 ]
           renderWidget rs widget1
           tree1 <- readIORef (rsRenderedTree rs)
@@ -163,8 +163,8 @@ incrementalRenderTests = testGroup "Incremental rendering"
               _        -> assertFailure "expected 2 children" >> pure (-1, -1)
             Nothing -> assertFailure "expected rendered tree" >> pure (-1, -1)
           let widget2 = column
-                [ Text TextConfig { tcLabel = "stable", tcFontConfig = Nothing }
-                , Text TextConfig { tcLabel = "changed!", tcFontConfig = Nothing }
+                [ Text TextConfig { tcLabel = "stable", tcFontConfig = Nothing, tcTextColor = Nothing }
+                , Text TextConfig { tcLabel = "changed!", tcFontConfig = Nothing, tcTextColor = Nothing }
                 ]
           renderWidget rs widget2
           tree2 <- readIORef (rsRenderedTree rs)
@@ -185,7 +185,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
             pure (h1, h2)
           -- Render button with handle1
           let widget1 = Button ButtonConfig
-                { bcLabel = "same label", bcAction = handle1, bcFontConfig = Nothing }
+                { bcLabel = "same label", bcAction = handle1, bcFontConfig = Nothing, bcTextColor = Nothing }
           renderWidget rs widget1
           tree1 <- readIORef (rsRenderedTree rs)
           let nodeId1 = case tree1 of
@@ -193,7 +193,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
                 Nothing   -> -1
           -- Render same label but with handle2 (different Eq)
           let widget2 = Button ButtonConfig
-                { bcLabel = "same label", bcAction = handle2, bcFontConfig = Nothing }
+                { bcLabel = "same label", bcAction = handle2, bcFontConfig = Nothing, bcTextColor = Nothing }
           renderWidget rs widget2
           tree2 <- readIORef (rsRenderedTree rs)
           let nodeId2 = case tree2 of
@@ -212,7 +212,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
             createAction (writeIORef ref "fired")
           -- Render button with handle
           let widget1 = Button ButtonConfig
-                { bcLabel = "same label", bcAction = handle, bcFontConfig = Nothing }
+                { bcLabel = "same label", bcAction = handle, bcFontConfig = Nothing, bcTextColor = Nothing }
           renderWidget rs widget1
           tree1 <- readIORef (rsRenderedTree rs)
           let nodeId1 = case tree1 of
@@ -234,7 +234,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
       , testCase "adding a child to container" $ do
           ((), rs) <- withActions (pure ())
           let widget1 = column
-                [ Text TextConfig { tcLabel = "first", tcFontConfig = Nothing } ]
+                [ Text TextConfig { tcLabel = "first", tcFontConfig = Nothing, tcTextColor = Nothing } ]
           renderWidget rs widget1
           tree1 <- readIORef (rsRenderedTree rs)
           existingChildId <- case tree1 of
@@ -243,8 +243,8 @@ incrementalRenderTests = testGroup "Incremental rendering"
               _    -> assertFailure "expected 1 child" >> pure (-1)
             Nothing -> assertFailure "expected rendered tree" >> pure (-1)
           let widget2 = column
-                [ Text TextConfig { tcLabel = "first", tcFontConfig = Nothing }
-                , Text TextConfig { tcLabel = "second", tcFontConfig = Nothing }
+                [ Text TextConfig { tcLabel = "first", tcFontConfig = Nothing, tcTextColor = Nothing }
+                , Text TextConfig { tcLabel = "second", tcFontConfig = Nothing, tcTextColor = Nothing }
                 ]
           renderWidget rs widget2
           tree2 <- readIORef (rsRenderedTree rs)
@@ -262,12 +262,12 @@ incrementalRenderTests = testGroup "Incremental rendering"
       , testCase "removing a child from container" $ do
           ((), rs) <- withActions (pure ())
           let widget1 = column
-                [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
-                , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
+                [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing }
+                , Text TextConfig { tcLabel = "b", tcFontConfig = Nothing, tcTextColor = Nothing }
                 ]
           renderWidget rs widget1
           let widget2 = column
-                [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing } ]
+                [ Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing } ]
           renderWidget rs widget2
           tree2 <- readIORef (rsRenderedTree rs)
           let children2 = childrenOf (maybe (error "no tree") id tree2)
@@ -276,14 +276,14 @@ incrementalRenderTests = testGroup "Incremental rendering"
       , testCase "root type change triggers new root node" $ do
           (handle, rs) <- withActions $
             createAction (pure ())
-          let widget1 = Text TextConfig { tcLabel = "text", tcFontConfig = Nothing }
+          let widget1 = Text TextConfig { tcLabel = "text", tcFontConfig = Nothing, tcTextColor = Nothing }
           renderWidget rs widget1
           tree1 <- readIORef (rsRenderedTree rs)
           let nodeId1 = case tree1 of
                 Just node -> nodeIdOf node
                 Nothing   -> -1
           let widget2 = Button ButtonConfig
-                { bcLabel = "button", bcAction = handle, bcFontConfig = Nothing }
+                { bcLabel = "button", bcAction = handle, bcFontConfig = Nothing, bcTextColor = Nothing }
           renderWidget rs widget2
           tree2 <- readIORef (rsRenderedTree rs)
           let nodeId2 = case tree2 of
@@ -294,8 +294,8 @@ incrementalRenderTests = testGroup "Incremental rendering"
 
       , testCase "styled unchanged keeps same node ID" $ do
           ((), rs) <- withActions (pure ())
-          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing Nothing
-              widget = Styled style (Text TextConfig { tcLabel = "styled", tcFontConfig = Nothing })
+          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing
+              widget = Styled style (Text TextConfig { tcLabel = "styled", tcFontConfig = Nothing, tcTextColor = Nothing })
           renderWidget rs widget
           tree1 <- readIORef (rsRenderedTree rs)
           let nodeId1 = case tree1 of
@@ -310,14 +310,14 @@ incrementalRenderTests = testGroup "Incremental rendering"
 
       , testCase "styled child change updates in-place" $ do
           ((), rs) <- withActions (pure ())
-          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing Nothing
-              widget1 = Styled style (Text TextConfig { tcLabel = "before", tcFontConfig = Nothing })
+          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing
+              widget1 = Styled style (Text TextConfig { tcLabel = "before", tcFontConfig = Nothing, tcTextColor = Nothing })
           renderWidget rs widget1
           tree1 <- readIORef (rsRenderedTree rs)
           let nodeId1 = case tree1 of
                 Just node -> nodeIdOf node
                 Nothing   -> -1
-          let widget2 = Styled style (Text TextConfig { tcLabel = "after", tcFontConfig = Nothing })
+          let widget2 = Styled style (Text TextConfig { tcLabel = "after", tcFontConfig = Nothing, tcTextColor = Nothing })
           renderWidget rs widget2
           tree2 <- readIORef (rsRenderedTree rs)
           let nodeId2 = case tree2 of
@@ -329,11 +329,11 @@ incrementalRenderTests = testGroup "Incremental rendering"
       , testCase "styled child type change reapplies style" $ do
           (clickAction, rs) <- withActions $
             createAction (pure ())
-          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing Nothing
-              widget1 = Styled style (Text TextConfig { tcLabel = "txt", tcFontConfig = Nothing })
+          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing
+              widget1 = Styled style (Text TextConfig { tcLabel = "txt", tcFontConfig = Nothing, tcTextColor = Nothing })
           renderWidget rs widget1
           -- Re-render with different child type but same style
-          let widget2 = Styled style (Button (ButtonConfig "btn" clickAction Nothing))
+          let widget2 = Styled style (Button (ButtonConfig "btn" clickAction Nothing Nothing))
           ((), stderrOutput) <- captureStderr $ renderWidget rs widget2
           -- applyStyle must fire setNumProp for padding on the new node
           assertBool
@@ -347,7 +347,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
             createOnChange (\_ -> pure ())
           let widget1 = TextInput TextInputConfig
                 { tiInputType = InputNumber, tiHint = "% of 1RM", tiValue = ""
-                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiTextColor = Nothing, tiAutoFocus = False }
           renderWidget rs widget1
           tree1 <- readIORef (rsRenderedTree rs)
           let nodeId1 = case tree1 of
@@ -356,7 +356,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
           -- Re-render with a different value (simulates user typing)
           let widget2 = TextInput TextInputConfig
                 { tiInputType = InputNumber, tiHint = "% of 1RM", tiValue = "80"
-                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiTextColor = Nothing, tiAutoFocus = False }
           renderWidget rs widget2
           tree2 <- readIORef (rsRenderedTree rs)
           let nodeId2 = case tree2 of
@@ -370,7 +370,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
             createOnChange (\_ -> pure ())
           let widget1 = TextInput TextInputConfig
                 { tiInputType = InputText, tiHint = "old hint", tiValue = ""
-                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiTextColor = Nothing, tiAutoFocus = False }
           renderWidget rs widget1
           tree1 <- readIORef (rsRenderedTree rs)
           let nodeId1 = case tree1 of
@@ -378,7 +378,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
                 Nothing   -> -1
           let widget2 = TextInput TextInputConfig
                 { tiInputType = InputText, tiHint = "new hint", tiValue = ""
-                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiTextColor = Nothing, tiAutoFocus = False }
           renderWidget rs widget2
           tree2 <- readIORef (rsRenderedTree rs)
           let nodeId2 = case tree2 of
@@ -392,12 +392,12 @@ incrementalRenderTests = testGroup "Incremental rendering"
             createOnChange (\t -> writeIORef ref (show t))
           let widget1 = TextInput TextInputConfig
                 { tiInputType = InputNumber, tiHint = "weight", tiValue = ""
-                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiTextColor = Nothing, tiAutoFocus = False }
           renderWidget rs widget1
           -- Simulate text change followed by re-render (new value)
           let widget2 = TextInput TextInputConfig
                 { tiInputType = InputNumber, tiHint = "weight", tiValue = "80"
-                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiTextColor = Nothing, tiAutoFocus = False }
           renderWidget rs widget2
           -- Callback should still work after in-place diff
           dispatchTextEvent rs (onChangeId changeHandle) "95"
@@ -408,11 +408,11 @@ incrementalRenderTests = testGroup "Incremental rendering"
           (changeHandle, rs) <- withActions $
             createOnChange (\_ -> pure ())
           let mkWidget value = column
-                [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing }
+                [ Text TextConfig { tcLabel = "header", tcFontConfig = Nothing, tcTextColor = Nothing }
                 , TextInput TextInputConfig
                     { tiInputType = InputNumber, tiHint = "% of 1RM", tiValue = value
-                    , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
-                , Text TextConfig { tcLabel = "footer", tcFontConfig = Nothing }
+                    , tiOnChange = changeHandle, tiFontConfig = Nothing, tiTextColor = Nothing, tiAutoFocus = False }
+                , Text TextConfig { tcLabel = "footer", tcFontConfig = Nothing, tcTextColor = Nothing }
                 ]
           renderWidget rs (mkWidget "")
           tree1 <- readIORef (rsRenderedTree rs)
@@ -439,9 +439,9 @@ incrementalRenderTests = testGroup "Incremental rendering"
           -- Render: [TextInput(key=10), Button(key=20)]
           let textInput = TextInput TextInputConfig
                 { tiInputType = InputText, tiHint = "enter text", tiValue = ""
-                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiAutoFocus = False }
+                , tiOnChange = changeHandle, tiFontConfig = Nothing, tiTextColor = Nothing, tiAutoFocus = False }
               toggleBtn = Button ButtonConfig
-                { bcLabel = "toggle", bcAction = clickAction, bcFontConfig = Nothing }
+                { bcLabel = "toggle", bcAction = clickAction, bcFontConfig = Nothing, bcTextColor = Nothing }
               widget1 = Column LayoutSettings
                 { lsWidgets = [keyedItem 10 textInput, keyedItem 20 toggleBtn]
                 , lsScrollable = False }
@@ -453,7 +453,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
                   _               -> -1
                 Nothing -> -1
           -- Re-render: [Banner(unkeyed), TextInput(key=10), Button(key=20)]
-          let banner = Text TextConfig { tcLabel = "Banner", tcFontConfig = Nothing }
+          let banner = Text TextConfig { tcLabel = "Banner", tcFontConfig = Nothing, tcTextColor = Nothing }
               widget2 = Column LayoutSettings
                 { lsWidgets = [item banner, keyedItem 10 textInput, keyedItem 20 toggleBtn]
                 , lsScrollable = False }

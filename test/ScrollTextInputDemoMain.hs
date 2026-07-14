@@ -38,13 +38,14 @@ main = do
 -- prrrrrrrrr layout that triggers DeadObjectException.
 scrollTextInputView :: Action -> Action -> OnChange -> OnChange -> IO Widget
 scrollTextInputView save back onWeight onNotes = pure $ Column (LayoutSettings
-  [ item (Text TextConfig { tcLabel = "Enter data", tcFontConfig = Nothing })
+  [ item (Text TextConfig { tcLabel = "Enter data", tcFontConfig = Nothing, tcTextColor = Nothing })
   , item (TextInput TextInputConfig
       { tiInputType  = InputNumber
       , tiHint       = "Weight (kg)"
       , tiValue      = ""
       , tiOnChange   = onWeight
       , tiFontConfig = Nothing
+      , tiTextColor  = Nothing
       , tiAutoFocus  = False
       })
   , item (TextInput TextInputConfig
@@ -53,12 +54,13 @@ scrollTextInputView save back onWeight onNotes = pure $ Column (LayoutSettings
       , tiValue      = ""
       , tiOnChange   = onNotes
       , tiFontConfig = Nothing
+      , tiTextColor  = Nothing
       , tiAutoFocus  = False
       })
   , item (row
     [ Button ButtonConfig
-        { bcLabel = "Save", bcAction = save, bcFontConfig = Nothing }
+        { bcLabel = "Save", bcAction = save, bcFontConfig = Nothing, bcTextColor = Nothing }
     , Button ButtonConfig
-        { bcLabel = "Back", bcAction = back, bcFontConfig = Nothing }
+        { bcLabel = "Back", bcAction = back, bcFontConfig = Nothing, bcTextColor = Nothing }
     ])
   ] True)
