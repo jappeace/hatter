@@ -36,9 +36,12 @@ import Hatter
   , createAction
   )
 import Hatter.AppContext (AppContext(..), derefAppContext)
+import Data.UUID.Types qualified as UUID
 import Hatter.Ble
   ( BleState(..)
   , BleScanResult(..)
+  , BleAdvertisement(..)
+  , BleAdvertisementWithErrors(..)
   , BleDeviceAddress(..)
   , BleServiceUuid(..)
   , BleCharacteristicUuid(..)
@@ -171,12 +174,27 @@ main = do
   writeIORef bleStateRef (Just (acBleState appCtx))
   pure ctxPtr
 
--- | Scan callback: log the result and remember its address as the
--- Connect target.
+-- | Scan callback: log the result (advertisement payloads on their
+-- own line, as decimal byte lists like the GATT logs) and remember
+-- its address as the Connect target.
 logAndRememberScanResult :: IORef (Maybe BleDeviceAddress) -> BleScanResult -> IO ()
 logAndRememberScanResult lastAddressRef scanResult = do
   platformLog ("BLE scan result: " <> pack (show scanResult))
+  case bsrAdvertisement scanResult of
+    Left withErrors -> do
+      platformLog ("BLE adv parse errors: "
+        <> pack (show (advertisementParseErrors withErrors)))
+      logServiceData (partialAdvertisement withErrors)
+    Right advertisement -> logServiceData advertisement
   writeIORef lastAddressRef (Just (bsrDeviceAddress scanResult))
+
+-- | Log every service data entry as a decimal byte list.
+logServiceData :: BleAdvertisement -> IO ()
+logServiceData advertisement =
+  mapM_ (\(uuid, payload) ->
+      platformLog ("BLE adv service data: " <> UUID.toText uuid
+        <> "=" <> pack (show (BS.unpack payload))))
+    (advServiceData advertisement)
 
 -- | Address the Connect button targets: the last discovered device,
 -- or a placeholder when nothing was discovered yet (so the connect

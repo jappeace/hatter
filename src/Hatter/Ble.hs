@@ -24,10 +24,11 @@
 module Hatter.Ble
   ( BleAdapterStatus(..)
   , BleScanResult(..)
+  , module Hatter.BleAdvertisement
+  , NormalizedBleUuid(..)
   , BleDeviceAddress(..)
   , BleServiceUuid(..)
   , BleCharacteristicUuid(..)
-  , NormalizedBleUuid(..)
   , BleCharacteristicKey(..)
   , BleCharacteristicValue(..)
   , BleMtu(..)
@@ -80,10 +81,12 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.String (IsString)
 import Data.Text (Text, pack, toLower, unpack)
+import Data.Word (Word8)
 import Foreign.C.String (CString, peekCString, withCString)
 import Foreign.C.Types (CInt(..))
 import Foreign.Marshal.Utils (maybeWith)
-import Foreign.Ptr (Ptr, nullPtr)
+import Foreign.Ptr (Ptr, castPtr, nullPtr)
+import Hatter.BleAdvertisement
 import System.IO (hPutStrLn, stderr)
 import Unwitch.Convert.CInt qualified as CInt
 import Unwitch.Convert.Int qualified as Int
@@ -158,6 +161,13 @@ data BleScanResult = BleScanResult
   { bsrDeviceName    :: Text
   , bsrDeviceAddress :: BleDeviceAddress
   , bsrRssi          :: Int
+  , bsrAdvertisement :: Either BleAdvertisementWithErrors BleAdvertisement
+    -- ^ Service data and manufacturer data broadcast in the
+    -- advertisement; a malformed advertisement delivers every defect
+    -- found alongside the salvaged partial advertisement, see
+    -- "Hatter.BleAdvertisement". 'dispatchBleScanResult' has already
+    -- logged the defects; they are passed on so applications can
+    -- also surface them.
   } deriving (Show, Eq)
 
 -- | A connection state change delivered by the platform for the
@@ -590,8 +600,9 @@ requestBleMtu bleState mtu callback =
 -- registered Haskell callback. Called from the FFI entry point.
 -- If no scan is active (callback is 'Nothing'), the result is
 -- silently dropped.
-dispatchBleScanResult :: BleState -> CString -> CString -> CInt -> IO ()
-dispatchBleScanResult bleState cName cAddr cRssi = do
+dispatchBleScanResult
+  :: BleState -> CString -> CString -> CInt -> Ptr Word8 -> CInt -> IO ()
+dispatchBleScanResult bleState cName cAddr cRssi advPtr advLength = do
   maybeCallback <- readIORef (blesScanCallback bleState)
   case maybeCallback of
     Nothing -> pure ()  -- No active scan, drop result
@@ -602,12 +613,25 @@ dispatchBleScanResult bleState cName cAddr cRssi = do
       addrStr <- if cAddr == nullPtr
         then pure ""
         else pack <$> peekCString cAddr
-      let scanResult = BleScanResult
-            { bsrDeviceName    = nameStr
-            , bsrDeviceAddress = BleDeviceAddress addrStr
-            , bsrRssi          = CInt.toInt cRssi
-            }
-      callback scanResult
+      advertisementBytes <- if advPtr == nullPtr || advLength <= 0
+        then pure BS.empty
+        else BS.packCStringLen (castPtr advPtr, CInt.toInt advLength)
+      let parsedAdvertisement = parseBleAdvertisement advertisementBytes
+      -- Log defects loudly (what, why and where, including which
+      -- device sent them) but still deliver the scan result: a
+      -- garbled advertisement must never hide the device.
+      case parsedAdvertisement of
+        Left withErrors -> hPutStrLn stderr
+          ("dispatchBleScanResult: malformed advertisement from "
+            ++ unpack addrStr ++ ": "
+            ++ show (advertisementParseErrors withErrors))
+        Right _ -> pure ()
+      callback BleScanResult
+        { bsrDeviceName    = nameStr
+        , bsrDeviceAddress = BleDeviceAddress addrStr
+        , bsrRssi          = CInt.toInt cRssi
+        , bsrAdvertisement = parsedAdvertisement
+        }
 
 -- | Dispatch a BLE connection event from the platform back to the
 -- registered Haskell callback.  The FFI entry point

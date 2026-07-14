@@ -23,7 +23,8 @@ static os_log_t g_log;
 #define LOGE(fmt, ...) os_log_error(g_log, fmt, ##__VA_ARGS__)
 
 /* Haskell FFI exports (dispatch results back to Haskell callbacks) */
-extern void haskellOnBleScanResult(void *ctx, const char *name, const char *address, int32_t rssi);
+extern void haskellOnBleScanResult(void *ctx, const char *name, const char *address, int32_t rssi,
+                                   const uint8_t *advertisement, int32_t advertisement_length);
 extern void haskellOnBleConnectionEvent(void *ctx, int32_t event);
 extern void haskellOnBleCharacteristicDiscovered(void *ctx, const char *serviceUuid,
                                                  const char *characteristicUuid,
@@ -94,6 +95,61 @@ static NSArray<CBUUID *> *g_scan_filter = nil;
     }
 }
 
+/* Re-encode CoreBluetooth's parsed advertisement dictionary into the
+ * raw AD structure format (length : type : payload) that Android
+ * delivers as-is, so the Haskell side (Hatter.BleAdvertisement) has a
+ * single decoding path for both platforms. CoreBluetooth never
+ * exposes the original bytes, only parsed fields; the two fields
+ * Haskell surfaces are encoded back: service data (AD 0x16/0x20/0x21
+ * by UUID width, UUID little-endian like on air) and manufacturer
+ * data (AD 0xFF, whose NSData already starts with the little-endian
+ * company id). */
+static NSData *encodeAdvertisementData(NSDictionary<NSString *, id> *advertisementData)
+{
+    NSMutableData *encoded = [NSMutableData data];
+
+    NSDictionary<CBUUID *, NSData *> *serviceData =
+        advertisementData[CBAdvertisementDataServiceDataKey];
+    for (CBUUID *uuid in serviceData) {
+        NSData *payload = serviceData[uuid];
+        NSData *uuidBytes = uuid.data; /* big-endian */
+        uint8_t adType;
+        if (uuidBytes.length == 2) {
+            adType = 0x16;
+        } else if (uuidBytes.length == 4) {
+            adType = 0x20;
+        } else if (uuidBytes.length == 16) {
+            adType = 0x21;
+        } else {
+            continue;
+        }
+        NSUInteger bodyLength = 1 + uuidBytes.length + payload.length;
+        if (bodyLength > 0xFF) {
+            continue;
+        }
+        uint8_t lengthByte = (uint8_t)bodyLength;
+        [encoded appendBytes:&lengthByte length:1];
+        [encoded appendBytes:&adType length:1];
+        const uint8_t *bigEndian = uuidBytes.bytes;
+        for (NSUInteger i = uuidBytes.length; i > 0; i--) {
+            [encoded appendBytes:&bigEndian[i - 1] length:1];
+        }
+        [encoded appendData:payload];
+    }
+
+    NSData *manufacturerData =
+        advertisementData[CBAdvertisementDataManufacturerDataKey];
+    if (manufacturerData.length >= 2 && manufacturerData.length + 1 <= 0xFF) {
+        uint8_t lengthByte = (uint8_t)(manufacturerData.length + 1);
+        uint8_t adType = 0xFF;
+        [encoded appendBytes:&lengthByte length:1];
+        [encoded appendBytes:&adType length:1];
+        [encoded appendData:manufacturerData];
+    }
+
+    return encoded;
+}
+
 - (void)centralManager:(CBCentralManager *)central
  didDiscoverPeripheral:(CBPeripheral *)peripheral
      advertisementData:(NSDictionary<NSString *, id> *)advertisementData
@@ -104,9 +160,12 @@ static NSArray<CBUUID *> *g_scan_filter = nil;
     const char *name = peripheral.name ? [peripheral.name UTF8String] : NULL;
     const char *address = [identifier UTF8String];
     int32_t rssi = [RSSI intValue];
+    NSData *advertisement = encodeAdvertisementData(advertisementData);
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        haskellOnBleScanResult(self.haskellCtx, name, address, rssi);
+        haskellOnBleScanResult(self.haskellCtx, name, address, rssi,
+                               advertisement.length ? (const uint8_t *)advertisement.bytes : NULL,
+                               (int32_t)advertisement.length);
     });
 }
 

@@ -21,10 +21,12 @@ import Test.Tasty.HUnit
 import Data.ByteString qualified as BS
 import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
 import Data.IntMap.Strict qualified as IntMap
+import Data.UUID.Types qualified as UUID
+import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text qualified as Text
 import Foreign.C.String (newCString)
 import Foreign.Marshal.Alloc (free)
-import Foreign.Ptr (nullPtr)
+import Foreign.Ptr (castPtr, nullPtr)
 import Hatter.AppContext (AppContext(..), freeAppContext, derefAppContext)
 import Hatter.AppContext (newAppContext)
 import Hatter.Widget (TextConfig(..), Widget(..))
@@ -65,6 +67,18 @@ import Hatter.Ble
   , BleGattError(..)
   , BleGattCompletion(..)
   , BleState(..)
+  , BleAdvertisement(..)
+  , ManufacturerId(..)
+  , AdvertisementParseError(..)
+  , AdvertisementParseErrors(..)
+  , BleAdvertisementWithErrors(..)
+  , AdStructureOffset(..)
+  , AdStructureTruncation(..)
+  , ServiceDataTruncation(..)
+  , ManufacturerDataTruncation(..)
+  , emptyBleAdvertisement
+  , parseBleAdvertisement
+  , serviceDataForUuid
   , newBleState
   , bleAdapterStatusFromInt
   , bleAdapterStatusToInt
@@ -372,6 +386,11 @@ secureStorageTests ffiSecureStorageState = sequentialTestGroup "SecureStorage" A
 -- wired to a real FFI app context, so the connect test exercises the
 -- actual desktop C stub round trip (Haskell -> ble_connect ->
 -- haskellOnBleConnectionEvent -> callback).
+-- | KKM's 0x2080 ext-data service UUID, built with the total
+-- fromWords.
+kkmExtDataUuid :: UUID.UUID
+kkmExtDataUuid = UUID.fromWords 0x00002080 0x00001000 0x80000080 0x5F9B34FB
+
 bleTests :: BleState -> TestTree
 bleTests ffiBleState = testGroup "BLE"
   [ testCase "bleAdapterStatusFromInt roundtrips all constructors" $ do
@@ -418,7 +437,7 @@ bleTests ffiBleState = testGroup "BLE"
       startBleScan bleState (\result -> writeIORef ref (Just result))
       cName <- newCString "TestDevice"
       cAddr <- newCString "AA:BB:CC:DD:EE:FF"
-      dispatchBleScanResult bleState cName cAddr (-42)
+      dispatchBleScanResult bleState cName cAddr (-42) nullPtr 0
       free cName
       free cAddr
       result <- readIORef ref
@@ -428,13 +447,14 @@ bleTests ffiBleState = testGroup "BLE"
           bsrDeviceName scanResult @?= "TestDevice"
           bsrDeviceAddress scanResult @?= BleDeviceAddress "AA:BB:CC:DD:EE:FF"
           bsrRssi scanResult @?= (-42)
+          bsrAdvertisement scanResult @?= Right emptyBleAdvertisement
 
   , testCase "dispatchBleScanResult with no active scan is no-op" $ do
       bleState <- newBleState
       cName <- newCString "Ignored"
       cAddr <- newCString "00:00:00:00:00:00"
       -- Should not throw or crash
-      dispatchBleScanResult bleState cName cAddr 0
+      dispatchBleScanResult bleState cName cAddr 0 nullPtr 0
       free cName
       free cAddr
 
@@ -444,12 +464,12 @@ bleTests ffiBleState = testGroup "BLE"
       startBleScan bleState (\result -> modifyIORef' ref (++ [result]))
       cName1 <- newCString "Device1"
       cAddr1 <- newCString "11:22:33:44:55:66"
-      dispatchBleScanResult bleState cName1 cAddr1 (-50)
+      dispatchBleScanResult bleState cName1 cAddr1 (-50) nullPtr 0
       free cName1
       free cAddr1
       cName2 <- newCString "Device2"
       cAddr2 <- newCString "AA:BB:CC:DD:EE:FF"
-      dispatchBleScanResult bleState cName2 cAddr2 (-70)
+      dispatchBleScanResult bleState cName2 cAddr2 (-70) nullPtr 0
       free cName2
       free cAddr2
       results <- readIORef ref
@@ -469,7 +489,7 @@ bleTests ffiBleState = testGroup "BLE"
       startBleScan bleState (\_ -> modifyIORef' refNew (+ 1))
       cName <- newCString "Test"
       cAddr <- newCString "00:11:22:33:44:55"
-      dispatchBleScanResult bleState cName cAddr (-60)
+      dispatchBleScanResult bleState cName cAddr (-60) nullPtr 0
       free cName
       free cAddr
       oldCount <- readIORef refOld
@@ -482,7 +502,7 @@ bleTests ffiBleState = testGroup "BLE"
       ref <- newIORef (Nothing :: Maybe BleScanResult)
       startBleScan bleState (\result -> writeIORef ref (Just result))
       cAddr <- newCString "FF:EE:DD:CC:BB:AA"
-      dispatchBleScanResult bleState nullPtr cAddr (-80)
+      dispatchBleScanResult bleState nullPtr cAddr (-80) nullPtr 0
       free cAddr
       result <- readIORef ref
       case result of
@@ -490,6 +510,165 @@ bleTests ffiBleState = testGroup "BLE"
         Just scanResult -> do
           bsrDeviceName scanResult @?= ""
           bsrDeviceAddress scanResult @?= BleDeviceAddress "FF:EE:DD:CC:BB:AA"
+
+  , testCase "dispatchBleScanResult parses the advertisement bytes" $ do
+      bleState <- newBleState
+      ref <- newIORef (Nothing :: Maybe BleScanResult)
+      startBleScan bleState (\result -> writeIORef ref (Just result))
+      cName <- newCString "KBPro-F4F5F6"
+      cAddr <- newCString "BC:57:29:F4:F5:F6"
+      -- flags, then 0x2080 service data carrying 55 00 01 F6.
+      let advBytes = BS.pack
+            [ 0x02, 0x01, 0x06
+            , 0x07, 0x16, 0x80, 0x20, 0x55, 0x00, 0x01, 0xF6
+            ]
+      BS.length advBytes @?= 11
+      BS.useAsCStringLen advBytes (\(advPtr, _len) ->
+        dispatchBleScanResult bleState cName cAddr (-42) (castPtr advPtr) 11)
+      free cName
+      free cAddr
+      result <- readIORef ref
+      case result of
+        Nothing -> assertFailure "callback should have been fired"
+        Just scanResult ->
+          fmap (serviceDataForUuid kkmExtDataUuid)
+              (bsrAdvertisement scanResult)
+            @?= Right (Just (BS.pack [0x55, 0x00, 0x01, 0xF6]))
+
+  , testCase "parseBleAdvertisement reads 16-bit service data" $
+      parseBleAdvertisement
+          (BS.pack [0x02, 0x01, 0x06, 0x05, 0x16, 0xED, 0xFE, 0x2A, 0x63])
+        @?= Right BleAdvertisement
+          { advServiceData =
+              [(UUID.fromWords 0x0000FEED 0x00001000 0x80000080 0x5F9B34FB, BS.pack [0x2A, 0x63])]
+          , advManufacturerData = []
+          }
+
+  , testCase "parseBleAdvertisement reads 128-bit service data" $
+      -- UUID travels little-endian on air; this is
+      -- 50DB505C-8AC4-4738-8448-3B1D9CC09CC5 reversed, then one byte.
+      parseBleAdvertisement
+          (BS.pack
+            [ 0x12, 0x21
+            , 0xC5, 0x9C, 0xC0, 0x9C, 0x1D, 0x3B, 0x48, 0x84
+            , 0x38, 0x47, 0xC4, 0x8A, 0x5C, 0x50, 0xDB, 0x50
+            , 0x7F
+            ])
+        @?= Right BleAdvertisement
+          { advServiceData =
+              [(UUID.fromWords 0x50DB505C 0x8AC44738 0x84483B1D 0x9CC09CC5, BS.pack [0x7F])]
+          , advManufacturerData = []
+          }
+
+  , testCase "parseBleAdvertisement reads manufacturer data" $
+      -- KKM's company id 0x0A53, little-endian on air.
+      parseBleAdvertisement (BS.pack [0x04, 0xFF, 0x53, 0x0A, 0x21])
+        @?= Right BleAdvertisement
+          { advServiceData = []
+          , advManufacturerData = [(ManufacturerId 0x0A53, BS.pack [0x21])]
+          }
+
+  , testCase "parseBleAdvertisement keeps entry order across types" $
+      parseBleAdvertisement
+          (BS.pack
+            [ 0x04, 0x16, 0xAA, 0xFE, 0x01
+            , 0x03, 0xFF, 0x4C, 0x00
+            , 0x04, 0x16, 0x80, 0x20, 0x02
+            ])
+        @?= Right BleAdvertisement
+          { advServiceData =
+              [ (UUID.fromWords 0x0000FEAA 0x00001000 0x80000080 0x5F9B34FB, BS.pack [0x01])
+              , (UUID.fromWords 0x00002080 0x00001000 0x80000080 0x5F9B34FB, BS.pack [0x02])
+              ]
+          , advManufacturerData = [(ManufacturerId 0x004C, BS.empty)]
+          }
+
+  , testCase "parseBleAdvertisement stops at the zero padding" $
+      -- ScanRecord.getBytes() zero-pads to the advertisement buffer
+      -- size; the padding must not become phantom entries.
+      parseBleAdvertisement
+          (BS.pack [0x05, 0x16, 0xED, 0xFE, 0x2A, 0x63, 0x00, 0x00, 0x00, 0x00])
+        @?= Right BleAdvertisement
+          { advServiceData =
+              [(UUID.fromWords 0x0000FEED 0x00001000 0x80000080 0x5F9B34FB, BS.pack [0x2A, 0x63])]
+          , advManufacturerData = []
+          }
+
+  , testCase "a truncated structure reports its offset and keeps the salvage" $
+      -- The second structure (length byte at offset 5) claims 9
+      -- bytes but only 3 follow; the well-formed manufacturer data
+      -- before it survives in the partial advertisement.
+      parseBleAdvertisement
+          (BS.pack [0x04, 0xFF, 0x53, 0x0A, 0x21, 0x09, 0x16, 0xED, 0xFE])
+        @?= Left BleAdvertisementWithErrors
+          { partialAdvertisement = BleAdvertisement
+              { advServiceData = []
+              , advManufacturerData = [(ManufacturerId 0x0A53, BS.pack [0x21])]
+              }
+          , advertisementParseErrors = AdvertisementParseErrors
+              (AdStructureTruncated (AdStructureTruncation (AdStructureOffset 5) 9 3) :| [])
+          }
+
+  , testCase "a mid-stream defect keeps the structures around it" $
+      -- Defective service data first, valid manufacturer data after:
+      -- the defect skips only its own structure.
+      parseBleAdvertisement
+          (BS.pack [0x02, 0x16, 0xED, 0x04, 0xFF, 0x53, 0x0A, 0x21])
+        @?= Left BleAdvertisementWithErrors
+          { partialAdvertisement = BleAdvertisement
+              { advServiceData = []
+              , advManufacturerData = [(ManufacturerId 0x0A53, BS.pack [0x21])]
+              }
+          , advertisementParseErrors = AdvertisementParseErrors
+              (ServiceDataUuidTruncated
+                 (ServiceDataTruncation (AdStructureOffset 0) 0x16 2 1) :| [])
+          }
+
+  , testCase "a truncated 128-bit service data UUID never passes as narrower" $ do
+      -- A 0x21 structure promises a 16-byte UUID; truncated to two
+      -- bytes it must NOT parse as the 16-bit UUID those bytes spell
+      -- (regression: [0x80, 0x20] would otherwise read as 0x2080).
+      parseBleAdvertisement (BS.pack [0x03, 0x21, 0x80, 0x20])
+        @?= Left (BleAdvertisementWithErrors emptyBleAdvertisement
+              (AdvertisementParseErrors
+                (ServiceDataUuidTruncated
+                   (ServiceDataTruncation (AdStructureOffset 0) 0x21 16 2) :| [])))
+      parseBleAdvertisement (BS.pack [0x05, 0x21, 0x01, 0x02, 0x03, 0x04])
+        @?= Left (BleAdvertisementWithErrors emptyBleAdvertisement
+              (AdvertisementParseErrors
+                (ServiceDataUuidTruncated
+                   (ServiceDataTruncation (AdStructureOffset 0) 0x21 16 4) :| [])))
+      parseBleAdvertisement (BS.pack [0x03, 0x20, 0x80, 0x20])
+        @?= Left (BleAdvertisementWithErrors emptyBleAdvertisement
+              (AdvertisementParseErrors
+                (ServiceDataUuidTruncated
+                   (ServiceDataTruncation (AdStructureOffset 0) 0x20 4 2) :| [])))
+
+  , testCase "parseBleAdvertisement accumulates every defect" $
+      -- Service data too short for its 16-bit UUID at offset 0, then
+      -- manufacturer data too short for its company id at offset 3:
+      -- all structures defective, so the salvage is empty.
+      parseBleAdvertisement
+          (BS.pack [0x02, 0x16, 0xED, 0x02, 0xFF, 0x53])
+        @?= Left (BleAdvertisementWithErrors emptyBleAdvertisement
+              (AdvertisementParseErrors
+                (ServiceDataUuidTruncated
+                    (ServiceDataTruncation (AdStructureOffset 0) 0x16 2 1)
+                  :| [ManufacturerDataTooShort
+                       (ManufacturerDataTruncation (AdStructureOffset 3) 1)])))
+
+  , testCase "serviceDataForUuid keys on the UUID value" $ do
+      let parsed = parseBleAdvertisement
+            (BS.pack [0x05, 0x16, 0x80, 0x20, 0x55, 0x63])
+      fmap (serviceDataForUuid kkmExtDataUuid) parsed
+        @?= Right (Just (BS.pack [0x55, 0x63]))
+      fmap (serviceDataForUuid
+             (UUID.fromWords 0x0000FEAA 0x00001000 0x80000080 0x5F9B34FB)) parsed
+        @?= Right Nothing
+      -- Both platform spellings parse to the same binary key, so the
+      -- old case-mismatch bug is unrepresentable.
+      UUID.fromText "00002080-0000-1000-8000-00805F9B34FB"
+        @?= UUID.fromText "00002080-0000-1000-8000-00805f9b34fb"
 
   , testCase "bleConnectionEventFromInt roundtrips all constructors" $ do
       let allEvents = [BleConnectionEstablished, BleConnectionClosed, BleConnectionFailed]

@@ -130,7 +130,8 @@ void haskellOnSecureStorageResult(void *ctx, int32_t requestId,
  * address: device address string.
  * rssi: received signal strength indicator.
  * ctx must be a pointer returned by haskellRunMain(). */
-void haskellOnBleScanResult(void *ctx, const char *name, const char *address, int32_t rssi);
+void haskellOnBleScanResult(void *ctx, const char *name, const char *address, int32_t rssi,
+                            const uint8_t *advertisement, int32_t advertisement_length);
 
 /* Dispatch a BLE connection event from native code back to Haskell.
  * event: one of the BLE_CONNECTION_* codes from BleBridge.h.

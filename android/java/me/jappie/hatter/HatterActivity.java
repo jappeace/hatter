@@ -81,7 +81,8 @@ public class HatterActivity extends Activity implements View.OnClickListener {
     private native void onLifecycleLowMemory();
     private native void onPermissionResult(int requestCode, int statusCode);
     private native void onSecureStorageResult(int requestId, int statusCode, String value);
-    private native void onBleScanResult(String deviceName, String deviceAddress, int rssi);
+    private native void onBleScanResult(String deviceName, String deviceAddress, int rssi,
+                                         byte[] advertisement);
     private native void onBleConnectionEvent(int event);
     private native void onBleCharacteristicDiscovered(String serviceUuid,
                                                       String characteristicUuid,
@@ -309,8 +310,12 @@ public class HatterActivity extends Activity implements View.OnClickListener {
                     String name = record != null ? record.getDeviceName() : null;
                     String address = result.getDevice().getAddress();
                     int rssi = result.getRssi();
+                    // The raw AD structures (advertisement + scan response as
+                    // received); Haskell parses service data and manufacturer
+                    // data out of them, see Hatter.BleAdvertisement.
+                    byte[] advertisement = record != null ? record.getBytes() : null;
                     bleScannedDevices.put(address, result.getDevice());
-                    onBleScanResult(name, address, rssi);
+                    onBleScanResult(name, address, rssi, advertisement);
                 }
             };
 

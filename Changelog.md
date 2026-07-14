@@ -4,6 +4,25 @@
 
 ### Added
 
+- Scan results now carry the advertisement's service data and
+  manufacturer data (issue #238): `BleScanResult` gained
+  `bsrAdvertisement :: Either BleAdvertisementWithErrors
+  BleAdvertisement` (the Left carries every defect found alongside
+  the salvaged partial advertisement, since AD structures are
+  independent), parsed by the new `Hatter.BleAdvertisement`
+  module (re-exported from `Hatter.Ble`) with `serviceDataForUuid`
+  for keyed lookup; service data is keyed by the binary `UUID` from
+  `uuid-types` (constants build with the total `fromWords`), so
+  platform case differences are unrepresentable. Malformed advertisements report
+  every defect with its byte offset instead of being silently
+  dropped, and the scan dispatch logs them while still delivering
+  the result. UUID rendering uses the `uuid-types` package (new
+  dependency, also in the cross builds). Android passes `ScanRecord.getBytes()` through
+  the bridge; iOS re-encodes CoreBluetooth's parsed dictionary into
+  the same AD structure format. This unblocks identifying devices
+  that only advertise service data (e.g. KBeacons' 0x2080) or
+  manufacturer data (iBeacon) without connecting to them.
+
 - `Hatter.Ble` GATT operations, completing the core of issue #108 and
   unblocking the kbeacon OTA tool: `discoverBleServices`,
   `readBleCharacteristic`, `writeBleCharacteristic` (with or without

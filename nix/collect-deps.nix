@@ -46,13 +46,20 @@ in pkgs.runCommand "hatter-collected-deps" {
   for pkg in ${depsList}; do
     echo "Processing: $pkg"
 
-    # Copy .conf files, skipping benchmark/test sub-libraries
+    # Copy .conf files, skipping benchmark/test sub-libraries.
+    # Skip .confs already collected: a package can be listed twice
+    # (once through a consumer's resolved deps and once through
+    # hatterOwnDeps), and the first copy is read-only, so copying the
+    # same .conf again fails with "Permission denied".
     for conf in $(find "$pkg" -name "*.conf" -path "*/package.conf.d/*"); do
       LIB_NAME=$(grep '^lib-name:' "$conf" | sed 's/^lib-name: *//' || true)
       case "$LIB_NAME" in
         *benchmark*|*test*) echo "  skip sub-lib: $LIB_NAME"; continue ;;
       esac
-      cp "$conf" $out/pkgdb/
+      confName=$(basename "$conf")
+      if [ ! -f "$out/pkgdb/$confName" ]; then
+        cp "$conf" $out/pkgdb/
+      fi
     done
 
     # Copy all non-profiling .a files from this package, skipping

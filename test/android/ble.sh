@@ -133,6 +133,10 @@ if [ "$BLE_SIM" = "1" ]; then
     "$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_SCAN" 2>&1 || true
     assert_logcat "$LOGCAT_SCAN" "BLE scan result:.*HatterBleSim" \
         "hatter received the simulated advertisement"
+    # The peripheral broadcasts 0xFEED service data with payload
+    # 2A 63 (decimal 42, 99); it must arrive parsed in Haskell.
+    assert_logcat "$LOGCAT_SCAN" "BLE adv service data: 0000feed-0000-1000-8000-00805f9b34fb=\[42,99\]" \
+        "advertisement service data delivered to Haskell"
 
     # Connect to the discovered peripheral from hatter code.
     tap_button "Connect" || { echo "WARNING: could not tap Connect"; }
