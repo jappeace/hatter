@@ -48,10 +48,11 @@ main = do
 -- | Builds a Column with a label and a "Show Actions" button.
 bottomSheetDemoView :: Action -> IO Widget
 bottomSheetDemoView onShowActions = pure $ column
-  [ Text TextConfig { tcLabel = "BottomSheet Demo", tcFontConfig = Nothing }
+  [ Text TextConfig { tcLabel = "BottomSheet Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
   , Button ButtonConfig
       { bcLabel      = "Show Actions"
       , bcAction     = onShowActions
       , bcFontConfig = Nothing
+      , bcTextColor = Nothing
       }
   ]

@@ -31,5 +31,5 @@ horizontalScrollDemoView :: Action -> Action -> IO Widget
 horizontalScrollDemoView noopAction onReachedEnd = pure $ Row (LayoutSettings
   ( map (\itemNumber -> item (button ("Item " <> Text.pack (show (itemNumber :: Int))) noopAction)) [1..20]
   ++ [item (Button ButtonConfig
-      { bcLabel = "Reached End", bcAction = onReachedEnd, bcFontConfig = Nothing })]
+      { bcLabel = "Reached End", bcAction = onReachedEnd, bcFontConfig = Nothing, bcTextColor = Nothing })]
   ) True)

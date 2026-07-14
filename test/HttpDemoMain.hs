@@ -66,10 +66,11 @@ main = do
 httpDemoView :: Action -> IO Widget
 httpDemoView onSendRequest = do
   pure $ column
-    [ Text TextConfig { tcLabel = "HTTP Demo", tcFontConfig = Nothing }
+    [ Text TextConfig { tcLabel = "HTTP Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
     , Button ButtonConfig
         { bcLabel = "Send Request"
         , bcAction = onSendRequest
         , bcFontConfig = Nothing
+        , bcTextColor = Nothing
         }
     ]

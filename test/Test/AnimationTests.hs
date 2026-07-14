@@ -254,7 +254,7 @@ animatedWidgetRenderTests = testGroup "Animated widget rendering"
       writeIORef (ansLoopActive animState) True
       actionState <- newActionState
       rs <- newRenderState actionState animState
-      let child = Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing }
+      let child = Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing, tcTextColor = Nothing }
           config = twoKeyframeConfig 0.3
                      (defaultStyle { wsPadding = Just 0 })
                      (defaultStyle { wsPadding = Just 10 })
@@ -270,7 +270,7 @@ animatedWidgetRenderTests = testGroup "Animated widget rendering"
       writeIORef (ansLoopActive animState) True
       actionState <- newActionState
       rs <- newRenderState actionState animState
-      let child = Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing }
+      let child = Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing, tcTextColor = Nothing }
           config = twoKeyframeConfig 0.3
                      (defaultStyle { wsPadding = Just 0 })
                      (defaultStyle { wsPadding = Just 10 })
@@ -294,8 +294,8 @@ animatedWidgetRenderTests = testGroup "Animated widget rendering"
           config2 = twoKeyframeConfig 0.3
                       (defaultStyle { wsPadding = Just 0 })
                       (defaultStyle { wsPadding = Just 50 })
-          child1 = Styled (defaultStyle { wsPadding = Just 10 }) (Text TextConfig { tcLabel = "x", tcFontConfig = Nothing })
-          child2 = Styled (defaultStyle { wsPadding = Just 50 }) (Text TextConfig { tcLabel = "x", tcFontConfig = Nothing })
+          child1 = Styled (defaultStyle { wsPadding = Just 10 }) (Text TextConfig { tcLabel = "x", tcFontConfig = Nothing, tcTextColor = Nothing })
+          child2 = Styled (defaultStyle { wsPadding = Just 50 }) (Text TextConfig { tcLabel = "x", tcFontConfig = Nothing, tcTextColor = Nothing })
           widget1 = Animated config1 child1
           widget2 = Animated config2 child2
       renderWidget rs widget1
@@ -314,7 +314,7 @@ animatedWidgetRenderTests = testGroup "Animated widget rendering"
       let config = twoKeyframeConfig 0.3
                      (defaultStyle { wsPadding = Just 0 })
                      (defaultStyle { wsPadding = Just 10 })
-          child1 = Text TextConfig { tcLabel = "text", tcFontConfig = Nothing }
+          child1 = Text TextConfig { tcLabel = "text", tcFontConfig = Nothing, tcTextColor = Nothing }
           child2 = column []
           widget1 = Animated config child1
           widget2 = Animated config child2
@@ -338,8 +338,8 @@ animatedWidgetRenderTests = testGroup "Animated widget rendering"
           configB = twoKeyframeConfig 0.5
                       (defaultStyle { wsPadding = Just 0 })
                       (defaultStyle { wsPadding = Just 50 })
-          styledA = Styled (defaultStyle { wsPadding = Just 10 }) (Text TextConfig { tcLabel = "x", tcFontConfig = Nothing })
-          styledB = Styled (defaultStyle { wsPadding = Just 50 }) (Text TextConfig { tcLabel = "x", tcFontConfig = Nothing })
+          styledA = Styled (defaultStyle { wsPadding = Just 10 }) (Text TextConfig { tcLabel = "x", tcFontConfig = Nothing, tcTextColor = Nothing })
+          styledB = Styled (defaultStyle { wsPadding = Just 50 }) (Text TextConfig { tcLabel = "x", tcFontConfig = Nothing, tcTextColor = Nothing })
           widgetA = Animated configA styledA
           widgetB = Animated configB styledB
 
@@ -391,22 +391,22 @@ normalizeAnimatedTests = testGroup "normalizeAnimated"
       let cfg = twoKeyframeConfig 0.3
                   (defaultStyle { wsPadding = Just 0 })
                   (defaultStyle { wsPadding = Just 10 })
-          childA = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
-          childB = Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
+          childA = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing }
+          childB = Text TextConfig { tcLabel = "b", tcFontConfig = Nothing, tcTextColor = Nothing }
           result = normalizeAnimated cfg (Column (LayoutSettings [item childA, item childB] False))
       result @?= Column (LayoutSettings [item (Animated cfg childA), item (Animated cfg childB)] False)
   , testCase "Distributes over Row children" $ do
       let cfg = twoKeyframeConfig 0.3
                   (defaultStyle { wsPadding = Just 0 })
                   (defaultStyle { wsPadding = Just 10 })
-          childA = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+          childA = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing }
           result = normalizeAnimated cfg (Row (LayoutSettings [item childA] False))
       result @?= Row (LayoutSettings [item (Animated cfg childA)] False)
   , testCase "Distributes over scrollable Column children" $ do
       let cfg = twoKeyframeConfig 0.3
                   (defaultStyle { wsPadding = Just 0 })
                   (defaultStyle { wsPadding = Just 10 })
-          childA = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+          childA = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing }
           result = normalizeAnimated cfg (Column (LayoutSettings [item childA] True))
       result @?= Column (LayoutSettings [item (Animated cfg childA)] True)
   , testCase "Inner Animated wins over outer" $ do
@@ -416,7 +416,7 @@ normalizeAnimatedTests = testGroup "normalizeAnimated"
           innerCfg = twoKeyframeConfig 0.1
                        (defaultStyle { wsPadding = Just 0 })
                        (defaultStyle { wsPadding = Just 20 })
-          leaf = Text TextConfig { tcLabel = "x", tcFontConfig = Nothing }
+          leaf = Text TextConfig { tcLabel = "x", tcFontConfig = Nothing, tcTextColor = Nothing }
           result = normalizeAnimated outerCfg (Animated innerCfg leaf)
       result @?= Animated innerCfg leaf
   , testCase "Styled returned unchanged" $ do
@@ -424,14 +424,14 @@ normalizeAnimatedTests = testGroup "normalizeAnimated"
                   (defaultStyle { wsPadding = Just 0 })
                   (defaultStyle { wsPadding = Just 10 })
           style = defaultStyle { wsPadding = Just 10 }
-          child = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+          child = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing }
           result = normalizeAnimated cfg (Styled style child)
       result @?= Styled style child
   , testCase "Leaf widget unchanged" $ do
       let cfg = twoKeyframeConfig 0.3
                   (defaultStyle { wsPadding = Just 0 })
                   (defaultStyle { wsPadding = Just 10 })
-          leaf = Text TextConfig { tcLabel = "hi", tcFontConfig = Nothing }
+          leaf = Text TextConfig { tcLabel = "hi", tcFontConfig = Nothing, tcTextColor = Nothing }
           result = normalizeAnimated cfg leaf
       result @?= leaf
   , testCase "Animated Column renders as RenderedContainer with RenderedAnimated children" $ do
@@ -444,9 +444,9 @@ normalizeAnimatedTests = testGroup "normalizeAnimated"
                   (defaultStyle { wsPadding = Just 0 })
                   (defaultStyle { wsPadding = Just 10 })
           childA = Styled (defaultStyle { wsPadding = Just 10 }) $
-                     Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+                     Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing }
           childB = Styled (defaultStyle { wsPadding = Just 20 }) $
-                     Text TextConfig { tcLabel = "b", tcFontConfig = Nothing }
+                     Text TextConfig { tcLabel = "b", tcFontConfig = Nothing, tcTextColor = Nothing }
           widget = Animated cfg (column [childA, childB])
       renderWidget rs widget
       renderedTree <- readIORef (rsRenderedTree rs)
@@ -471,7 +471,7 @@ normalizeAnimatedTests = testGroup "normalizeAnimated"
                   (defaultStyle { wsPadding = Just 10 })
           style1 = defaultStyle { wsPadding = Just 10 }
           style2 = defaultStyle { wsPadding = Just 50 }
-          child = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing }
+          child = Text TextConfig { tcLabel = "a", tcFontConfig = Nothing, tcTextColor = Nothing }
           widget1 = Animated cfg (column [Styled style1 child])
           widget2 = Animated cfg (column [Styled style2 child])
       renderWidget rs widget1
@@ -502,9 +502,9 @@ translateAnimationTests = testGroup "Translate animation"
                       (defaultStyle { wsTranslateX = Just 0, wsTranslateY = Just 0 })
                       (defaultStyle { wsTranslateX = Just 200, wsTranslateY = Just 100 })
           child1 = Styled (defaultStyle { wsTranslateX = Just 0, wsTranslateY = Just 0 })
-                     (Text TextConfig { tcLabel = "t", tcFontConfig = Nothing })
+                     (Text TextConfig { tcLabel = "t", tcFontConfig = Nothing, tcTextColor = Nothing })
           child2 = Styled (defaultStyle { wsTranslateX = Just 100, wsTranslateY = Just 50 })
-                     (Text TextConfig { tcLabel = "t", tcFontConfig = Nothing })
+                     (Text TextConfig { tcLabel = "t", tcFontConfig = Nothing, tcTextColor = Nothing })
           widget1 = Animated config1 child1
           widget2 = Animated config2 child2
       renderWidget rs widget1
@@ -522,7 +522,7 @@ translateAnimationTests = testGroup "Translate animation"
       animState <- newAnimationState
       rs <- newRenderState actionState animState
       renderWidget rs $ Styled (defaultStyle { wsTranslateX = Just 10.5, wsTranslateY = Just (-20.0) })
-        (Text TextConfig { tcLabel = "offset", tcFontConfig = Nothing })
+        (Text TextConfig { tcLabel = "offset", tcFontConfig = Nothing, tcTextColor = Nothing })
   ]
 
 -- ---------------------------------------------------------------------------
@@ -541,7 +541,7 @@ firstRenderAnimationTests = testGroup "First-render animation"
                      (defaultStyle { wsTranslateX = Just 0, wsTranslateY = Just 0 })
                      (defaultStyle { wsTranslateX = Just 120, wsTranslateY = Just 50 })
           style = defaultStyle { wsTranslateX = Just 120, wsTranslateY = Just 50 }
-          child = Text TextConfig { tcLabel = "*", tcFontConfig = Nothing }
+          child = Text TextConfig { tcLabel = "*", tcFontConfig = Nothing, tcTextColor = Nothing }
           widget = Animated config (Styled style child)
       renderWidget rs widget
       tweens <- readIORef (ansTweens animState)
@@ -556,7 +556,7 @@ firstRenderAnimationTests = testGroup "First-render animation"
             , anKeyframes = [Keyframe (unsafeKfAt 0) (defaultStyle { wsPadding = Just 10 })]
             }
           widget = Animated config
-                     (Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing })
+                     (Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing, tcTextColor = Nothing })
       renderWidget rs widget
       tweens <- readIORef (ansTweens animState)
       assertBool "No tween for single keyframe" (IntMap.null tweens)
@@ -567,7 +567,7 @@ firstRenderAnimationTests = testGroup "First-render animation"
       rs <- newRenderState actionState animState
       let config = AnimatedConfig { anDuration = 0.3, anKeyframes = [] }
           widget = Animated config
-                     (Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing })
+                     (Text TextConfig { tcLabel = "hello", tcFontConfig = Nothing, tcTextColor = Nothing })
       renderWidget rs widget
       tweens <- readIORef (ansTweens animState)
       assertBool "No tween for empty keyframes" (IntMap.null tweens)
@@ -585,7 +585,7 @@ firstRenderAnimationTests = testGroup "First-render animation"
                 , Keyframe (unsafeKfAt 1) (defaultStyle { wsTranslateX = Just 200, wsTranslateY = Just 0 })
                 ]
             }
-          child = Text TextConfig { tcLabel = "*", tcFontConfig = Nothing }
+          child = Text TextConfig { tcLabel = "*", tcFontConfig = Nothing, tcTextColor = Nothing }
           widget = Animated config (Styled (defaultStyle { wsTranslateX = Just 200, wsTranslateY = Just 0 }) child)
       renderWidget rs widget
       tweens <- readIORef (ansTweens animState)
@@ -678,10 +678,10 @@ smartConstructorTests = testGroup "Smart constructors"
   , testCase "lerpStyle interpolates colors" $ do
       let red  = Color 255 0 0 255
           blue = Color 0 0 255 255
-          from = defaultStyle { wsTextColor = Just red }
-          to   = defaultStyle { wsTextColor = Just blue }
+          from = defaultStyle { wsBackgroundColor = Just red }
+          to   = defaultStyle { wsBackgroundColor = Just blue }
           mid  = lerpStyle 0.5 from to
-      case wsTextColor mid of
+      case wsBackgroundColor mid of
         Just c  -> do
           colorRed c @?= 128
           colorBlue c @?= 128

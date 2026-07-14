@@ -59,6 +59,6 @@ filesDirDemoView :: IO Widget
 filesDirDemoView = do
   filesDir <- getAppFilesDir
   pure $ column
-    [ Text TextConfig { tcLabel = "FilesDir Demo", tcFontConfig = Nothing }
-    , Text TextConfig { tcLabel = pack filesDir, tcFontConfig = Nothing }
+    [ Text TextConfig { tcLabel = "FilesDir Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
+    , Text TextConfig { tcLabel = pack filesDir, tcFontConfig = Nothing, tcTextColor = Nothing }
     ]

@@ -39,12 +39,14 @@ stackDemoView counterState onTap = do
         (Text TextConfig
           { tcLabel      = "Background: " <> Text.pack (show n)
           , tcFontConfig = Nothing
+          , tcTextColor = Nothing
           }))
     , -- Layer 1 (middle): tappable button
       item (Button ButtonConfig
         { bcLabel = "Tap overlay"
         , bcAction = onTap
         , bcFontConfig = Nothing
+        , bcTextColor = Nothing
         })
     , -- Layer 2 (top): passthrough overlay — touches must pass through to button
       item (Styled (defaultStyle { wsTouchPassthrough = Just True
@@ -53,5 +55,6 @@ stackDemoView counterState onTap = do
         (Text TextConfig
           { tcLabel      = "Passthrough overlay"
           , tcFontConfig = Nothing
+          , tcTextColor = Nothing
           }))
     ]

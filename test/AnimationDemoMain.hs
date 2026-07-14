@@ -52,11 +52,13 @@ main = do
                 Text TextConfig
                   { tcLabel = "Animated padding"
                   , tcFontConfig = Nothing
+                  , tcTextColor = Nothing
                   }
           , Button ButtonConfig
               { bcLabel = "Toggle Padding"
               , bcAction = toggleAction
               , bcFontConfig = Nothing
+              , bcTextColor = Nothing
               }
           ]
       app = MobileApp

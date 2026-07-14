@@ -24,6 +24,6 @@ main = do
   actionState <- newActionState
   startMobileApp MobileApp
     { maContext     = loggingMobileContext
-    , maView        = \_userState -> pure (Text TextConfig { tcLabel = "th-direct", tcFontConfig = Nothing })
+    , maView        = \_userState -> pure (Text TextConfig { tcLabel = "th-direct", tcFontConfig = Nothing, tcTextColor = Nothing })
     , maActionState = actionState
     }

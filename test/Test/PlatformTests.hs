@@ -1072,7 +1072,7 @@ authSessionTests ffiAuthSessionState = sequentialTestGroup "AuthSession" AllFini
 locationTests :: TestTree
 locationTests = testGroup "Location"
   [ testCase "desktop stub dispatches fixed location on startLocationUpdates" $ do
-      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing }))
+      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing }))
       ctxPtr <- newAppContext app
       appCtx <- derefAppContext ctxPtr
       let locationState = acLocationState appCtx
@@ -1107,7 +1107,7 @@ locationTests = testGroup "Location"
       dispatchLocationUpdate locationState 0.0 0.0 0.0 0.0
 
   , testCase "stopLocationUpdates clears callback" $ do
-      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing }))
+      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing }))
       ctxPtr <- newAppContext app
       appCtx <- derefAppContext ctxPtr
       let locationState = acLocationState appCtx
@@ -1120,7 +1120,7 @@ locationTests = testGroup "Location"
       freeAppContext ctxPtr
 
   , testCase "startLocationUpdates replaces existing callback" $ do
-      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing }))
+      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing }))
       ctxPtr <- newAppContext app
       appCtx <- derefAppContext ctxPtr
       let locationState = acLocationState appCtx
@@ -1197,7 +1197,7 @@ bottomSheetTests ffiBottomSheetState = sequentialTestGroup "BottomSheet" AllFini
 cameraTests :: TestTree
 cameraTests = testGroup "Camera"
   [ testCase "desktop stub dispatches success with picture on capturePhoto" $ do
-      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing }))
+      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing }))
       ctxPtr <- newAppContext app
       appCtx <- derefAppContext ctxPtr
       let cameraState = acCameraState appCtx
@@ -1218,7 +1218,7 @@ cameraTests = testGroup "Camera"
       freeAppContext ctxPtr
 
   , testCase "desktop stub dispatches success on startVideoCapture with frame/audio callbacks" $ do
-      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing }))
+      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing }))
       ctxPtr <- newAppContext app
       appCtx <- derefAppContext ctxPtr
       let cameraState = acCameraState appCtx
@@ -1337,7 +1337,7 @@ cameraTests = testGroup "Camera"
       IntMap.member 0 audioCallbacks @?= False
 
   , testCase "capturePhoto assigns incremental request IDs" $ do
-      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing }))
+      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing }))
       ctxPtr <- newAppContext app
       appCtx <- derefAppContext ctxPtr
       let cameraState = acCameraState appCtx
@@ -1456,7 +1456,7 @@ httpTests ffiHttpState = sequentialTestGroup "Http" AllFinish
 networkStatusTests :: TestTree
 networkStatusTests = testGroup "NetworkStatus"
   [ testCase "desktop stub dispatches connected WiFi on startNetworkMonitoring" $ do
-      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing }))
+      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing }))
       ctxPtr <- newAppContext app
       appCtx <- derefAppContext ctxPtr
       let networkStatusState = acNetworkStatusState appCtx
@@ -1487,7 +1487,7 @@ networkStatusTests = testGroup "NetworkStatus"
       dispatchNetworkStatusChange networkStatusState 1 1
 
   , testCase "stopNetworkMonitoring clears callback" $ do
-      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing }))
+      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing }))
       ctxPtr <- newAppContext app
       appCtx <- derefAppContext ctxPtr
       let networkStatusState = acNetworkStatusState appCtx
@@ -1500,7 +1500,7 @@ networkStatusTests = testGroup "NetworkStatus"
       freeAppContext ctxPtr
 
   , testCase "startNetworkMonitoring replaces existing callback" $ do
-      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing }))
+      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing }))
       ctxPtr <- newAppContext app
       appCtx <- derefAppContext ctxPtr
       let networkStatusState = acNetworkStatusState appCtx

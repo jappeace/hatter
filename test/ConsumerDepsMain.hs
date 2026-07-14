@@ -19,6 +19,6 @@ main = do
   actionState <- newActionState
   startMobileApp MobileApp
     { maContext     = loggingMobileContext
-    , maView        = \_userState -> pure (Text TextConfig { tcLabel = "consumer-deps", tcFontConfig = Nothing })
+    , maView        = \_userState -> pure (Text TextConfig { tcLabel = "consumer-deps", tcFontConfig = Nothing, tcTextColor = Nothing })
     , maActionState = actionState
     }

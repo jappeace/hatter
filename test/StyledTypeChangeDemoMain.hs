@@ -47,8 +47,12 @@ toggle ScreenB = ScreenA
 redBackground :: WidgetStyle
 redBackground = defaultStyle
   { wsBackgroundColor = Just (Color 255 0 0 (255 :: Word8))
-  , wsTextColor       = Just (Color 255 255 255 (255 :: Word8))
   }
+
+-- | White label color, carried on the text-bearing configs since
+-- text color no longer lives in WidgetStyle.
+whiteText :: Color
+whiteText = Color 255 255 255 (255 :: Word8)
 
 -- | The view: a Column with a switch button and a Styled widget.
 --
@@ -67,18 +71,21 @@ styledTypeChangeView screenState switchAction noopAction = do
           (Text TextConfig
             { tcLabel = "STYLED_TEXT"
             , tcFontConfig = Nothing
+            , tcTextColor = Just whiteText
             })
         ScreenB -> Styled redBackground
           (Button ButtonConfig
             { bcLabel = "STYLED_BUTTON"
             , bcAction = noopAction
             , bcFontConfig = Nothing
+            , bcTextColor = Just whiteText
             })
   pure $ column
     [ Button ButtonConfig
         { bcLabel = "Switch screen"
         , bcAction = switchAction
         , bcFontConfig = Nothing
+        , bcTextColor = Nothing
         }
     , styledChild
     ]

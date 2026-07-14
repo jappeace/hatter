@@ -19,6 +19,7 @@ nodePoolTestView _userState = pure $ column $
   map (\itemNumber -> Text TextConfig
     { tcLabel = "Item " <> pack (show (itemNumber :: Int))
     , tcFontConfig = Nothing
+    , tcTextColor = Nothing
     }) [1..299]
 
 main :: IO (Ptr AppContext)

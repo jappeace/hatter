@@ -55,4 +55,4 @@ deviceInfoDemoView = do
 -- | A text widget showing a label-value pair.
 infoRow :: Text -> Text -> Widget
 infoRow label value =
-  Text TextConfig { tcLabel = label <> ": " <> value, tcFontConfig = Nothing }
+  Text TextConfig { tcLabel = label <> ": " <> value, tcFontConfig = Nothing, tcTextColor = Nothing }

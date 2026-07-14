@@ -57,10 +57,11 @@ main = do
 -- | Builds a Column with a label and a "Start Login" button.
 authSessionDemoView :: Action -> IO Widget
 authSessionDemoView onStartLogin = pure $ column
-  [ Text TextConfig { tcLabel = "AuthSession Demo", tcFontConfig = Nothing }
+  [ Text TextConfig { tcLabel = "AuthSession Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
   , Button ButtonConfig
       { bcLabel      = "Start Login"
       , bcAction     = onStartLogin
       , bcFontConfig = Nothing
+      , bcTextColor = Nothing
       }
   ]

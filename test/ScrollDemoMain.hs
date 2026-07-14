@@ -28,8 +28,8 @@ scrollDemoView :: Action -> IO Widget
 scrollDemoView onReachedBottom = pure $ Column (LayoutSettings
   [ item (column
     ( map (\itemNumber -> Text TextConfig
-        { tcLabel = "Item " <> Text.pack (show (itemNumber :: Int)), tcFontConfig = Nothing }) [1..20]
+        { tcLabel = "Item " <> Text.pack (show (itemNumber :: Int)), tcFontConfig = Nothing, tcTextColor = Nothing }) [1..20]
     ++ [Button ButtonConfig
-        { bcLabel = "Reached Bottom", bcAction = onReachedBottom, bcFontConfig = Nothing }]
+        { bcLabel = "Reached Bottom", bcAction = onReachedBottom, bcFontConfig = Nothing, bcTextColor = Nothing }]
     ))
   ] True)

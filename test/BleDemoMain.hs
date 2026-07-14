@@ -232,11 +232,11 @@ logDiscoveredCharacteristic discovered = platformLog
 -- | Builds a Column with a label and one button per BLE action.
 bleDemoView :: [(Text, Action)] -> IO Widget
 bleDemoView actions = pure $ column
-  ( Text TextConfig { tcLabel = "BLE Demo", tcFontConfig = Nothing }
+  ( Text TextConfig { tcLabel = "BLE Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
   : map actionButton actions
   )
 
 -- | A button for one labelled action.
 actionButton :: (Text, Action) -> Widget
 actionButton (label, action) = Button ButtonConfig
-  { bcLabel = label, bcAction = action, bcFontConfig = Nothing }
+  { bcLabel = label, bcAction = action, bcFontConfig = Nothing, bcTextColor = Nothing }

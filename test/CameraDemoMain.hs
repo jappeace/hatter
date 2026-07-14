@@ -64,10 +64,11 @@ main = do
 -- | Builds a Column with a label and a "Capture Photo" button.
 cameraDemoView :: Action -> IO Widget
 cameraDemoView onCapturePhoto = pure $ column
-  [ Text TextConfig { tcLabel = "Camera Demo", tcFontConfig = Nothing }
+  [ Text TextConfig { tcLabel = "Camera Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
   , Button ButtonConfig
       { bcLabel      = "Capture Photo"
       , bcAction     = onCapturePhoto
       , bcFontConfig = Nothing
+      , bcTextColor = Nothing
       }
   ]

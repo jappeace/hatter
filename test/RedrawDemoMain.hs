@@ -65,4 +65,5 @@ redrawView startedRef _userState = do
   pure $ column [Text TextConfig
     { tcLabel = "Count: " <> pack (show count)
     , tcFontConfig = Nothing
+    , tcTextColor = Nothing
     }]
