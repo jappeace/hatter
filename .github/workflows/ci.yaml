@@ -104,12 +104,13 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
-    # 70 rather than 45: a ghc-options change rebuilds every Haskell
-    # module and the nix store cache is only saved by a COMPLETED job
-    # (a timeout-cancel skips the save), so a cold rebuild has to fit
-    # in one run or every retry starts cold again; run 29340371964
-    # timed out at exactly 45 minutes mid emulator test after such a
-    # rebuild. Warm runs take ~25 minutes.
+    # 70 rather than 45: a ghc-options change invalidates every
+    # Haskell derivation, and this job only READS nix-cache.jappie.me
+    # (extra-substituters; nothing here pushes to it), so each run of
+    # such a change builds cold until the cache is populated
+    # externally, and the budget must fit a full cold build; run
+    # 29340371964 timed out at exactly 45 minutes mid emulator test
+    # on such a build. Warm runs take ~25 minutes.
     timeout-minutes: 70
     steps:
     - name: Free disk space
