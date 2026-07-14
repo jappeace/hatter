@@ -164,7 +164,13 @@ jobs:
 
   ios:
     runs-on: macos-latest
-    timeout-minutes: 45
+    # 70 rather than 45: like the android job, this only READS
+    # nix-cache.jappie.me, so a ghc-options change builds cold until
+    # the cache is fed externally, and the leftover budget must still
+    # fit the simulator test (which is also the #235 flake); runs
+    # 29334286560 and 29344658446 both lost the simulator test to the
+    # 45-minute cutoff after cold-ish builds.
+    timeout-minutes: 70
     steps:
     - uses: actions/checkout@v4
     - uses: cachix/install-nix-action@v31
