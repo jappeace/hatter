@@ -4,6 +4,13 @@
 
 ### Changed
 
+- Missing fields in record construction are compile errors now
+  (`-Werror=missing-fields`): the default-on warning was overlooked
+  during the #243 migration and surfaced as a runtime crash in the
+  test suite, and the same flag immediately caught three long-standing
+  incomplete `UserState` constructions in the tests. A missing field
+  is always a latent runtime crash, so the build refuses it outright.
+
 - BREAKING: text color moved from `WidgetStyle` into the text-bearing
   configs (`tcTextColor` / `bcTextColor` / `tiTextColor`, next to the
   font override), following the `tcFontConfig` precedent. A text

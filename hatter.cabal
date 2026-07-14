@@ -76,6 +76,7 @@ common common-options
     -O2 -Wall -split-sections -Wincomplete-uni-patterns
     -Wincomplete-record-updates -Widentities -Wredundant-constraints
     -Wcpp-undef -fwarn-tabs -Wpartial-fields
+    -Werror=missing-fields
     -fdefer-diagnostics -Wunused-packages
     -fenable-th-splice-warnings
     -fno-omit-yields

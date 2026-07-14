@@ -104,7 +104,14 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 70 rather than 45: a ghc-options change invalidates every
+    # Haskell derivation, and this job only READS nix-cache.jappie.me
+    # (extra-substituters; nothing here pushes to it), so each run of
+    # such a change builds cold until the cache is populated
+    # externally, and the budget must fit a full cold build; run
+    # 29340371964 timed out at exactly 45 minutes mid emulator test
+    # on such a build. Warm runs take ~25 minutes.
+    timeout-minutes: 70
     steps:
     - name: Free disk space
       run: |
@@ -157,7 +164,14 @@ jobs:
 
   ios:
     runs-on: macos-latest
-    timeout-minutes: 45
+    # 70 rather than 45: like the android job, this only READS
+    # nix-cache.jappie.me, so a ghc-options change builds cold until
+    # the cache is fed externally, and the leftover budget must still
+    # fit the simulator test (which is also the #235 flake). The
+    # cutoff has eaten the simulator test after a successful build
+    # twice (run 29281533228 on #239, run 29344658446 on #244) and
+    # once mid-compile before that (9dcf105).
+    timeout-minutes: 70
     steps:
     - uses: actions/checkout@v4
     - uses: cachix/install-nix-action@v31

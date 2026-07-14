@@ -32,6 +32,7 @@ import Hatter.Lifecycle
   )
 import Hatter.Widget (ButtonConfig(..), TextConfig(..), Widget(..))
 import Hatter.Permission (newPermissionState)
+import Hatter.PlatformSignIn (newPlatformSignInState)
 import Hatter.SecureStorage (newSecureStorageState)
 import Hatter.Ble (newBleState)
 import Hatter.Dialog (newDialogState)
@@ -76,6 +77,7 @@ registrationTests = testGroup "Registration"
       dummyHttpState <- newHttpState
       dummyNetworkStatusState <- newNetworkStatusState
       dummyAnimationState <- newAnimationState
+      dummyPlatformSignInState <- newPlatformSignInState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
@@ -88,6 +90,8 @@ registrationTests = testGroup "Registration"
             , userHttpState          = dummyHttpState
             , userNetworkStatusState = dummyNetworkStatusState
             , userAnimationState     = dummyAnimationState
+            , userPlatformSignInState = dummyPlatformSignInState
+            , userRequestRedraw      = pure ()
             }
       viewFn <- readIORef (acViewFunction appCtx)
       widget <- viewFn dummyUserState
@@ -124,6 +128,7 @@ registrationTests = testGroup "Registration"
       dummyHttpState <- newHttpState
       dummyNetworkStatusState <- newNetworkStatusState
       dummyAnimationState <- newAnimationState
+      dummyPlatformSignInState <- newPlatformSignInState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
@@ -136,6 +141,8 @@ registrationTests = testGroup "Registration"
             , userHttpState          = dummyHttpState
             , userNetworkStatusState = dummyNetworkStatusState
             , userAnimationState     = dummyAnimationState
+            , userPlatformSignInState = dummyPlatformSignInState
+            , userRequestRedraw      = pure ()
             }
       viewFnA <- readIORef (acViewFunction appCtxA)
       viewFnB <- readIORef (acViewFunction appCtxB)
