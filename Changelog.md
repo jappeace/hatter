@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- `wsWidth`: a fixed-width style property (platform-native units,
+  like `wsPadding`) applied through all platform bridges and
+  animatable via keyframes, so sibling rows can align into table
+  columns (#245).
+
 ### Changed
 
 - Missing fields in record construction are compile errors now

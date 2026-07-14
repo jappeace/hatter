@@ -39,6 +39,7 @@
 #define UI_PROP_TRANSLATE_Y         10
 #define UI_PROP_AUTO_FOCUS          11
 #define UI_PROP_TOUCH_PASSTHROUGH   12
+#define UI_PROP_WIDTH               13
 
 /* Event types */
 #define UI_EVENT_CLICK       0

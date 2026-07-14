@@ -741,6 +741,19 @@ static void android_set_num_prop(int32_t nodeId, int32_t propId, double value)
         LOGI("setNumProp(node=%d, padding=%d)", nodeId, px);
         break;
     }
+    case UI_PROP_WIDTH: {
+        /* Fixed width in raw pixels (same unit convention as
+         * UI_PROP_PADDING); height stays WRAP_CONTENT. The gravity
+         * case above uses the same LayoutParams pattern. */
+        jint px = (jint)value;
+        jobject layoutParams = (*env)->NewObject(env,
+            g_class_ViewGroup_LayoutParams, g_ctor_ViewGroup_LayoutParams,
+            px, (jint)-2); /* width, WRAP_CONTENT */
+        (*env)->CallVoidMethod(env, view, g_method_setLayoutParams, layoutParams);
+        (*env)->DeleteLocalRef(env, layoutParams);
+        LOGI("setNumProp(node=%d, width=%d)", nodeId, px);
+        break;
+    }
     case UI_PROP_INPUT_TYPE: {
         /* Haskell 0 = InputText  -> Android TYPE_CLASS_TEXT           (1)
          * Haskell 1 = InputNumber -> Android TYPE_CLASS_NUMBER |

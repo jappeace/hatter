@@ -675,6 +675,11 @@ smartConstructorTests = testGroup "Smart constructors"
           to   = defaultStyle { wsPadding = Just 90 }
       wsPadding (lerpStyle 0.0 from to) @?= Just 10
       wsPadding (lerpStyle 1.0 from to) @?= Just 90
+
+  , testCase "lerpStyle interpolates widths" $ do
+      let from = defaultStyle { wsWidth = Just 100 }
+          to   = defaultStyle { wsWidth = Just 200 }
+      wsWidth (lerpStyle 0.5 from to) @?= Just 150
   , testCase "lerpStyle interpolates colors" $ do
       let red  = Color 255 0 0 255
           blue = Color 0 0 255 255

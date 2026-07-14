@@ -20,7 +20,8 @@ import Hatter
   , runActionM
   )
 import Hatter.Widget
-  ( ButtonConfig(..)
+  ( defaultStyle
+  , ButtonConfig(..)
   , InputType(..)
   , LayoutSettings(..)
   , TextConfig(..)
@@ -294,7 +295,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
 
       , testCase "styled unchanged keeps same node ID" $ do
           ((), rs) <- withActions (pure ())
-          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing
+          let style = defaultStyle { wsPadding = Just 10.0 }
               widget = Styled style (Text TextConfig { tcLabel = "styled", tcFontConfig = Nothing, tcTextColor = Nothing })
           renderWidget rs widget
           tree1 <- readIORef (rsRenderedTree rs)
@@ -310,7 +311,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
 
       , testCase "styled child change updates in-place" $ do
           ((), rs) <- withActions (pure ())
-          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing
+          let style = defaultStyle { wsPadding = Just 10.0 }
               widget1 = Styled style (Text TextConfig { tcLabel = "before", tcFontConfig = Nothing, tcTextColor = Nothing })
           renderWidget rs widget1
           tree1 <- readIORef (rsRenderedTree rs)
@@ -329,7 +330,7 @@ incrementalRenderTests = testGroup "Incremental rendering"
       , testCase "styled child type change reapplies style" $ do
           (clickAction, rs) <- withActions $
             createAction (pure ())
-          let style = WidgetStyle (Just 10.0) Nothing Nothing Nothing Nothing Nothing
+          let style = defaultStyle { wsPadding = Just 10.0 }
               widget1 = Styled style (Text TextConfig { tcLabel = "txt", tcFontConfig = Nothing, tcTextColor = Nothing })
           renderWidget rs widget1
           -- Re-render with different child type but same style

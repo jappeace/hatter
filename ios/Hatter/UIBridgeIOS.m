@@ -580,6 +580,24 @@ static void ios_set_num_prop(int32_t nodeId, int32_t propId, double value)
         LOGI("setNumProp(node=%d, padding=%.1f)", nodeId, value);
         break;
     }
+    case UI_PROP_WIDTH: {
+        /* Fixed width in points; a constraint overrides the
+         * intrinsic content width inside the UIStackView layout.
+         * Deactivate any width constraint from an earlier render
+         * before pinning the new one. */
+        CGFloat pt = (CGFloat)value;
+        NSArray<NSLayoutConstraint *> *existing = [view.constraints copy];
+        for (NSLayoutConstraint *constraint in existing) {
+            if (constraint.firstAttribute == NSLayoutAttributeWidth
+                && constraint.firstItem == view
+                && constraint.secondItem == nil) {
+                constraint.active = NO;
+            }
+        }
+        [view.widthAnchor constraintEqualToConstant:pt].active = YES;
+        LOGI("setNumProp(node=%d, width=%.1f)", nodeId, value);
+        break;
+    }
     case UI_PROP_SCALE_TYPE: {
         /* Haskell 0 = ScaleFit, 1 = ScaleFill, 2 = ScaleNone */
         if ([view isKindOfClass:[UIImageView class]]) {

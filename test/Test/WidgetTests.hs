@@ -570,14 +570,14 @@ styledTests :: TestTree
 styledTests = testGroup "Styled"
   [ testCase "Styled Text renders without error" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs $ Styled (WidgetStyle (Just 8.0) Nothing Nothing Nothing Nothing Nothing)
+      renderWidget rs $ Styled (defaultStyle { wsPadding = Just 8.0 })
         (Text TextConfig { tcLabel = "styled", tcFontConfig = Just (FontConfig 20.0), tcTextColor = Nothing })
 
   , testCase "Styled Button fires callback" $ do
       ref <- newIORef (0 :: Int)
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
-      renderWidget rs $ Styled (WidgetStyle Nothing Nothing Nothing Nothing Nothing Nothing)
+      renderWidget rs $ Styled (defaultStyle)
         (Button ButtonConfig
           { bcLabel = "tap", bcAction = clickHandle
           , bcFontConfig = Just (FontConfig 16.0), bcTextColor = Nothing })
@@ -601,8 +601,8 @@ styledTests = testGroup "Styled"
   , testCase "nested Styled applies both styles" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs $
-        Styled (WidgetStyle (Just 12.0) Nothing Nothing Nothing Nothing Nothing)
-          (Styled (WidgetStyle Nothing Nothing Nothing Nothing Nothing Nothing)
+        Styled (defaultStyle { wsPadding = Just 12.0 })
+          (Styled (defaultStyle)
             (Text TextConfig { tcLabel = "double styled", tcFontConfig = Just (FontConfig 18.0), tcTextColor = Nothing }))
 
   , testCase "defaultStyle is a no-op" $ do
@@ -630,14 +630,14 @@ textAlignTests :: TestTree
 textAlignTests = testGroup "TextAlignment"
   [ testCase "Styled with AlignCenter renders without error" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignCenter) Nothing Nothing Nothing Nothing)
+      renderWidget rs $ Styled (defaultStyle { wsTextAlign = Just AlignCenter })
         (Text TextConfig { tcLabel = "centered", tcFontConfig = Nothing, tcTextColor = Nothing })
 
   , testCase "Styled with AlignCenter on Button fires callback" $ do
       ref <- newIORef (0 :: Int)
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
-      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignCenter) Nothing Nothing Nothing Nothing)
+      renderWidget rs $ Styled (defaultStyle { wsTextAlign = Just AlignCenter })
         (Button ButtonConfig
           { bcLabel = "tap", bcAction = clickHandle, bcFontConfig = Nothing, bcTextColor = Nothing })
       dispatchEvent rs (actionId clickHandle)
@@ -649,7 +649,7 @@ textAlignTests = testGroup "TextAlignment"
 
   , testCase "Styled with AlignEnd renders without error" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs $ Styled (WidgetStyle Nothing (Just AlignEnd) Nothing Nothing Nothing Nothing)
+      renderWidget rs $ Styled (defaultStyle { wsTextAlign = Just AlignEnd })
         (Text TextConfig { tcLabel = "end aligned", tcFontConfig = Nothing, tcTextColor = Nothing })
   ]
 
@@ -673,14 +673,14 @@ colorTests = testGroup "Colors"
 
   , testCase "Styled with backgroundColor renders without error" $ do
       ((), rs) <- withActions (pure ())
-      renderWidget rs $ Styled (WidgetStyle Nothing Nothing (Just (Color 0 255 0 255)) Nothing Nothing Nothing)
+      renderWidget rs $ Styled (defaultStyle { wsBackgroundColor = Just (Color 0 255 0 255) })
         (Text TextConfig { tcLabel = "green bg", tcFontConfig = Nothing, tcTextColor = Nothing })
 
   , testCase "config text color and styled background together" $ do
       ref <- newIORef (0 :: Int)
       (clickHandle, rs) <- withActions $
         createAction (modifyIORef' ref (+ 1))
-      renderWidget rs $ Styled (WidgetStyle Nothing Nothing (Just (Color 0 255 0 255)) Nothing Nothing Nothing)
+      renderWidget rs $ Styled (defaultStyle { wsBackgroundColor = Just (Color 0 255 0 255) })
         (Button ButtonConfig
           { bcLabel = "colored", bcAction = clickHandle
           , bcFontConfig = Nothing, bcTextColor = Just (Color 255 0 0 255) })
@@ -691,11 +691,19 @@ colorTests = testGroup "Colors"
   , testCase "defaultStyle has no colors" $ do
       wsBackgroundColor defaultStyle @?= Nothing
 
+  , testCase "defaultStyle has no width" $
+      wsWidth defaultStyle @?= Nothing
+
+  , testCase "Styled with a fixed width renders without error" $ do
+      ((), rs) <- withActions (pure ())
+      renderWidget rs $ Styled (defaultStyle { wsWidth = Just 120.0 })
+        (Text TextConfig { tcLabel = "cell", tcFontConfig = Nothing, tcTextColor = Nothing })
+
   , testCase "nested Styled with a colored text child renders" $ do
       ((), rs) <- withActions (pure ())
       renderWidget rs $
-        Styled (WidgetStyle (Just 4.0) Nothing Nothing Nothing Nothing Nothing)
-          (Styled (WidgetStyle Nothing Nothing (Just (Color 0 0 255 255)) Nothing Nothing Nothing)
+        Styled (defaultStyle { wsPadding = Just 4.0 })
+          (Styled (defaultStyle { wsBackgroundColor = Just (Color 0 0 255 255) })
             (coloredText (Color 255 0 0 255) "nested colors"))
 
   , testCase "colorFromText parses #RRGGBB" $

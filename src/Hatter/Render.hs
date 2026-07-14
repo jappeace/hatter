@@ -170,6 +170,9 @@ applyStyle nodeId style = do
   case wsTranslateY style of
     Just ty -> Bridge.setNumProp nodeId Bridge.PropTranslateY ty
     Nothing -> pure ()
+  case wsWidth style of
+    Just width -> Bridge.setNumProp nodeId Bridge.PropWidth width
+    Nothing    -> pure ()
   case wsTouchPassthrough style of
     Just enabled -> Bridge.setNumProp nodeId Bridge.PropTouchPassthrough
                       (if enabled then 1.0 else 0.0)

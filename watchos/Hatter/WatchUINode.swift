@@ -11,6 +11,7 @@ class WatchUINode: ObservableObject, Identifiable {
     @Published var hint: String = ""
     @Published var fontSize: CGFloat?
     @Published var padding: CGFloat?
+    @Published var width: CGFloat?
     @Published var inputType: Int32 = 0
     @Published var callbackId: Int32 = -1
     @Published var textColor: String?
