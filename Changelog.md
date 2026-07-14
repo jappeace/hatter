@@ -9,8 +9,9 @@
   `bsrAdvertisement :: Either AdvertisementParseErrors
   BleAdvertisement`, parsed by the new `Hatter.BleAdvertisement`
   module (re-exported from `Hatter.Ble`) with `serviceDataForUuid`
-  for keyed lookup; service data is keyed by `NormalizedBleUuid`,
-  which moved into that module. Malformed advertisements report
+  for keyed lookup; service data is keyed by the binary `UUID` from
+  `uuid-types` (constants build with the total `fromWords`), so
+  platform case differences are unrepresentable. Malformed advertisements report
   every defect with its byte offset instead of being silently
   dropped, and the scan dispatch logs them while still delivering
   the result. UUID rendering uses the `uuid-types` package (new

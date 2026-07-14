@@ -255,4 +255,5 @@ test-suite unit
       bytestring,
       directory,
       filepath,
-      unwitch >= 3.0.0 && < 4
+      unwitch >= 3.0.0 && < 4,
+      uuid-types >= 1.0.4 && < 2

@@ -36,11 +36,11 @@ import Hatter
   , createAction
   )
 import Hatter.AppContext (AppContext(..), derefAppContext)
+import Data.UUID.Types qualified as UUID
 import Hatter.Ble
   ( BleState(..)
   , BleScanResult(..)
   , BleAdvertisement(..)
-  , NormalizedBleUuid(..)
   , BleDeviceAddress(..)
   , BleServiceUuid(..)
   , BleCharacteristicUuid(..)
@@ -184,7 +184,7 @@ logAndRememberScanResult lastAddressRef scanResult = do
       platformLog ("BLE adv parse errors: " <> pack (show parseErrors))
     Right advertisement ->
       mapM_ (\(uuid, payload) ->
-          platformLog ("BLE adv service data: " <> unNormalizedBleUuid uuid
+          platformLog ("BLE adv service data: " <> UUID.toText uuid
             <> "=" <> pack (show (BS.unpack payload))))
         (advServiceData advertisement)
   writeIORef lastAddressRef (Just (bsrDeviceAddress scanResult))

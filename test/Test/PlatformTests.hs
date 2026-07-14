@@ -21,6 +21,7 @@ import Test.Tasty.HUnit
 import Data.ByteString qualified as BS
 import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
 import Data.IntMap.Strict qualified as IntMap
+import Data.UUID.Types qualified as UUID
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text qualified as Text
 import Foreign.C.String (newCString)
@@ -67,7 +68,6 @@ import Hatter.Ble
   , BleGattCompletion(..)
   , BleState(..)
   , BleAdvertisement(..)
-  , NormalizedBleUuid(..)
   , ManufacturerId(..)
   , AdvertisementParseError(..)
   , AdvertisementParseErrors(..)
@@ -385,6 +385,11 @@ secureStorageTests ffiSecureStorageState = sequentialTestGroup "SecureStorage" A
 -- wired to a real FFI app context, so the connect test exercises the
 -- actual desktop C stub round trip (Haskell -> ble_connect ->
 -- haskellOnBleConnectionEvent -> callback).
+-- | KKM's 0x2080 ext-data service UUID, built with the total
+-- fromWords.
+kkmExtDataUuid :: UUID.UUID
+kkmExtDataUuid = UUID.fromWords 0x00002080 0x00001000 0x80000080 0x5F9B34FB
+
 bleTests :: BleState -> TestTree
 bleTests ffiBleState = testGroup "BLE"
   [ testCase "bleAdapterStatusFromInt roundtrips all constructors" $ do
@@ -525,7 +530,7 @@ bleTests ffiBleState = testGroup "BLE"
       case result of
         Nothing -> assertFailure "callback should have been fired"
         Just scanResult ->
-          fmap (serviceDataForUuid "00002080-0000-1000-8000-00805F9B34FB")
+          fmap (serviceDataForUuid kkmExtDataUuid)
               (bsrAdvertisement scanResult)
             @?= Right (Just (BS.pack [0x55, 0x00, 0x01, 0xF6]))
 
@@ -534,7 +539,7 @@ bleTests ffiBleState = testGroup "BLE"
           (BS.pack [0x02, 0x01, 0x06, 0x05, 0x16, 0xED, 0xFE, 0x2A, 0x63])
         @?= Right BleAdvertisement
           { advServiceData =
-              [(NormalizedBleUuid "0000feed-0000-1000-8000-00805f9b34fb", BS.pack [0x2A, 0x63])]
+              [(UUID.fromWords 0x0000FEED 0x00001000 0x80000080 0x5F9B34FB, BS.pack [0x2A, 0x63])]
           , advManufacturerData = []
           }
 
@@ -550,7 +555,7 @@ bleTests ffiBleState = testGroup "BLE"
             ])
         @?= Right BleAdvertisement
           { advServiceData =
-              [(NormalizedBleUuid "50db505c-8ac4-4738-8448-3b1d9cc09cc5", BS.pack [0x7F])]
+              [(UUID.fromWords 0x50DB505C 0x8AC44738 0x84483B1D 0x9CC09CC5, BS.pack [0x7F])]
           , advManufacturerData = []
           }
 
@@ -571,8 +576,8 @@ bleTests ffiBleState = testGroup "BLE"
             ])
         @?= Right BleAdvertisement
           { advServiceData =
-              [ (NormalizedBleUuid "0000feaa-0000-1000-8000-00805f9b34fb", BS.pack [0x01])
-              , (NormalizedBleUuid "00002080-0000-1000-8000-00805f9b34fb", BS.pack [0x02])
+              [ (UUID.fromWords 0x0000FEAA 0x00001000 0x80000080 0x5F9B34FB, BS.pack [0x01])
+              , (UUID.fromWords 0x00002080 0x00001000 0x80000080 0x5F9B34FB, BS.pack [0x02])
               ]
           , advManufacturerData = [(ManufacturerId 0x004C, BS.empty)]
           }
@@ -584,7 +589,7 @@ bleTests ffiBleState = testGroup "BLE"
           (BS.pack [0x05, 0x16, 0xED, 0xFE, 0x2A, 0x63, 0x00, 0x00, 0x00, 0x00])
         @?= Right BleAdvertisement
           { advServiceData =
-              [(NormalizedBleUuid "0000feed-0000-1000-8000-00805f9b34fb", BS.pack [0x2A, 0x63])]
+              [(UUID.fromWords 0x0000FEED 0x00001000 0x80000080 0x5F9B34FB, BS.pack [0x2A, 0x63])]
           , advManufacturerData = []
           }
 
@@ -623,15 +628,18 @@ bleTests ffiBleState = testGroup "BLE"
                 :| [ManufacturerDataTooShort
                      (ManufacturerDataTruncation (AdStructureOffset 3) 1)]))
 
-  , testCase "serviceDataForUuid is case-insensitive" $ do
+  , testCase "serviceDataForUuid keys on the UUID value" $ do
       let parsed = parseBleAdvertisement
             (BS.pack [0x05, 0x16, 0x80, 0x20, 0x55, 0x63])
-      fmap (serviceDataForUuid "00002080-0000-1000-8000-00805F9B34FB") parsed
+      fmap (serviceDataForUuid kkmExtDataUuid) parsed
         @?= Right (Just (BS.pack [0x55, 0x63]))
-      fmap (serviceDataForUuid "00002080-0000-1000-8000-00805f9b34fb") parsed
-        @?= Right (Just (BS.pack [0x55, 0x63]))
-      fmap (serviceDataForUuid "0000FEAA-0000-1000-8000-00805F9B34FB") parsed
+      fmap (serviceDataForUuid
+             (UUID.fromWords 0x0000FEAA 0x00001000 0x80000080 0x5F9B34FB)) parsed
         @?= Right Nothing
+      -- Both platform spellings parse to the same binary key, so the
+      -- old case-mismatch bug is unrepresentable.
+      UUID.fromText "00002080-0000-1000-8000-00805F9B34FB"
+        @?= UUID.fromText "00002080-0000-1000-8000-00805f9b34fb"
 
   , testCase "bleConnectionEventFromInt roundtrips all constructors" $ do
       let allEvents = [BleConnectionEstablished, BleConnectionClosed, BleConnectionFailed]

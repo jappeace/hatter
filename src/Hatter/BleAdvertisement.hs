@@ -14,7 +14,7 @@
 -- parser is the single decoding path for both platforms.
 module Hatter.BleAdvertisement
   ( BleAdvertisement(..)
-  , NormalizedBleUuid(..)
+  , UUID
   , ManufacturerId(..)
   , AdvertisementParseError(..)
   , AdvertisementParseErrors(..)
@@ -31,39 +31,19 @@ import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.List.NonEmpty (NonEmpty(..))
-import Data.Text (Text)
-import Data.Text qualified as Text
 import Data.UUID.Types (UUID)
 import Data.UUID.Types qualified as UUID
 import Data.Word (Word8, Word16, Word32)
 import Unwitch.Convert.Word8 qualified as Word8
 
--- | A UUID string normalized to lowercase for comparisons.  UUIDs are
--- case-insensitive per the Bluetooth spec, but the platforms disagree
--- on the case they report (Android lowercase, iOS uppercase), so raw
--- strings must never be compared directly.  Constructed via
--- 'Hatter.Ble.normalizeBleServiceUuid' \/
--- 'Hatter.Ble.normalizeBleCharacteristicUuid', or lowercase by
--- construction in 'parseBleAdvertisement'; deliberately no 'IsString'
--- instance, a literal would bypass the normalization.
---
--- Decision: case-insensitivity is a dedicated normalized newtype
--- built only through smart constructors.  Alternatives considered:
--- lowercasing ad hoc at each comparison site (error-prone, exactly
--- how the original subscribe\/notify mismatch bug happened), and a
--- case-insensitive 'Ord' on the raw UUID newtypes (invisible at use
--- sites and surprising for anyone sorting or printing them).  A type
--- that cannot exist un-normalized makes the mistake unrepresentable.
-newtype NormalizedBleUuid = NormalizedBleUuid { unNormalizedBleUuid :: Text }
-  deriving (Show, Eq, Ord)
-
 -- | The advertisement fields a scan result carries beyond name,
--- address and RSSI. Service data is keyed by the full 128-bit
--- 'NormalizedBleUuid' (16- and 32-bit UUIDs are expanded with the
--- Bluetooth base UUID); manufacturer data is keyed by the 16-bit
--- company identifier. Entries keep their advertisement order.
+-- address and RSSI. Service data is keyed by the full 128-bit 'UUID'
+-- (16- and 32-bit UUIDs are expanded with the Bluetooth base UUID);
+-- comparisons are on the binary value, so platform case differences
+-- cannot matter. Manufacturer data is keyed by the 16-bit company
+-- identifier. Entries keep their advertisement order.
 data BleAdvertisement = BleAdvertisement
-  { advServiceData :: [(NormalizedBleUuid, ByteString)]
+  { advServiceData :: [(UUID, ByteString)]
   , advManufacturerData :: [(ManufacturerId, ByteString)]
   } deriving (Show, Eq)
 
@@ -217,8 +197,8 @@ addAdStructure offset adType payload advertisement = if
 -- | Prepend one service data entry: a little-endian UUID of the given
 -- byte width, then the payload. A structure too short to hold its
 -- UUID is reported with the widths involved; the check IS
--- 'normalizedUuidFromLittleEndian' declining the short slice, so
--- there is exactly one place deciding what a valid UUID is.
+-- 'uuidFromLittleEndian' declining the short slice, so there is
+-- exactly one place deciding what a valid UUID is.
 addServiceData
   :: AdStructureOffset
   -> Word8
@@ -228,7 +208,7 @@ addServiceData
   -> Either AdvertisementParseError BleAdvertisement
 addServiceData offset adType uuidWidth payload advertisement =
   let (uuidBytes, dataBytes) = BS.splitAt uuidWidth payload
-  in case normalizedUuidFromLittleEndian uuidWidth uuidBytes of
+  in case uuidFromLittleEndian uuidWidth uuidBytes of
     Nothing -> Left (ServiceDataUuidTruncated
       (ServiceDataTruncation offset adType uuidWidth (BS.length payload)))
     Just uuid -> Right advertisement { advServiceData =
@@ -263,12 +243,13 @@ nextStructureOffset :: AdStructureOffset -> Int -> AdStructureOffset
 nextStructureOffset (AdStructureOffset offset) structureLength =
   AdStructureOffset (offset + 1 + structureLength)
 
--- | Look up a service data payload by UUID text
--- (case-insensitively). Accepts the same 128-bit form used across
--- "Hatter.Ble", e.g. @"00002080-0000-1000-8000-00805F9B34FB"@.
-serviceDataForUuid :: Text -> BleAdvertisement -> Maybe ByteString
+-- | Look up a service data payload by its service 'UUID'. Constants
+-- are best built with the total 'UUID.fromWords' (e.g. KKM's 0x2080
+-- is @fromWords 0x00002080 0x00001000 0x80000080 0x5F9B34FB@);
+-- runtime strings parse via 'UUID.fromText'.
+serviceDataForUuid :: UUID -> BleAdvertisement -> Maybe ByteString
 serviceDataForUuid uuid advertisement =
-  lookup (NormalizedBleUuid (Text.toLower uuid)) (advServiceData advertisement)
+  lookup uuid (advServiceData advertisement)
 
 -- | Words 2 to 4 of the Bluetooth base UUID
 -- (@xxxxxxxx-0000-1000-8000-00805F9B34FB@), which 16- and 32-bit
@@ -282,31 +263,30 @@ bluetoothBaseUuidWord3 = 0x80000080
 bluetoothBaseUuidWord4 :: Word32
 bluetoothBaseUuidWord4 = 0x5F9B34FB
 
--- | Render an advertisement UUID of the declared byte width as a
--- full 128-bit 'NormalizedBleUuid'; 'UUID.toText' renders the
--- canonical lowercase form. Nothing when the slice does not have
--- exactly the declared width, or the width is not one of the on-air
--- widths (2, 4 or 16): the declared width MUST be checked against
--- the slice, not inferred from it, or a 128-bit structure truncated
--- down to two bytes would pass as a valid 16-bit UUID. This is how
--- 'addServiceData' detects a structure too short for its UUID.
-normalizedUuidFromLittleEndian :: Int -> ByteString -> Maybe NormalizedBleUuid
-normalizedUuidFromLittleEndian declaredWidth uuidBytes =
+-- | The 'UUID' of an advertisement's service data structure, from
+-- the declared byte width and the little-endian on-air slice.
+-- Nothing when the slice does not have exactly the declared width,
+-- or the width is not one of the on-air widths (2, 4 or 16): the
+-- declared width MUST be checked against the slice, not inferred
+-- from it, or a 128-bit structure truncated down to two bytes would
+-- pass as a valid 16-bit UUID. This is how 'addServiceData' detects
+-- a structure too short for its UUID.
+uuidFromLittleEndian :: Int -> ByteString -> Maybe UUID
+uuidFromLittleEndian declaredWidth uuidBytes =
   let bigEndian = BS.reverse uuidBytes
-      uuid = if BS.length bigEndian /= declaredWidth
-        then Nothing
-        else if declaredWidth == 16
-          then uuidFromBigEndianBytes bigEndian
-          else if declaredWidth == 2 || declaredWidth == 4
-            then fmap
-              (\value -> UUID.fromWords value
-                bluetoothBaseUuidWord2
-                bluetoothBaseUuidWord3
-                bluetoothBaseUuidWord4)
-              (word32BigEndianAt
-                (BS.replicate (4 - declaredWidth) 0x00 <> bigEndian) 0)
-            else Nothing
-  in fmap (NormalizedBleUuid . UUID.toText) uuid
+  in if BS.length bigEndian /= declaredWidth
+    then Nothing
+    else if declaredWidth == 16
+      then uuidFromBigEndianBytes bigEndian
+      else if declaredWidth == 2 || declaredWidth == 4
+        then fmap
+          (\value -> UUID.fromWords value
+            bluetoothBaseUuidWord2
+            bluetoothBaseUuidWord3
+            bluetoothBaseUuidWord4)
+          (word32BigEndianAt
+            (BS.replicate (4 - declaredWidth) 0x00 <> bigEndian) 0)
+        else Nothing
 
 -- | Build a 'UUID' from its 16 big-endian bytes; Nothing when fewer
 -- bytes are available.
