@@ -228,7 +228,7 @@ addServiceData
   -> Either AdvertisementParseError BleAdvertisement
 addServiceData offset adType uuidWidth payload advertisement =
   let (uuidBytes, dataBytes) = BS.splitAt uuidWidth payload
-  in case normalizedUuidFromLittleEndian uuidBytes of
+  in case normalizedUuidFromLittleEndian uuidWidth uuidBytes of
     Nothing -> Left (ServiceDataUuidTruncated
       (ServiceDataTruncation offset adType uuidWidth (BS.length payload)))
     Just uuid -> Right advertisement { advServiceData =
@@ -282,25 +282,30 @@ bluetoothBaseUuidWord3 = 0x80000080
 bluetoothBaseUuidWord4 :: Word32
 bluetoothBaseUuidWord4 = 0x5F9B34FB
 
--- | Render an advertisement UUID as a full 128-bit
--- 'NormalizedBleUuid'; 'UUID.toText' renders the canonical lowercase
--- form. Nothing unless the input is exactly 2, 4 or 16 bytes (the
--- little-endian on-air widths), which is how 'addServiceData'
--- detects a structure too short for its UUID.
-normalizedUuidFromLittleEndian :: ByteString -> Maybe NormalizedBleUuid
-normalizedUuidFromLittleEndian uuidBytes =
+-- | Render an advertisement UUID of the declared byte width as a
+-- full 128-bit 'NormalizedBleUuid'; 'UUID.toText' renders the
+-- canonical lowercase form. Nothing when the slice does not have
+-- exactly the declared width, or the width is not one of the on-air
+-- widths (2, 4 or 16): the declared width MUST be checked against
+-- the slice, not inferred from it, or a 128-bit structure truncated
+-- down to two bytes would pass as a valid 16-bit UUID. This is how
+-- 'addServiceData' detects a structure too short for its UUID.
+normalizedUuidFromLittleEndian :: Int -> ByteString -> Maybe NormalizedBleUuid
+normalizedUuidFromLittleEndian declaredWidth uuidBytes =
   let bigEndian = BS.reverse uuidBytes
-      uuid = if BS.length bigEndian == 16
-        then uuidFromBigEndianBytes bigEndian
-        else if BS.length bigEndian == 2 || BS.length bigEndian == 4
-          then fmap
-            (\value -> UUID.fromWords value
-              bluetoothBaseUuidWord2
-              bluetoothBaseUuidWord3
-              bluetoothBaseUuidWord4)
-            (word32BigEndianAt
-              (BS.replicate (4 - BS.length bigEndian) 0x00 <> bigEndian) 0)
-          else Nothing
+      uuid = if BS.length bigEndian /= declaredWidth
+        then Nothing
+        else if declaredWidth == 16
+          then uuidFromBigEndianBytes bigEndian
+          else if declaredWidth == 2 || declaredWidth == 4
+            then fmap
+              (\value -> UUID.fromWords value
+                bluetoothBaseUuidWord2
+                bluetoothBaseUuidWord3
+                bluetoothBaseUuidWord4)
+              (word32BigEndianAt
+                (BS.replicate (4 - declaredWidth) 0x00 <> bigEndian) 0)
+            else Nothing
   in fmap (NormalizedBleUuid . UUID.toText) uuid
 
 -- | Build a 'UUID' from its 16 big-endian bytes; Nothing when fewer

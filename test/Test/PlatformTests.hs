@@ -595,6 +595,23 @@ bleTests ffiBleState = testGroup "BLE"
           (BS.pack [0x04, 0xFF, 0x53, 0x0A, 0x21, 0x09, 0x16, 0xED, 0xFE])
         @?= Left (AdvertisementParseErrors (AdStructureTruncated (AdStructureTruncation (AdStructureOffset 5) 9 3) :| []))
 
+  , testCase "a truncated 128-bit service data UUID never passes as narrower" $ do
+      -- A 0x21 structure promises a 16-byte UUID; truncated to two
+      -- bytes it must NOT parse as the 16-bit UUID those bytes spell
+      -- (regression: [0x80, 0x20] would otherwise read as 0x2080).
+      parseBleAdvertisement (BS.pack [0x03, 0x21, 0x80, 0x20])
+        @?= Left (AdvertisementParseErrors
+              (ServiceDataUuidTruncated
+                 (ServiceDataTruncation (AdStructureOffset 0) 0x21 16 2) :| []))
+      parseBleAdvertisement (BS.pack [0x05, 0x21, 0x01, 0x02, 0x03, 0x04])
+        @?= Left (AdvertisementParseErrors
+              (ServiceDataUuidTruncated
+                 (ServiceDataTruncation (AdStructureOffset 0) 0x21 16 4) :| []))
+      parseBleAdvertisement (BS.pack [0x03, 0x20, 0x80, 0x20])
+        @?= Left (AdvertisementParseErrors
+              (ServiceDataUuidTruncated
+                 (ServiceDataTruncation (AdStructureOffset 0) 0x20 4 2) :| []))
+
   , testCase "parseBleAdvertisement accumulates every defect" $
       -- Service data too short for its 16-bit UUID at offset 0, then
       -- manufacturer data too short for its company id at offset 3.
