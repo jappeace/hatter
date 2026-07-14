@@ -56,6 +56,7 @@ import Hatter.Widget
   )
 import Hatter.Render (RenderState(..), RenderedNode(..), renderWidget, dispatchEvent, dispatchTextEvent)
 import Hatter.Permission (newPermissionState)
+import Hatter.PlatformSignIn (newPlatformSignInState)
 import Hatter.SecureStorage (newSecureStorageState)
 import Hatter.Ble (newBleState)
 import Hatter.Dialog (newDialogState)
@@ -160,6 +161,7 @@ uiTests = testGroup "UI"
       dummyHttpState <- newHttpState
       dummyNetworkStatusState <- newNetworkStatusState
       dummyAnimationState <- newAnimationState
+      dummyPlatformSignInState <- newPlatformSignInState
       let dummyUserState = UserState
             { userPermissionState    = dummyPermState
             , userSecureStorageState = dummySecureStorageState
@@ -172,6 +174,8 @@ uiTests = testGroup "UI"
             , userHttpState          = dummyHttpState
             , userNetworkStatusState = dummyNetworkStatusState
             , userAnimationState     = dummyAnimationState
+            , userPlatformSignInState = dummyPlatformSignInState
+            , userRequestRedraw      = pure ()
             }
       app <- testApp
       widget <- maView app dummyUserState
