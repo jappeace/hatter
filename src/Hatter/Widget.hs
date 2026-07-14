@@ -201,6 +201,10 @@ data WidgetStyle = WidgetStyle
   , wsTranslateY      :: Maybe Double
     -- ^ Vertical translation offset in platform-native units.
     -- Moves the widget without affecting sibling layout.
+  , wsWidth           :: Maybe Double
+    -- ^ Fixed width in platform-native units (px on Android, pt on
+    -- iOS), like 'wsPadding'. Meaningful on any node, so sibling
+    -- rows can align into table columns (#245).
   , wsTouchPassthrough :: Maybe Bool
     -- ^ When 'True', the widget does not intercept touches, allowing
     -- sibling views underneath (in a 'Stack') to receive them.
@@ -217,6 +221,7 @@ defaultStyle = WidgetStyle
   , wsBackgroundColor  = Nothing
   , wsTranslateX       = Nothing
   , wsTranslateY       = Nothing
+  , wsWidth            = Nothing
   , wsTouchPassthrough = Nothing
   }
 
@@ -325,6 +330,7 @@ lerpStyle t from to = WidgetStyle
   , wsBackgroundColor  = lerpMaybeColor (wsBackgroundColor from) (wsBackgroundColor to)
   , wsTranslateX       = lerpMaybeDouble (wsTranslateX from) (wsTranslateX to)
   , wsTranslateY       = lerpMaybeDouble (wsTranslateY from) (wsTranslateY to)
+  , wsWidth            = lerpMaybeDouble (wsWidth from) (wsWidth to)
   , wsTouchPassthrough = snapMaybe (wsTouchPassthrough from) (wsTouchPassthrough to)
   }
   where

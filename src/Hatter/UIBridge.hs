@@ -86,6 +86,7 @@ data PropId
   | PropTranslateY
   | PropAutoFocus
   | PropTouchPassthrough
+  | PropWidth
   deriving (Show, Eq, Enum, Bounded)
 
 -- | Map a 'PropId' to its C integer code.
@@ -110,6 +111,7 @@ propIdToInt PropTranslateX    = 9
 propIdToInt PropTranslateY    = 10
 propIdToInt PropAutoFocus          = 11
 propIdToInt PropTouchPassthrough  = 12
+propIdToInt PropWidth             = 13
 
 -- | Event types corresponding to @UI_EVENT_*@ in @UIBridge.h@.
 data EventType

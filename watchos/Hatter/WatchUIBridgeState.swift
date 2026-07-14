@@ -98,6 +98,9 @@ class WatchUIBridgeState: ObservableObject {
             os_log("setNumProp(node=%d, autoFocus=%.0f) — no-op on watchOS", log: bridgeLog, type: .info, nodeId, value)
         case 12: // UI_PROP_TOUCH_PASSTHROUGH (no-op on watchOS — ZStack hit testing is automatic)
             os_log("setNumProp(node=%d, touchPassthrough=%.0f) — no-op on watchOS", log: bridgeLog, type: .info, nodeId, value)
+        case 13: // UI_PROP_WIDTH
+            os_log("setNumProp(node=%d, width=%.1f)", log: bridgeLog, type: .info, nodeId, value)
+            node.width = CGFloat(value)
         default:
             os_log("setNumProp: unknown propId %d", log: bridgeLog, type: .info, propId)
         }

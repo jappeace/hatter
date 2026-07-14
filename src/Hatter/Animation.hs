@@ -187,6 +187,7 @@ defaultStyleEmpty = WidgetStyle
   , wsBackgroundColor  = Nothing
   , wsTranslateX       = Nothing
   , wsTranslateY       = Nothing
+  , wsWidth            = Nothing
   , wsTouchPassthrough = Nothing
   }
 
@@ -217,6 +218,8 @@ interpolateStyle nodeId fromStyle toStyle progress = do
     (wsTranslateX fromStyle) (wsTranslateX toStyle)
   lerpNumProp Bridge.PropTranslateY
     (wsTranslateY fromStyle) (wsTranslateY toStyle)
+  lerpNumProp Bridge.PropWidth
+    (wsWidth fromStyle) (wsWidth toStyle)
   -- TouchPassthrough is boolean — snaps to target, no interpolation.
   case wsTouchPassthrough toStyle of
     Just enabled ->

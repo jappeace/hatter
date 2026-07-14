@@ -12,6 +12,9 @@ struct NodeView: View {
             .ifLet(node.padding) { view, pad in
                 view.padding(pad)
             }
+            .ifLet(node.width) { view, width in
+                view.frame(width: width)
+            }
             .ifLet(node.textColor.flatMap { Color(hex: $0) }) { view, color in
                 view.foregroundColor(color)
             }
