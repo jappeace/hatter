@@ -1,14 +1,14 @@
 /*
  * Android implementation of the location (GPS) bridge callbacks.
  *
- * Uses JNI to call Activity.startLocationUpdates() and
- * Activity.stopLocationUpdates(). Compiled by NDK clang, not cabal.
+ * Uses JNI to call the static Activity.locationUpdates(), which starts or
+ * stops updates on the main/UI thread. Compiled by NDK clang, not cabal.
  *
- * All functions run on the main/UI thread, the same thread that
- * calls haskellRenderUI from Java.
+ * Starting and stopping may be called from any thread.
  */
 
 #include <jni.h>
+#include "jni_helpers.h"
 #include <android/log.h>
 #include "LocationBridge.h"
 #include "JniBridge.h"
@@ -21,48 +21,46 @@
 extern void haskellOnLocationUpdate(void *ctx, double lat, double lon,
                                      double alt, double acc);
 
-/* ---- Global state (valid only on the UI thread) ---- */
-static JNIEnv  *g_env          = NULL;
-static jobject  g_activity      = NULL;   /* global ref to Activity */
-static void    *g_haskell_ctx   = NULL;   /* stored for async JNI callback */
+/* ---- Global state (set on the UI thread during setup) ---- */
+static JavaVM  *g_jvm            = NULL;
+static jclass   g_activity_class = NULL;  /* global ref, kept for good */
+static void    *g_haskell_ctx    = NULL;  /* stored for async JNI callback */
 
-/* Cached JNI method IDs */
-static jmethodID g_method_startLocationUpdates;
-static jmethodID g_method_stopLocationUpdates;
+/* Cached JNI method ID of the static HatterActivity.locationUpdates */
+static jmethodID g_method_locationUpdates;
 
 /* ---- Location bridge implementations ---- */
 
-static void android_location_start_updates(void *ctx)
+static void location_updates(jboolean on)
 {
-    JNIEnv *env = g_env;
-    if (!env || !g_activity) {
-        LOGE("location_start_updates: bridge not initialized");
+    if (!g_jvm || !g_activity_class) {
+        LOGE("location_updates: bridge not initialized");
+        return;
+    }
+    int need_detach;
+    JNIEnv *env = hatter_attached_env(g_jvm, &need_detach);
+    if (env == NULL) {
         return;
     }
 
-    g_haskell_ctx = ctx;
-    LOGI("location_start_updates()");
-    (*env)->CallVoidMethod(env, g_activity, g_method_startLocationUpdates);
+    LOGI("location_updates(%d)", on);
+    (*env)->CallStaticVoidMethod(env, g_activity_class, g_method_locationUpdates, on);
     if ((*env)->ExceptionCheck(env)) {
-        LOGE("location_start_updates: Java exception thrown");
+        LOGE("location_updates: Java exception thrown");
         (*env)->ExceptionClear(env);
     }
+    hatter_detach(g_jvm, need_detach);
+}
+
+static void android_location_start_updates(void *ctx)
+{
+    g_haskell_ctx = ctx;
+    location_updates(JNI_TRUE);
 }
 
 static void android_location_stop_updates(void)
 {
-    JNIEnv *env = g_env;
-    if (!env || !g_activity) {
-        LOGE("location_stop_updates: bridge not initialized");
-        return;
-    }
-
-    LOGI("location_stop_updates()");
-    (*env)->CallVoidMethod(env, g_activity, g_method_stopLocationUpdates);
-    if ((*env)->ExceptionCheck(env)) {
-        LOGE("location_stop_updates: Java exception thrown");
-        (*env)->ExceptionClear(env);
-    }
+    location_updates(JNI_FALSE);
 }
 
 /* ---- Public API ---- */
@@ -75,34 +73,30 @@ static void android_location_stop_updates(void)
  */
 void setup_android_location_bridge(JNIEnv *env, jobject activity, void *haskellCtx)
 {
-    g_env = env;
     g_haskell_ctx = haskellCtx;
 
-    if (!g_activity) {
-        g_activity = (*env)->NewGlobalRef(env, activity);
+    if (!g_jvm) {
+        (*env)->GetJavaVM(env, &g_jvm);
     }
-
-    jclass actClass = (*env)->GetObjectClass(env, activity);
-
-    g_method_startLocationUpdates = (*env)->GetMethodID(env, actClass,
-        "startLocationUpdates", "()V");
-    g_method_stopLocationUpdates = (*env)->GetMethodID(env, actClass,
-        "stopLocationUpdates", "()V");
-
-    /* Clean up local reference */
-    (*env)->DeleteLocalRef(env, actClass);
-
-    if (!g_method_startLocationUpdates || !g_method_stopLocationUpdates) {
-        LOGE("Failed to resolve location JNI method IDs — location bridge disabled");
-        (*env)->ExceptionClear(env);
+    /* Only the class: another thread may be calling through it while a
+     * recreated activity sets the bridge up again, so it is never replaced
+     * or deleted. */
+    if (g_activity_class) {
         return;
     }
 
-    /* Clear any unexpected pending exception before continuing */
-    if ((*env)->ExceptionCheck(env)) {
-        LOGE("Unexpected JNI exception after location method resolution");
+    jclass actClass = (*env)->GetObjectClass(env, activity);
+    g_method_locationUpdates = (*env)->GetStaticMethodID(env, actClass,
+        "locationUpdates", "(Z)V");
+    if (!g_method_locationUpdates) {
+        LOGE("Failed to resolve location JNI method ID — location bridge disabled");
         (*env)->ExceptionClear(env);
+        (*env)->DeleteLocalRef(env, actClass);
+        return;
     }
+    /* Set after the method, as other threads take a class as ready. */
+    g_activity_class = (jclass)(*env)->NewGlobalRef(env, actClass);
+    (*env)->DeleteLocalRef(env, actClass);
 
     location_register_impl(android_location_start_updates,
                            android_location_stop_updates);
@@ -117,7 +111,6 @@ JNI_METHOD(onLocationResult)(JNIEnv *env, jobject thiz,
                               jdouble lat, jdouble lon,
                               jdouble alt, jdouble acc)
 {
-    g_env = env;
     LOGI("onLocationResult(lat=%f, lon=%f, alt=%f, acc=%f)", lat, lon, alt, acc);
     haskellOnLocationUpdate(g_haskell_ctx, (double)lat, (double)lon,
                             (double)alt, (double)acc);

@@ -15,13 +15,12 @@ module Hatter.Animation
   , registerTween
   , dispatchAnimationFrame
   , bracketKeyframes
-  , interpolateDouble
-  , interpolateStyle
   -- Re-exported for tests
   , stopLoop
   )
 where
 
+import Control.Monad (unless, when)
 import Data.Fixed (Fixed, E6)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import Data.Int (Int32)
@@ -32,15 +31,14 @@ import Data.Ord (comparing)
 import Data.Time.Clock (NominalDiffTime)
 import Foreign.Ptr (Ptr)
 import Unwitch.Convert.Int32 qualified as Int32
+import Hatter.Style (applyStyle)
 import Hatter.Widget
-  ( Color
-  , Keyframe(..)
+  ( Keyframe(..)
   , WidgetStyle(..)
-  , colorToHex
-  , interpolateColor
+  , defaultStyle
+  , lerpStyle
   , unKeyframeAt
   )
-import Hatter.UIBridge qualified as Bridge
 
 -- | A single active tween, animating one native node through keyframes.
 data ActiveTween = ActiveTween
@@ -95,12 +93,10 @@ registerTween animState nodeId keyframes duration = do
 ensureLoopStarted :: AnimationState -> IO ()
 ensureLoopStarted animState = do
   active <- readIORef (ansLoopActive animState)
-  if active
-    then pure ()
-    else do
-      writeIORef (ansLoopActive animState) True
-      ctxPtr <- readIORef (ansContextPtr animState)
-      c_animationStartLoop ctxPtr
+  unless active $ do
+    writeIORef (ansLoopActive animState) True
+    ctxPtr <- readIORef (ansContextPtr animState)
+    c_animationStartLoop ctxPtr
 
 -- | Stop the platform animation loop.
 stopLoop :: AnimationState -> IO ()
@@ -122,9 +118,7 @@ dispatchAnimationFrame animState timestampMs = do
       remaining <- IntMap.traverseWithKey (processTween timestampMs) tweens
       let activeTweens = IntMap.mapMaybe id remaining
       writeIORef (ansTweens animState) activeTweens
-      if IntMap.null activeTweens
-        then stopLoop animState
-        else pure ()
+      when (IntMap.null activeTweens) $ stopLoop animState
 
 -- | Process a single tween for the current frame.
 -- Returns 'Nothing' if the tween is complete, 'Just tween' if still active.
@@ -151,7 +145,7 @@ processTween timestampMs _key tween = do
 --
 -- Returns @(fromStyle, toStyle, segmentProgress)@.
 bracketKeyframes :: [Keyframe] -> Double -> (WidgetStyle, WidgetStyle, Double)
-bracketKeyframes [] _progress = (defaultStyleEmpty, defaultStyleEmpty, 0.0)
+bracketKeyframes [] _progress = (defaultStyle, defaultStyle, 0.0)
 bracketKeyframes [single] _progress = (kfStyle single, kfStyle single, 0.0)
 bracketKeyframes sortedKeyframes progress =
   let progressFixed = realToFrac progress :: Fixed E6
@@ -177,72 +171,14 @@ bracketKeyframes sortedKeyframes progress =
           in (kfStyle fromKf, kfStyle toKf, segProgress)
       | otherwise = findBracket (toKf : rest) progressVal
     findBracket [singleKf] _progressVal = (kfStyle singleKf, kfStyle singleKf, 0.0)
-    findBracket [] _progressVal = (defaultStyleEmpty, defaultStyleEmpty, 0.0)
+    findBracket [] _progressVal = (defaultStyle, defaultStyle, 0.0)
 
--- | Empty style used as fallback for empty keyframe lists.
-defaultStyleEmpty :: WidgetStyle
-defaultStyleEmpty = WidgetStyle
-  { wsPadding          = Nothing
-  , wsTextAlign        = Nothing
-  , wsBackgroundColor  = Nothing
-  , wsTranslateX       = Nothing
-  , wsTranslateY       = Nothing
-  , wsWidth            = Nothing
-  , wsTouchPassthrough = Nothing
-  }
-
--- | Linearly interpolate between two 'Double' values.
-interpolateDouble :: Double -> Double -> Double -> Double
-interpolateDouble from to progress = from + (to - from) * progress
 
 -- | Interpolate keyframes and apply the result to the native node.
 interpolateKeyframeAndApply :: Int32 -> [Keyframe] -> Double -> IO ()
 interpolateKeyframeAndApply nodeId keyframes progress = do
   let (fromStyle, toStyle, segmentProgress) = bracketKeyframes keyframes progress
-  interpolateStyle nodeId fromStyle toStyle segmentProgress
-
--- | Interpolate 'WidgetStyle' properties and apply them to a native node.
---
--- For each style field, the behaviour depends on the (from, to) pair:
---
---   * @(Just, Just)@: interpolate between the two values.
---   * @(Nothing, Just)@: snap to the target immediately (no 'from' to lerp from).
---   * @(Just, Nothing)@ or @(Nothing, Nothing)@: do nothing — leave native value as-is.
-interpolateStyle :: Int32 -> WidgetStyle -> WidgetStyle -> Double -> IO ()
-interpolateStyle nodeId fromStyle toStyle progress = do
-  lerpNumProp Bridge.PropPadding
-    (wsPadding fromStyle) (wsPadding toStyle)
-  lerpColorProp Bridge.PropBgColor
-    (wsBackgroundColor fromStyle) (wsBackgroundColor toStyle)
-  lerpNumProp Bridge.PropTranslateX
-    (wsTranslateX fromStyle) (wsTranslateX toStyle)
-  lerpNumProp Bridge.PropTranslateY
-    (wsTranslateY fromStyle) (wsTranslateY toStyle)
-  lerpNumProp Bridge.PropWidth
-    (wsWidth fromStyle) (wsWidth toStyle)
-  -- TouchPassthrough is boolean — snaps to target, no interpolation.
-  case wsTouchPassthrough toStyle of
-    Just enabled ->
-      Bridge.setNumProp nodeId Bridge.PropTouchPassthrough
-        (if enabled then 1.0 else 0.0)
-    Nothing -> pure ()
-  where
-    -- | Interpolate a numeric property and apply it to the native node.
-    lerpNumProp :: Bridge.PropId -> Maybe Double -> Maybe Double -> IO ()
-    lerpNumProp prop (Just fromVal) (Just toVal) =
-      Bridge.setNumProp nodeId prop (interpolateDouble fromVal toVal progress)
-    lerpNumProp prop Nothing (Just toVal) =
-      Bridge.setNumProp nodeId prop toVal
-    lerpNumProp _prop _ Nothing = pure ()
-
-    -- | Interpolate a color property and apply it as a hex string.
-    lerpColorProp :: Bridge.PropId -> Maybe Color -> Maybe Color -> IO ()
-    lerpColorProp prop (Just fromColor) (Just toColor) =
-      Bridge.setStrProp nodeId prop
-        (colorToHex (interpolateColor fromColor toColor progress))
-    lerpColorProp prop Nothing (Just toColor) =
-      Bridge.setStrProp nodeId prop (colorToHex toColor)
-    lerpColorProp _prop _ Nothing = pure ()
+  applyStyle nodeId (lerpStyle segmentProgress fromStyle toStyle)
 
 -- | FFI imports for the C animation bridge.
 foreign import ccall "animation_start_loop" c_animationStartLoop :: Ptr () -> IO ()

@@ -25,6 +25,9 @@ Supports native:
 + android wearable
 + IOS
 + WearOS (IOS on wearables)
++ Linux desktops (Qt Quick)
++ browsers (WebAssembly, Angular Material)
++ terminals
 
 The library fully controls the UI.
 This is different from say Simplex chat where they call into the library to do Haskell from dirty java/swift code.
@@ -355,6 +358,102 @@ nix-build nix/watchos.nix
 
 Works the same as iOS — produces a static library for watchOS.
 The `watchos/` directory contains the WatchKit app structure.
+
+## Building for browsers
+
+`browser/` runs Hatter apps in a browser. The app is built as
+WebAssembly with GHC's wasm backend, and an Angular host shows its
+widgets as Angular Material components. An app exports its start for
+the page:
+
+```haskell
+foreign export javascript "start" start :: IO ()
+
+start :: IO ()
+start = runBrowser app
+```
+
+To build the demo into `out/` and serve it:
+
+```bash
+cd browser
+nix-shell --run './build.sh hatter-browser-demo out'
+python3 -m http.server -d out
+```
+
+To build the demo and test it in headless Chromium, as CI does:
+
+```bash
+nix-shell browser/shell.nix --run test/browser/test-all.sh
+```
+
+## Building for desktops
+
+`desktop/` runs Hatter apps as desktop programs with Qt Quick, on Linux,
+macOS and Windows. A C++ host (`desktop/host/`) shows the app's widgets
+as Qt Quick items in a window. The app's `Main` is the same as on
+Android, built with `-no-hs-main` against the package `hatter-desktop`,
+whose C `main` starts Qt and the app. What's done and what's still to
+come is in `docs/qt-quick-desktop-plan.md`.
+
+To build and run the demo on Linux:
+
+```bash
+cd desktop
+nix-shell --run 'cabal run hatter-desktop-demo'
+```
+
+To build the host with its tests and the demo, as CI does on Linux and
+macOS:
+
+```bash
+nix-build nix/ci.nix -A desktop
+```
+
+On Windows, without Nix: GHC 9.14 from ghcup, and Qt 6.10's LLVM-MinGW
+build with Qt Multimedia, its LLVM-MinGW toolchain and Ninja (from Qt's
+installer or aqtinstall), pkg-config, and CMake. The host is built with
+Qt's toolchain, then the demo against it, in a shell where Qt's and the
+toolchain's `bin` folders are on the `PATH`:
+
+```bash
+cmake -G Ninja -S desktop/host -B build/host -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+  -DCMAKE_INSTALL_PREFIX="$PWD/build/prefix"
+cmake --build build/host
+ctest --test-dir build/host
+cmake --install build/host
+export PKG_CONFIG_PATH="$PWD/build/prefix/lib/pkgconfig" PATH="$PWD/build/prefix/bin:$PATH"
+cd desktop
+cabal run --project-file=cabal.project.ghcup hatter-desktop-demo
+```
+
+On macOS the same works without Nix too, with Qt 6.10 for macOS. An app
+shows notifications only from its bundle: the `desktop-macos-app` job in
+`.github/workflows/ci.yaml` makes the demo's, with its
+`desktop/demo/Info.plist` and `macdeployqt`. On Windows an app's notifications
+are toasts under an ID made from its name, which the host registers for
+the user, as Windows asks of a program that isn't installed as a package.
+
+## Running in a terminal
+
+`terminal/` runs Hatter apps in a terminal, with
+[brick](https://hackage.haskell.org/package/brick): the widgets drawn in
+character cells, Tab and the arrow keys to move between what can be
+tapped or typed in, Enter to tap, Alt-Enter to hold, Esc for Back and
+Ctrl-Q to quit. The app keeps its files, its database key and a log
+of what happened in `$XDG_DATA_HOME/<name>/`:
+
+```haskell
+main :: IO ()
+main = runTerminal (terminalConfig "myapp") makeApp
+```
+
+To build it and run its tests:
+
+```bash
+cd terminal
+nix-shell --run 'cabal test'
+```
 
 ## Desktop development
 

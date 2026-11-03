@@ -25,7 +25,8 @@ assert_logcat "$LOGCAT_FILE" "Lifecycle: Create" "Lifecycle: Create"
 assert_logcat "$LOGCAT_FILE" "Lifecycle: Resume" "Lifecycle: Resume"
 assert_logcat "$LOGCAT_FILE" "Android UI bridge initialized" "Android UI bridge initialized"
 assert_logcat "$LOGCAT_FILE" "setRoot" "setRoot"
-assert_logcat "$LOGCAT_FILE" "setStrProp.*Counter: 0" "setStrProp Counter: 0"
+wait_for_ui_text "Counter: 0" 30 || true
+assert_ui_text "Counter: 0" "Counter: 0 on screen"
 assert_logcat "$LOGCAT_FILE" "setHandler.*click" "setHandler click"
 
 "$ADB" -s "$EMULATOR_SERIAL" uninstall "$PACKAGE" 2>/dev/null || true

@@ -9,6 +9,7 @@ module Test.PlatformTests
   , authSessionTests
   , platformSignInTests
   , locationTests
+  , notificationTests
   , bottomSheetTests
   , cameraTests
   , httpTests
@@ -20,8 +21,8 @@ import Test.Tasty.HUnit
 
 import Data.ByteString qualified as BS
 import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
-import Data.IntMap.Strict qualified as IntMap
 import Data.UUID.Types qualified as UUID
+import Data.List (isInfixOf)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text qualified as Text
 import Foreign.C.String (newCString)
@@ -143,6 +144,7 @@ import Hatter.Location
   , stopLocationUpdates
   , dispatchLocationUpdate
   )
+import Hatter.Notification (Notification(..), NotificationKind(..), showNotification)
 import Hatter.BottomSheet
   ( BottomSheetAction(..)
   , BottomSheetConfig(..)
@@ -156,6 +158,7 @@ import Hatter.Camera
   ( CameraStatus(..)
   , Picture(..)
   , CameraResult(..)
+  , CameraRequest(..)
   , CameraState(..)
   , newCameraState
   , cameraSourceToInt
@@ -192,7 +195,8 @@ import Hatter.NetworkStatus
   , networkTransportFromInt
   , networkTransportToInt
   )
-import Test.Helpers (makeSimpleApp)
+import Hatter.Requests (answered, newRequests, request)
+import Test.Helpers (captureStderr, makeSimpleApp)
 
 -- | Permission tests.  The @ffiPermState@ parameter is the 'PermissionState'
 -- from a context created once in 'main' via 'startMobileApp'.  This
@@ -216,8 +220,8 @@ permissionTests ffiPermState = sequentialTestGroup "Permission" AllFinish
   , testCase "dispatchPermissionResult with PermissionDenied fires callback correctly" $ do
       ref <- newIORef (Nothing :: Maybe PermissionStatus)
       permState <- newPermissionState
-      modifyIORef' (psCallbacks permState) (\_ ->
-        IntMap.singleton 0 (\status -> modifyIORef' ref (const (Just status))))
+      _ <- request (psRequests permState)
+        (\status -> modifyIORef' ref (const (Just status)))
       dispatchPermissionResult permState 0 1
       result <- readIORef ref
       result @?= Just PermissionDenied
@@ -225,8 +229,8 @@ permissionTests ffiPermState = sequentialTestGroup "Permission" AllFinish
   , testCase "callback is removed after dispatch (second dispatch is a no-op)" $ do
       ref <- newIORef (0 :: Int)
       permState <- newPermissionState
-      modifyIORef' (psCallbacks permState) (\_ ->
-        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      _ <- request (psRequests permState)
+        (\_ -> modifyIORef' ref (+ 1))
       dispatchPermissionResult permState 0 0
       count1 <- readIORef ref
       count1 @?= 1
@@ -243,8 +247,8 @@ permissionTests ffiPermState = sequentialTestGroup "Permission" AllFinish
   , testCase "unknown status code does not fire callback" $ do
       ref <- newIORef (0 :: Int)
       permState <- newPermissionState
-      modifyIORef' (psCallbacks permState) (\_ ->
-        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      _ <- request (psRequests permState)
+        (\_ -> modifyIORef' ref (+ 1))
       dispatchPermissionResult permState 0 42
       count <- readIORef ref
       count @?= 0
@@ -347,8 +351,8 @@ secureStorageTests ffiSecureStorageState = sequentialTestGroup "SecureStorage" A
   , testCase "write callback removed after dispatch" $ do
       ref <- newIORef (0 :: Int)
       storageState <- newSecureStorageState
-      modifyIORef' (ssWriteCallbacks storageState) (\_ ->
-        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      _ <- request (ssRequests storageState)
+        (const . (\_ -> modifyIORef' ref (+ 1)))
       dispatchSecureStorageResult storageState 0 0 Nothing
       count1 <- readIORef ref
       count1 @?= 1
@@ -375,8 +379,8 @@ secureStorageTests ffiSecureStorageState = sequentialTestGroup "SecureStorage" A
   , testCase "unknown status code does not fire callback" $ do
       ref <- newIORef (0 :: Int)
       storageState <- newSecureStorageState
-      modifyIORef' (ssWriteCallbacks storageState) (\_ ->
-        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      _ <- request (ssRequests storageState)
+        (const . (\_ -> modifyIORef' ref (+ 1)))
       dispatchSecureStorageResult storageState 0 42 Nothing
       count <- readIORef ref
       count @?= 0
@@ -939,8 +943,8 @@ dialogTests ffiDialogState = sequentialTestGroup "Dialog" AllFinish
   , testCase "dispatchDialogResult fires registered callback" $ do
       ref <- newIORef (Nothing :: Maybe DialogAction)
       dialogState <- newDialogState
-      modifyIORef' (dsCallbacks dialogState) (\_ ->
-        IntMap.singleton 0 (\action -> writeIORef ref (Just action)))
+      _ <- request (dsRequests dialogState)
+        (\action -> writeIORef ref (Just action))
       dispatchDialogResult dialogState 0 1  -- button2
       result <- readIORef ref
       result @?= Just DialogButton2
@@ -948,8 +952,8 @@ dialogTests ffiDialogState = sequentialTestGroup "Dialog" AllFinish
   , testCase "dispatchDialogResult with DialogDismissed" $ do
       ref <- newIORef (Nothing :: Maybe DialogAction)
       dialogState <- newDialogState
-      modifyIORef' (dsCallbacks dialogState) (\_ ->
-        IntMap.singleton 0 (\action -> writeIORef ref (Just action)))
+      _ <- request (dsRequests dialogState)
+        (\action -> writeIORef ref (Just action))
       dispatchDialogResult dialogState 0 3  -- dismissed
       result <- readIORef ref
       result @?= Just DialogDismissed
@@ -957,8 +961,8 @@ dialogTests ffiDialogState = sequentialTestGroup "Dialog" AllFinish
   , testCase "dispatchDialogResult removes callback after firing" $ do
       ref <- newIORef (0 :: Int)
       dialogState <- newDialogState
-      modifyIORef' (dsCallbacks dialogState) (\_ ->
-        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      _ <- request (dsRequests dialogState)
+        (\_ -> modifyIORef' ref (+ 1))
       dispatchDialogResult dialogState 0 0
       count1 <- readIORef ref
       count1 @?= 1
@@ -975,8 +979,8 @@ dialogTests ffiDialogState = sequentialTestGroup "Dialog" AllFinish
   , testCase "unknown action code is silently logged" $ do
       ref <- newIORef (0 :: Int)
       dialogState <- newDialogState
-      modifyIORef' (dsCallbacks dialogState) (\_ ->
-        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      _ <- request (dsRequests dialogState)
+        (\_ -> modifyIORef' ref (+ 1))
       dispatchDialogResult dialogState 0 42
       count <- readIORef ref
       count @?= 0
@@ -1009,8 +1013,8 @@ authSessionTests ffiAuthSessionState = sequentialTestGroup "AuthSession" AllFini
   , testCase "dispatchAuthSessionResult fires Success callback with redirect URL" $ do
       ref <- newIORef (Nothing :: Maybe AuthSessionResult)
       authState <- newAuthSessionState
-      modifyIORef' (asCallbacks authState) (\_ ->
-        IntMap.singleton 0 (\result -> writeIORef ref (Just result)))
+      _ <- request (asRequests authState)
+        (\result -> writeIORef ref (Just result))
       dispatchAuthSessionResult authState 0 0 (Just "myapp://cb?code=abc") Nothing
       result <- readIORef ref
       result @?= Just (AuthSessionSuccess "myapp://cb?code=abc")
@@ -1018,8 +1022,8 @@ authSessionTests ffiAuthSessionState = sequentialTestGroup "AuthSession" AllFini
   , testCase "dispatchAuthSessionResult fires Cancelled callback" $ do
       ref <- newIORef (Nothing :: Maybe AuthSessionResult)
       authState <- newAuthSessionState
-      modifyIORef' (asCallbacks authState) (\_ ->
-        IntMap.singleton 0 (\result -> writeIORef ref (Just result)))
+      _ <- request (asRequests authState)
+        (\result -> writeIORef ref (Just result))
       dispatchAuthSessionResult authState 0 1 Nothing Nothing
       result <- readIORef ref
       result @?= Just AuthSessionCancelled
@@ -1027,8 +1031,8 @@ authSessionTests ffiAuthSessionState = sequentialTestGroup "AuthSession" AllFini
   , testCase "dispatchAuthSessionResult fires Error callback with message" $ do
       ref <- newIORef (Nothing :: Maybe AuthSessionResult)
       authState <- newAuthSessionState
-      modifyIORef' (asCallbacks authState) (\_ ->
-        IntMap.singleton 0 (\result -> writeIORef ref (Just result)))
+      _ <- request (asRequests authState)
+        (\result -> writeIORef ref (Just result))
       dispatchAuthSessionResult authState 0 2 Nothing (Just "network error")
       result <- readIORef ref
       result @?= Just (AuthSessionError "network error")
@@ -1036,8 +1040,8 @@ authSessionTests ffiAuthSessionState = sequentialTestGroup "AuthSession" AllFini
   , testCase "callback removed after dispatch (idempotency)" $ do
       ref <- newIORef (0 :: Int)
       authState <- newAuthSessionState
-      modifyIORef' (asCallbacks authState) (\_ ->
-        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      _ <- request (asRequests authState)
+        (\_ -> modifyIORef' ref (+ 1))
       dispatchAuthSessionResult authState 0 0 (Just "myapp://cb") Nothing
       count1 <- readIORef ref
       count1 @?= 1
@@ -1062,8 +1066,8 @@ authSessionTests ffiAuthSessionState = sequentialTestGroup "AuthSession" AllFini
   , testCase "unknown status code does not fire callback" $ do
       ref <- newIORef (0 :: Int)
       authState <- newAuthSessionState
-      modifyIORef' (asCallbacks authState) (\_ ->
-        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      _ <- request (asRequests authState)
+        (\_ -> modifyIORef' ref (+ 1))
       dispatchAuthSessionResult authState 0 42 Nothing Nothing
       count <- readIORef ref
       count @?= 0
@@ -1135,6 +1139,16 @@ locationTests = testGroup "Location"
       freeAppContext ctxPtr
   ]
 
+notificationTests :: TestTree
+notificationTests = testGroup "Notification"
+  [ testCase "a line's newlines don't make more lines" $ do
+      ((), shown) <- captureStderr $ showNotification Notification
+        { notificationKey = "chat", notificationChannel = "Messages", notificationIcon = "icon"
+        , notificationTitle = "Alice", notificationLines = ["hi", "two\nlines"]
+        , notificationKind = MessageNotification }
+      assertBool shown ("show chat: Alice\nhi\ntwo lines\n" `isInfixOf` shown)
+  ]
+
 bottomSheetTests :: BottomSheetState -> TestTree
 bottomSheetTests ffiBottomSheetState = sequentialTestGroup "BottomSheet" AllFinish
   [ testCase "showBottomSheet registers callback and desktop stub selects first item" $ do
@@ -1148,11 +1162,17 @@ bottomSheetTests ffiBottomSheetState = sequentialTestGroup "BottomSheet" AllFini
       result <- readIORef ref
       result @?= Just (BottomSheetItemSelected 0)
 
+  , testCase "an item's newlines don't make more items" $ do
+      ((), shown) <- captureStderr $ showBottomSheet ffiBottomSheetState
+        BottomSheetConfig { bscTitle = "Who", bscItems = ["Alice", "Bob\nthe second"] }
+        (\_ -> pure ())
+      assertBool shown ("items=\"Alice\nBob the second\")" `isInfixOf` shown)
+
   , testCase "dispatchBottomSheetResult fires ItemSelected callback" $ do
       ref <- newIORef (Nothing :: Maybe BottomSheetAction)
       bottomSheetState <- newBottomSheetState
-      modifyIORef' (bssCallbacks bottomSheetState) (\_ ->
-        IntMap.singleton 0 (\action -> writeIORef ref (Just action)))
+      _ <- request (bssRequests bottomSheetState)
+        (\action -> writeIORef ref (Just action))
       dispatchBottomSheetResult bottomSheetState 0 2
       result <- readIORef ref
       result @?= Just (BottomSheetItemSelected 2)
@@ -1160,8 +1180,8 @@ bottomSheetTests ffiBottomSheetState = sequentialTestGroup "BottomSheet" AllFini
   , testCase "dispatchBottomSheetResult fires Dismissed callback" $ do
       ref <- newIORef (Nothing :: Maybe BottomSheetAction)
       bottomSheetState <- newBottomSheetState
-      modifyIORef' (bssCallbacks bottomSheetState) (\_ ->
-        IntMap.singleton 0 (\action -> writeIORef ref (Just action)))
+      _ <- request (bssRequests bottomSheetState)
+        (\action -> writeIORef ref (Just action))
       dispatchBottomSheetResult bottomSheetState 0 (-1)
       result <- readIORef ref
       result @?= Just BottomSheetDismissed
@@ -1169,8 +1189,8 @@ bottomSheetTests ffiBottomSheetState = sequentialTestGroup "BottomSheet" AllFini
   , testCase "callback removed after dispatch (idempotency)" $ do
       ref <- newIORef (0 :: Int)
       bottomSheetState <- newBottomSheetState
-      modifyIORef' (bssCallbacks bottomSheetState) (\_ ->
-        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      _ <- request (bssRequests bottomSheetState)
+        (\_ -> modifyIORef' ref (+ 1))
       dispatchBottomSheetResult bottomSheetState 0 0
       count1 <- readIORef ref
       count1 @?= 1
@@ -1244,8 +1264,7 @@ cameraTests = testGroup "Camera"
   , testCase "dispatchCameraResult fires callback with picture data" $ do
       cameraState <- newCameraState
       ref <- newIORef (Nothing :: Maybe CameraResult)
-      modifyIORef' (csCallbacks cameraState)
-        (IntMap.insert 0 (\result -> writeIORef ref (Just result)))
+      _ <- request (csRequests cameraState) (capture (\result -> writeIORef ref (Just result)))
       let jpegBytes = BS.pack [0xFF, 0xD8, 0xFF, 0xD9]
       dispatchCameraResult cameraState 0 0
         (Just jpegBytes) 640 480
@@ -1264,8 +1283,7 @@ cameraTests = testGroup "Camera"
   , testCase "dispatchCameraResult without image data has no picture" $ do
       cameraState <- newCameraState
       ref <- newIORef (Nothing :: Maybe CameraResult)
-      modifyIORef' (csCallbacks cameraState)
-        (IntMap.insert 0 (\result -> writeIORef ref (Just result)))
+      _ <- request (csRequests cameraState) (capture (\result -> writeIORef ref (Just result)))
       dispatchCameraResult cameraState 0 0
         Nothing 0 0
       maybeResult <- readIORef ref
@@ -1278,8 +1296,7 @@ cameraTests = testGroup "Camera"
   , testCase "dispatchCameraResult with error status has no picture" $ do
       cameraState <- newCameraState
       ref <- newIORef (Nothing :: Maybe CameraResult)
-      modifyIORef' (csCallbacks cameraState)
-        (IntMap.insert 0 (\result -> writeIORef ref (Just result)))
+      _ <- request (csRequests cameraState) (capture (\result -> writeIORef ref (Just result)))
       let jpegBytes = BS.pack [0xFF, 0xD8, 0xFF, 0xD9]
       dispatchCameraResult cameraState 0 4 (Just jpegBytes) 1 1
       maybeResult <- readIORef ref
@@ -1296,8 +1313,8 @@ cameraTests = testGroup "Camera"
   , testCase "dispatchVideoFrame fires frame callback" $ do
       cameraState <- newCameraState
       ref <- newIORef (Nothing :: Maybe Picture)
-      modifyIORef' (csFrameCallbacks cameraState)
-        (IntMap.insert 0 (\pic -> writeIORef ref (Just pic)))
+      _ <- request (csRequests cameraState)
+        (capture (\_ -> pure ())) { crqFrame = \pic -> writeIORef ref (Just pic) }
       let jpegBytes = BS.pack [0xFF, 0xD8, 0xFF, 0xD9]
       dispatchVideoFrame cameraState 0 jpegBytes 320 240
       maybePic <- readIORef ref
@@ -1311,8 +1328,8 @@ cameraTests = testGroup "Camera"
   , testCase "dispatchAudioChunk fires audio callback" $ do
       cameraState <- newCameraState
       ref <- newIORef (Nothing :: Maybe BS.ByteString)
-      modifyIORef' (csAudioCallbacks cameraState)
-        (IntMap.insert 0 (\chunk -> writeIORef ref (Just chunk)))
+      _ <- request (csRequests cameraState)
+        (capture (\_ -> pure ())) { crqAudio = \chunk -> writeIORef ref (Just chunk) }
       let pcmBytes = BS.pack [0x00, 0x01, 0x02, 0x03]
       dispatchAudioChunk cameraState 0 pcmBytes
       maybeChunk <- readIORef ref
@@ -1320,36 +1337,27 @@ cameraTests = testGroup "Camera"
         Nothing -> assertFailure "audio callback should have been fired"
         Just chunk -> chunk @?= pcmBytes
 
-  , testCase "dispatchCameraResult cleans up frame/audio callbacks" $ do
+  , testCase "a video's frames and sound stop with its result" $ do
       cameraState <- newCameraState
-      modifyIORef' (csCallbacks cameraState)
-        (IntMap.insert 0 (\_ -> pure ()))
-      modifyIORef' (csFrameCallbacks cameraState)
-        (IntMap.insert 0 (\_ -> pure ()))
-      modifyIORef' (csAudioCallbacks cameraState)
-        (IntMap.insert 0 (\_ -> pure ()))
+      heard <- newIORef (0 :: Int)
+      _ <- request (csRequests cameraState) CameraRequest
+        { crqResult = \_ -> pure ()
+        , crqFrame = \_ -> modifyIORef' heard (+ 1)
+        , crqAudio = \_ -> modifyIORef' heard (+ 1) }
       dispatchCameraResult cameraState 0 0 Nothing 0 0
-      callbacks <- readIORef (csCallbacks cameraState)
-      IntMap.member 0 callbacks @?= False
-      frameCallbacks <- readIORef (csFrameCallbacks cameraState)
-      IntMap.member 0 frameCallbacks @?= False
-      audioCallbacks <- readIORef (csAudioCallbacks cameraState)
-      IntMap.member 0 audioCallbacks @?= False
+      dispatchVideoFrame cameraState 0 BS.empty 1 1
+      dispatchAudioChunk cameraState 0 BS.empty
+      readIORef heard >>= (@?= 0)
 
-  , testCase "capturePhoto assigns incremental request IDs" $ do
-      app <- makeSimpleApp (\_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing }))
-      ctxPtr <- newAppContext app
-      appCtx <- derefAppContext ctxPtr
-      let cameraState = acCameraState appCtx
-      idsBefore <- readIORef (csNextId cameraState)
-      idsBefore @?= 0
-      capturePhoto cameraState (\_ -> pure ())
-      idsAfter1 <- readIORef (csNextId cameraState)
-      idsAfter1 @?= 1
-      capturePhoto cameraState (\_ -> pure ())
-      idsAfter2 <- readIORef (csNextId cameraState)
-      idsAfter2 @?= 2
-      freeAppContext ctxPtr
+  , testCase "requests are numbered in turn, and answered once" $ do
+      requests <- newRequests
+      answers <- newIORef (0 :: Int)
+      first <- request requests (modifyIORef' answers (+ 1))
+      second <- request requests (modifyIORef' answers (+ 10))
+      (first, second) @?= (0, 1)
+      sequence_ =<< answered "test" requests second
+      sequence_ =<< answered "test" requests second
+      readIORef answers >>= (@?= 10)
 
   , testCase "cameraStatusFromInt round-trips known codes" $ do
       cameraStatusFromInt 0 @?= Just CameraSuccess
@@ -1373,13 +1381,13 @@ httpTests :: HttpState -> TestTree
 httpTests ffiHttpState = sequentialTestGroup "Http" AllFinish
   [ testCase "desktop stub returns 200 OK on GET" $ do
       ref <- newIORef (Nothing :: Maybe (Either HttpError HttpResponse))
-      let request = HttpRequest
+      let get = HttpRequest
             { hrMethod  = HttpGet
             , hrUrl     = "http://localhost/test"
             , hrHeaders = []
             , hrBody    = BS.empty
             }
-      performRequest ffiHttpState request (\result -> writeIORef ref (Just result))
+      performRequest ffiHttpState get (\result -> writeIORef ref (Just result))
       result <- readIORef ref
       case result of
         Just (Right response) ->
@@ -1389,8 +1397,8 @@ httpTests ffiHttpState = sequentialTestGroup "Http" AllFinish
   , testCase "dispatchHttpResult success fires callback with status and body" $ do
       ref <- newIORef (Nothing :: Maybe (Either HttpError HttpResponse))
       httpState <- newHttpState
-      modifyIORef' (hsCallbacks httpState) (\_ ->
-        IntMap.singleton 0 (\result -> writeIORef ref (Just result)))
+      _ <- request (hsRequests httpState)
+        (\result -> writeIORef ref (Just result))
       dispatchHttpResult httpState 0 0 200 (Just "Content-Type: text/html\n") (BS.pack [72, 105])
       result <- readIORef ref
       case result of
@@ -1403,8 +1411,8 @@ httpTests ffiHttpState = sequentialTestGroup "Http" AllFinish
   , testCase "dispatchHttpResult network error fires Left callback" $ do
       ref <- newIORef (Nothing :: Maybe (Either HttpError HttpResponse))
       httpState <- newHttpState
-      modifyIORef' (hsCallbacks httpState) (\_ ->
-        IntMap.singleton 0 (\result -> writeIORef ref (Just result)))
+      _ <- request (hsRequests httpState)
+        (\result -> writeIORef ref (Just result))
       dispatchHttpResult httpState 0 1 0 (Just "connection refused") BS.empty
       result <- readIORef ref
       result @?= Just (Left (HttpNetworkError "connection refused"))
@@ -1412,8 +1420,8 @@ httpTests ffiHttpState = sequentialTestGroup "Http" AllFinish
   , testCase "dispatchHttpResult timeout fires Left callback" $ do
       ref <- newIORef (Nothing :: Maybe (Either HttpError HttpResponse))
       httpState <- newHttpState
-      modifyIORef' (hsCallbacks httpState) (\_ ->
-        IntMap.singleton 0 (\result -> writeIORef ref (Just result)))
+      _ <- request (hsRequests httpState)
+        (\result -> writeIORef ref (Just result))
       dispatchHttpResult httpState 0 2 0 Nothing BS.empty
       result <- readIORef ref
       result @?= Just (Left HttpTimeout)
@@ -1421,8 +1429,8 @@ httpTests ffiHttpState = sequentialTestGroup "Http" AllFinish
   , testCase "callback removed after dispatch (idempotency)" $ do
       ref <- newIORef (0 :: Int)
       httpState <- newHttpState
-      modifyIORef' (hsCallbacks httpState) (\_ ->
-        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      _ <- request (hsRequests httpState)
+        (\_ -> modifyIORef' ref (+ 1))
       dispatchHttpResult httpState 0 0 200 Nothing BS.empty
       count1 <- readIORef ref
       count1 @?= 1
@@ -1568,8 +1576,8 @@ platformSignInTests ffiPlatformSignInState = sequentialTestGroup "PlatformSignIn
   , testCase "dispatchPlatformSignInResult fires Success callback" $ do
       ref <- newIORef (Nothing :: Maybe SignInResult)
       signInState <- newPlatformSignInState
-      modifyIORef' (psiCallbacks signInState) (\_ ->
-        IntMap.singleton 0 (\result -> writeIORef ref (Just result)))
+      _ <- request (psiRequests signInState)
+        (\result -> writeIORef ref (Just result))
       dispatchPlatformSignInResult signInState 0 0
         (Just "token123") (Just "user-42") (Just "user@example.com") (Just "Test User") 0
       result <- readIORef ref
@@ -1585,8 +1593,8 @@ platformSignInTests ffiPlatformSignInState = sequentialTestGroup "PlatformSignIn
   , testCase "dispatchPlatformSignInResult fires Cancelled callback" $ do
       ref <- newIORef (Nothing :: Maybe SignInResult)
       signInState <- newPlatformSignInState
-      modifyIORef' (psiCallbacks signInState) (\_ ->
-        IntMap.singleton 0 (\result -> writeIORef ref (Just result)))
+      _ <- request (psiRequests signInState)
+        (\result -> writeIORef ref (Just result))
       dispatchPlatformSignInResult signInState 0 1 Nothing Nothing Nothing Nothing 0
       result <- readIORef ref
       result @?= Just SignInCancelled
@@ -1594,8 +1602,8 @@ platformSignInTests ffiPlatformSignInState = sequentialTestGroup "PlatformSignIn
   , testCase "dispatchPlatformSignInResult fires Error callback with message" $ do
       ref <- newIORef (Nothing :: Maybe SignInResult)
       signInState <- newPlatformSignInState
-      modifyIORef' (psiCallbacks signInState) (\_ ->
-        IntMap.singleton 0 (\result -> writeIORef ref (Just result)))
+      _ <- request (psiRequests signInState)
+        (\result -> writeIORef ref (Just result))
       dispatchPlatformSignInResult signInState 0 2 Nothing Nothing Nothing (Just "auth failed") 0
       result <- readIORef ref
       result @?= Just (SignInError "auth failed")
@@ -1603,8 +1611,8 @@ platformSignInTests ffiPlatformSignInState = sequentialTestGroup "PlatformSignIn
   , testCase "callback removed after dispatch (idempotency)" $ do
       ref <- newIORef (0 :: Int)
       signInState <- newPlatformSignInState
-      modifyIORef' (psiCallbacks signInState) (\_ ->
-        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      _ <- request (psiRequests signInState)
+        (\_ -> modifyIORef' ref (+ 1))
       dispatchPlatformSignInResult signInState 0 0
         (Just "tok") (Just "uid") Nothing Nothing 0
       count1 <- readIORef ref
@@ -1640,9 +1648,15 @@ platformSignInTests ffiPlatformSignInState = sequentialTestGroup "PlatformSignIn
   , testCase "unknown status code does not fire callback" $ do
       ref <- newIORef (0 :: Int)
       signInState <- newPlatformSignInState
-      modifyIORef' (psiCallbacks signInState) (\_ ->
-        IntMap.singleton 0 (\_ -> modifyIORef' ref (+ 1)))
+      _ <- request (psiRequests signInState)
+        (\_ -> modifyIORef' ref (+ 1))
       dispatchPlatformSignInResult signInState 0 42 Nothing Nothing Nothing Nothing 0
       count <- readIORef ref
       count @?= 0
   ]
+
+-- | A capture's request with its result's callback, and nothing for
+-- frames or sound.
+capture :: (CameraResult -> IO ()) -> CameraRequest
+capture onResult = CameraRequest
+  { crqResult = onResult, crqFrame = \_ -> pure (), crqAudio = \_ -> pure () }

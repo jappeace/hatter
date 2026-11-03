@@ -20,3 +20,7 @@ ios/include/
 
 # Stray command-output logs
 *.log
+
+# The browser host's npm packages and Angular's cache
+node_modules/
+.angular/

@@ -11,9 +11,8 @@
 # nix/apk.nix` there; inside the VM the host is Linux, so it takes the native
 # branch -- there is no recursion.
 { sources ? import ../npins }:
-let
-  pkgs = import sources.nixpkgs { };
-in
-if pkgs.stdenv.isDarwin
+# Decided without the project's nixpkgs, which no longer evaluates on Intel
+# Macs.
+if builtins.match ".*-darwin" builtins.currentSystem != null
 then import ./apk-darwin-vm.nix { inherit sources; }
 else import ./apk-linux.nix { inherit sources; }

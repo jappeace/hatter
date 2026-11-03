@@ -9,6 +9,8 @@
  */
 
 #include <jni.h>
+#include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +30,7 @@
 #include "AnimationBridge.h"
 #include "RedrawBridge.h"
 #include "PlatformSignInBridge.h"
+#include "NotificationBridge.h"
 
 /* Deduplicate registerForeignExports to prevent OOM on armv7a.
  *
@@ -80,6 +83,9 @@ extern void haskellLogLocale(void);
 
 /* App files directory (cbits/files_dir.c) */
 extern void setAppFilesDir(const char *path);
+/* Database key (cbits/database_key.c) */
+extern void setDatabaseKey(const unsigned char *key, size_t length);
+extern void setDatabaseKeyFailed(void);
 
 /* Device info (cbits/device_info.c) */
 extern void setDeviceModel(const char *value);
@@ -93,7 +99,21 @@ extern void haskellLogDeviceInfo(void);
 
 /* Haskell foreign exports */
 extern void haskellOnLifecycle(void *ctx, int eventType);
+extern int haskellOnBack(void *ctx);
+extern void haskellOnNotificationOpened(void *ctx, const char *key);
+extern void haskellOnCallButton(void *ctx, const char *key, int button);
+extern int haskellOnLazyBind(void *ctx, int listId, int rowId, int position);
+extern int64_t haskellLazyItemKey(void *ctx, int listId, int position);
+extern void haskellOnUIScroll(void *ctx, int callbackId, int position);
+extern void haskellOnFilePicked(void *ctx, const char *path, const char *name, int64_t size);
+extern void haskellOnPicturePicked(void *ctx, const uint8_t *bytes, int32_t size);
+extern jobject ui_android_node_view(int32_t nodeId);
+extern void setup_android_notification_bridge(JavaVM *vm, JNIEnv *env);
+extern void setup_android_call_audio_bridge(JavaVM *vm, JNIEnv *env);
+extern void setup_android_picture_bridge(JavaVM *vm, JNIEnv *env);
+extern void setup_android_call_video_bridge(JavaVM *vm, JNIEnv *env);
 extern void haskellRenderUI(void *ctx);
+extern void haskellResetUI(void *ctx);
 extern void haskellOnUIEvent(void *ctx, int callbackId);
 extern void haskellOnUITextChange(void *ctx, int callbackId, const char *text);
 extern void haskellOnPermissionResult(void *ctx, int32_t requestId, int32_t statusCode);
@@ -178,13 +198,34 @@ extern void setup_android_platform_sign_in_bridge(JNIEnv *env, jobject activity,
 #define LIFECYCLE_DESTROY    5
 #define LIFECYCLE_LOW_MEMORY 6
 
+/* The runtime's messages, as an uncaught exception's, which it writes to
+ * stderr, where Android keeps nothing of an app's. */
+typedef void RtsMsgFunction(const char *format, va_list args);
+extern RtsMsgFunction *errorMsgFn;
+extern RtsMsgFunction *fatalInternalErrorFn;
+
+static void log_rts_error(const char *format, va_list args)
+{
+    __android_log_vprint(ANDROID_LOG_ERROR, "Hatter", format, args);
+}
+
+/* In run_main.c. */
+extern void hatter_hs_init(const char *rts_opts);
+
+/* Set by the app's build, like iOS passes its own to hatter_hs_init. */
+#ifndef HATTER_RTS_OPTS
+#define HATTER_RTS_OPTS NULL
+#endif
+
 /* Opaque Haskell context pointer, created during JNI_OnLoad */
 static void *g_haskell_ctx = NULL;
 
 JNIEXPORT jint JNICALL
 JNI_OnLoad(JavaVM *vm, void *reserved)
 {
-    hs_init(NULL, NULL);
+    errorMsgFn = log_rts_error;
+    fatalInternalErrorFn = log_rts_error;
+    hatter_hs_init(HATTER_RTS_OPTS);
 
     /* Pre-haskellRunMain platform init: set globals that Haskell code may
        read immediately (e.g. in startMobileApp callbacks). */
@@ -211,6 +252,8 @@ JNI_OnLoad(JavaVM *vm, void *reserved)
         jmethodID currentApp = (*env)->GetStaticMethodID(env, atClass,
             "currentApplication", "()Landroid/app/Application;");
         jobject app = (*env)->CallStaticObjectMethod(env, atClass, currentApp);
+        /* Android has a keystore: no key from it is a failure. */
+        setDatabaseKeyFailed();
         if (app) {
             jclass ctxClass = (*env)->FindClass(env, "android/content/Context");
             jmethodID getFilesDir = (*env)->GetMethodID(env, ctxClass,
@@ -224,6 +267,25 @@ JNI_OnLoad(JavaVM *vm, void *reserved)
                 const char *cpath = (*env)->GetStringUTFChars(env, jpath, NULL);
                 setAppFilesDir(strdup(cpath));
                 (*env)->ReleaseStringUTFChars(env, jpath, cpath);
+            }
+
+            /* Database key: from the keystore, for the activity and for a
+               service started alone alike. */
+            jclass keyClass = (*env)->FindClass(env, "me/jappie/hatter/HatterDatabaseKey");
+            jmethodID getKey = keyClass ? (*env)->GetStaticMethodID(env, keyClass,
+                "get", "(Landroid/content/Context;)[B") : NULL;
+            jbyteArray jkey = getKey ? (*env)->CallStaticObjectMethod(env, keyClass, getKey, app) : NULL;
+            if ((*env)->ExceptionCheck(env)) {
+                (*env)->ExceptionClear(env);
+                jkey = NULL;
+            }
+            if (jkey) {
+                jsize length = (*env)->GetArrayLength(env, jkey);
+                jbyte *bytes = (*env)->GetByteArrayElements(env, jkey, NULL);
+                setDatabaseKey((const unsigned char *)bytes, (size_t)length);
+                (*env)->ReleaseByteArrayElements(env, jkey, bytes, JNI_ABORT);
+            } else {
+                setDatabaseKeyFailed();
             }
         }
 
@@ -281,6 +343,15 @@ JNI_OnLoad(JavaVM *vm, void *reserved)
         }
     }
 
+    {
+        JNIEnv *env;
+        (*vm)->GetEnv(vm, (void**)&env, JNI_VERSION_1_6);
+        setup_android_notification_bridge(vm, env);
+        setup_android_call_audio_bridge(vm, env);
+        setup_android_picture_bridge(vm, env);
+        setup_android_call_video_bridge(vm, env);
+    }
+
     g_haskell_ctx = haskellRunMain();
     haskellLogLocale();
     haskellLogDeviceInfo();
@@ -299,19 +370,27 @@ JNI_OnUnload(JavaVM *vm, void *reserved)
 JNIEXPORT void JNICALL
 JNI_METHOD(renderUI)(JNIEnv *env, jobject thiz)
 {
-    /* The bridge setups are one-time initialization: they resolve JNI method
+    /* The bridge setups run once per activity: they resolve JNI method
      * IDs, cache the activity, register callbacks, and (in
-     * setup_android_ui_bridge) reset the node pool to g_next_node_id = 1.
+     * setup_android_ui_bridge) release the node pool.
      *
      * renderUI() is called both for the initial render and for every
      * subsequent redraw (Activity.requestRedraw -> renderUI). Re-running setup
      * on each redraw wiped the native node pool while the Haskell render state
      * kept the old node IDs, so setStrProp/addChild targeted freed nodes and
-     * callback-driven redraws never reached the screen. Initialise the bridges
-     * once, then only render — matching the iOS bridge, which sets up once at
-     * init and whose renderUI just calls haskellRenderUI. */
-    static int g_bridges_initialized = 0;
-    if (!g_bridges_initialized) {
+     * callback-driven redraws never reached the screen.
+     *
+     * Android recreates the activity in the same process after Back or a
+     * rotation, and the views went with the old one. The bridges then take
+     * the new activity, and Haskell forgets its views to create them all
+     * again. */
+    static jobject g_bridges_activity = NULL;
+    if (!g_bridges_activity || !(*env)->IsSameObject(env, thiz, g_bridges_activity)) {
+        if (g_bridges_activity) {
+            (*env)->DeleteGlobalRef(env, g_bridges_activity);
+            haskellResetUI(g_haskell_ctx);
+        }
+        g_bridges_activity = (*env)->NewGlobalRef(env, thiz);
         setup_android_ui_bridge(env, thiz, g_haskell_ctx);
         setup_android_permission_bridge(env, thiz, g_haskell_ctx);
         setup_android_secure_storage_bridge(env, thiz, g_haskell_ctx);
@@ -326,7 +405,6 @@ JNI_METHOD(renderUI)(JNIEnv *env, jobject thiz)
         setup_android_animation_bridge(env, thiz, g_haskell_ctx);
         setup_android_redraw_bridge(env, thiz, g_haskell_ctx);
         setup_android_platform_sign_in_bridge(env, thiz, g_haskell_ctx);
-        g_bridges_initialized = 1;
     }
     haskellRenderUI(g_haskell_ctx);
 }
@@ -335,6 +413,19 @@ JNIEXPORT void JNICALL
 JNI_METHOD(onButtonClick)(JNIEnv *env, jobject thiz, jobject view)
 {
     android_handle_click(env, view, g_haskell_ctx);
+}
+
+/* Where a list is, by Hatter.Action.ListPosition's number. */
+JNIEXPORT void JNICALL
+JNI_METHOD(onScrolled)(JNIEnv *env, jobject thiz, jint callbackId, jint position)
+{
+    haskellOnUIScroll(g_haskell_ctx, callbackId, position);
+}
+
+JNIEXPORT void JNICALL
+JNI_METHOD(onLongPress)(JNIEnv *env, jobject thiz, jint callbackId)
+{
+    haskellOnUIEvent(g_haskell_ctx, callbackId);
 }
 
 JNIEXPORT void JNICALL
@@ -378,6 +469,96 @@ JNIEXPORT void JNICALL
 JNI_METHOD(onLifecycleDestroy)(JNIEnv *env, jobject thiz)
 {
     haskellOnLifecycle(g_haskell_ctx, LIFECYCLE_DESTROY);
+}
+
+JNIEXPORT jboolean JNICALL
+JNI_METHOD(onBackPressedNative)(JNIEnv *env, jobject thiz)
+{
+    return haskellOnBack(g_haskell_ctx) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+JNI_METHOD(onNotificationOpenedNative)(JNIEnv *env, jobject thiz, jbyteArray jkey)
+{
+    /* UTF-8, with a NUL after it. */
+    const jsize length = (*env)->GetArrayLength(env, jkey);
+    char *key = malloc((size_t)length + 1);
+    if (key == NULL) {
+        return;
+    }
+    (*env)->GetByteArrayRegion(env, jkey, 0, length, (jbyte *)key);
+    key[length] = '\0';
+    haskellOnNotificationOpened(g_haskell_ctx, key);
+    free(key);
+}
+
+/* A button of a ringing notification, from any thread: 0 answers, 1 declines. */
+JNIEXPORT void JNICALL
+JNI_METHOD_NAME2(JNI_PACKAGE, HatterNotifications, onCallButton)(JNIEnv *env, jclass clazz, jbyteArray jkey, jint button)
+{
+    /* UTF-8, with a NUL after it. */
+    const jsize length = (*env)->GetArrayLength(env, jkey);
+    char *key = malloc((size_t)length + 1);
+    if (key == NULL) {
+        return;
+    }
+    (*env)->GetByteArrayRegion(env, jkey, 0, length, (jbyte *)key);
+    key[length] = '\0';
+    haskellOnCallButton(g_haskell_ctx, key, button);
+    free(key);
+}
+
+/* Render a lazy column's item at the position into a row: the row given
+ * (0 for none) or a new one, or 0 for nothing to show. */
+JNIEXPORT jint JNICALL
+JNI_METHOD(onLazyBindNative)(JNIEnv *env, jobject thiz, jint listId, jint rowId, jint position)
+{
+    return haskellOnLazyBind(g_haskell_ctx, listId, rowId, position);
+}
+
+/* The key of a lazy column's item, as the adapter's stable ID for it. */
+JNIEXPORT jlong JNICALL
+JNI_METHOD(lazyItemKeyNative)(JNIEnv *env, jobject thiz, jint listId, jint position)
+{
+    return haskellLazyItemKey(g_haskell_ctx, listId, position);
+}
+
+/* A copy of the file the user picked, with its name: UTF-8 in byte arrays. */
+JNIEXPORT void JNICALL
+JNI_METHOD(onPicturePickedNative)(JNIEnv *env, jobject thiz, jbyteArray jpng)
+{
+    const jsize length = (*env)->GetArrayLength(env, jpng);
+    jbyte *png = (*env)->GetByteArrayElements(env, jpng, NULL);
+    if (png != NULL) {
+        haskellOnPicturePicked(g_haskell_ctx, (const uint8_t *)png, (int32_t)length);
+        (*env)->ReleaseByteArrayElements(env, jpng, png, JNI_ABORT);
+    }
+}
+
+JNIEXPORT void JNICALL
+JNI_METHOD(onFilePickedNative)(JNIEnv *env, jobject thiz, jbyteArray jpath, jbyteArray jname, jlong size)
+{
+    const jsize pathLength = (*env)->GetArrayLength(env, jpath);
+    const jsize nameLength = (*env)->GetArrayLength(env, jname);
+    char *path = malloc((size_t)pathLength + 1);
+    char *name = malloc((size_t)nameLength + 1);
+    if (path != NULL && name != NULL) {
+        (*env)->GetByteArrayRegion(env, jpath, 0, pathLength, (jbyte *)path);
+        (*env)->GetByteArrayRegion(env, jname, 0, nameLength, (jbyte *)name);
+        path[pathLength] = '\0';
+        name[nameLength] = '\0';
+        haskellOnFilePicked(g_haskell_ctx, path, name, (int64_t)size);
+    }
+    free(path);
+    free(name);
+}
+
+/* The view of a node, or null. */
+JNIEXPORT jobject JNICALL
+JNI_METHOD(nodeViewNative)(JNIEnv *env, jobject thiz, jint nodeId)
+{
+    jobject view = ui_android_node_view(nodeId);
+    return view != NULL ? (*env)->NewLocalRef(env, view) : NULL;
 }
 
 JNIEXPORT void JNICALL

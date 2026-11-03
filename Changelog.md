@@ -4,30 +4,33 @@
 
 ### Added
 
+- Three more platforms, each its own package or host: the browser
+  (`browser/`, Hatter in WebAssembly), the terminal (`hatter-terminal`),
+  and desktops with Qt Quick (`hatter-desktop`) on Linux, macOS and Windows.
+  See the Readme.
+- `Hatter.Marshal`, for the platforms' own packages: text to and from the
+  bridges in UTF-8, paths in the file system's encoding.
+- `Switch` (`switch on action`), the platform's own on/off switch:
+  Android's `Switch`, Material's on Qt and in the browser, `UISwitch`,
+  a watch `Toggle`, and `[● ]` in the terminal. It fires its action
+  only as the user flips it, by a tap or a drag. On Qt, Material's
+  accent is now the system's, as on Android, not pink.
+
+- `wsPaddingY`, padding at the top and bottom where it differs from
+  `wsPadding`'s, and `wsCorners`, each corner's radius, so message
+  bubbles can join in a run. Corners round the background, and also
+  what's on it where all four are the same (`rounded`), as for round
+  pictures. On Android, Qt, the browser and the terminal (padding and
+  round pictures only, as cells have no corners).
+
+- `fontSlant` in `FontConfig`, `FontItalic` for italic text, on
+  Android, Qt, the browser and the terminal (`fontOfSize` stays
+  upright).
+
 - `wsWidth`: a fixed-width style property (platform-native units,
   like `wsPadding`) applied through all platform bridges and
   animatable via keyframes, so sibling rows can align into table
   columns (#245).
-
-### Changed
-
-- Missing fields in record construction are compile errors now
-  (`-Werror=missing-fields`): the default-on warning was overlooked
-  during the #243 migration and surfaced as a runtime crash in the
-  test suite, and the same flag immediately caught three long-standing
-  incomplete `UserState` constructions in the tests. A missing field
-  is always a latent runtime crash, so the build refuses it outright.
-
-- BREAKING: text color moved from `WidgetStyle` into the text-bearing
-  configs (`tcTextColor` / `bcTextColor` / `tiTextColor`, next to the
-  font override), following the `tcFontConfig` precedent. A text
-  color can no longer be attached to a container node, where it
-  silently changed nothing (#242); the new `coloredText` smart
-  constructor covers the common case. Keyframe animation of text
-  color went with the field (nothing used it; animate the background
-  color instead).
-
-### Added
 
 - Scan results now carry the advertisement's service data and
   manufacturer data (issue #238): `BleScanResult` gained
@@ -89,6 +92,57 @@
   into it.  The BLE test asserts hatter's scan callback receives the
   advertisement and that hatter code can connect to and disconnect
   from the peripheral.  See docs/ble-emulator-simulation.md.
+
+### Changed
+
+- BREAKING: `FontConfig`, `WidgetStyle` and `MobileContext` no longer
+  export their constructors. Start from `fontOfSize`, `defaultStyle`,
+  or `defaultMobileContext` / `loggingMobileContext`, and set fields by
+  record update: then a field added later breaks no app, where each
+  one did before (a record built by name only warned of the missing
+  field and crashed when it was used).
+
+- Missing fields in record construction are compile errors now
+  (`-Werror=missing-fields`): the default-on warning was overlooked
+  during the #243 migration and surfaced as a runtime crash in the
+  test suite, and the same flag immediately caught three long-standing
+  incomplete `UserState` constructions in the tests. A missing field
+  is always a latent runtime crash, so the build refuses it outright.
+
+- BREAKING: `Hatter.UIBridge`'s `PropId` is two types, `StrProp` for
+  `setStrProp` and `NumProp` for `setNumProp`, as their codes overlap:
+  a number given a text property's ID set another property.
+
+- BREAKING: the permission, secure storage, dialog, bottom sheet, auth
+  session, sign-in, camera and HTTP states keep what waits for each
+  request in one `Requests` ("Hatter.Requests"), not their own maps and
+  counters: `psRequests` and so on. A camera request is a
+  `CameraRequest` with its result's, frames' and sound's callbacks.
+
+- BREAKING: `Hatter.Render`'s `RenderedTappable` is `RenderedHandler`,
+  as it also holds `Scrolled` and `LongPressable`.
+
+- BREAKING: an animation frame sets the style between two keyframes,
+  `lerpStyle`, as rendering sets a style, so every field animates, also
+  weight, maximum width and alignment, and a field only one keyframe
+  has changes halfway. `Hatter.Animation` no longer exports
+  `interpolateStyle`, `interpolateDouble` or `setCorners`.
+
+- BREAKING: text color moved from `WidgetStyle` into the text-bearing
+  configs (`tcTextColor` / `bcTextColor` / `tiTextColor`, next to the
+  font override), following the `tcFontConfig` precedent. A text
+  color can no longer be attached to a container node, where it
+  silently changed nothing (#242); the new `coloredText` smart
+  constructor covers the common case. Keyframe animation of text
+  color went with the field (nothing used it; animate the background
+  color instead).
+
+### Fixed
+
+- Text goes to and comes from the platforms in UTF-8, whatever the
+  locale: in the C locale, showing an emoji threw "cannot encode
+  character" and typed ones came in as replacement characters. Paths
+  go in the file system's encoding.
 
 ## Version 0.3.0 2026.04.19
 

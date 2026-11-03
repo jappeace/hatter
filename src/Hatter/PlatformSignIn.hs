@@ -10,9 +10,8 @@
 --   * Android\/Wear OS: Google identity via @AccountManager@
 --   * Desktop: stub returns fake credentials synchronously
 --
--- The callback registry follows the same sequential 'IORef' 'Int32'
--- pattern used by "Hatter.AuthSession".
--- Single callback map (only one operation type).
+-- Results come back by request number, as for the other platform
+-- requests ("Hatter.Requests").
 module Hatter.PlatformSignIn
   ( SignInProvider(..)
   , SignInCredential(..)
@@ -27,16 +26,12 @@ module Hatter.PlatformSignIn
   )
 where
 
-import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
-import Data.Int (Int32)
-import Data.IntMap.Strict (IntMap)
-import Data.IntMap.Strict qualified as IntMap
+import Data.IORef (IORef, newIORef, readIORef)
 import Data.Text (Text)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
+import Hatter.Requests (Requests, answered, newRequests, request)
 import System.IO (hPutStrLn, stderr)
-import Unwitch.Convert.CInt qualified as CInt
-import Unwitch.Convert.Int32 qualified as Int32
 
 -- | Identity provider for platform sign-in.
 data SignInProvider
@@ -66,12 +61,10 @@ data SignInResult
   | SignInError Text                -- ^ Platform-specific error message
   deriving (Show, Eq)
 
--- | Mutable state for the platform sign-in callback registry.
+-- | What waits for the platform's sign-in requests.
 data PlatformSignInState = PlatformSignInState
-  { psiCallbacks  :: IORef (IntMap (SignInResult -> IO ()))
-    -- ^ Map from requestId -> sign-in result callback
-  , psiNextId     :: IORef Int32
-    -- ^ Next available request ID
+  { psiRequests   :: Requests (SignInResult -> IO ())
+    -- ^ What waits for each request's result.
   , psiContextPtr :: IORef (Ptr ())
     -- ^ Opaque context pointer passed to the C bridge.
     -- Set by 'AppContext.newAppContext' after the 'StablePtr' is created.
@@ -82,12 +75,10 @@ data PlatformSignInState = PlatformSignInState
 -- 'psiContextPtr' before calling 'startPlatformSignIn'.
 newPlatformSignInState :: IO PlatformSignInState
 newPlatformSignInState = do
-  callbacks  <- newIORef IntMap.empty
-  nextId     <- newIORef 0
+  requests   <- newRequests
   contextPtr <- newIORef nullPtr
   pure PlatformSignInState
-    { psiCallbacks  = callbacks
-    , psiNextId     = nextId
+    { psiRequests   = requests
     , psiContextPtr = contextPtr
     }
 
@@ -127,11 +118,9 @@ signInResultFromInt _ _ _ _ _ _ = Nothing
 -- (or synchronously on desktop via the stub that returns fake credentials).
 startPlatformSignIn :: PlatformSignInState -> SignInProvider -> (SignInResult -> IO ()) -> IO ()
 startPlatformSignIn signInState provider callback = do
-  requestId <- readIORef (psiNextId signInState)
-  modifyIORef' (psiCallbacks signInState) (IntMap.insert (Int32.toInt requestId) callback)
-  writeIORef (psiNextId signInState) (requestId + 1)
+  requestId <- request (psiRequests signInState) callback
   ctx <- readIORef (psiContextPtr signInState)
-  c_platformSignInStart ctx (Int32.toCInt requestId) (providerToInt provider)
+  c_platformSignInStart ctx requestId (providerToInt provider)
 
 -- | Dispatch a platform sign-in result from the platform back to the
 -- registered Haskell callback. Removes the callback after firing.
@@ -142,14 +131,8 @@ dispatchPlatformSignInResult signInState requestId statusCode maybeToken maybeUs
     Nothing -> hPutStrLn stderr $
       "dispatchPlatformSignInResult: unknown status code " ++ show statusCode
     Just result -> do
-      let reqKey = CInt.toInt requestId
-      callbacks <- readIORef (psiCallbacks signInState)
-      case IntMap.lookup reqKey callbacks of
-        Just callback -> do
-          modifyIORef' (psiCallbacks signInState) (IntMap.delete reqKey)
-          callback result
-        Nothing -> hPutStrLn stderr $
-          "dispatchPlatformSignInResult: unknown request ID " ++ show requestId
+      waiting <- answered "dispatchPlatformSignInResult" (psiRequests signInState) requestId
+      mapM_ ($ result) waiting
 
 -- | FFI import: start a platform sign-in via the C bridge.
 foreign import ccall "platform_sign_in_start"

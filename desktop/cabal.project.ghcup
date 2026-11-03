@@ -1,0 +1,4 @@
+-- Without Nix, as on Windows: Hatter from this checkout, the rest from
+-- Hackage, and the host built first with CMake where pkg-config finds it
+-- (see the Readme).
+packages: . ..

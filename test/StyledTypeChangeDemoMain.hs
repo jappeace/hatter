@@ -11,6 +11,9 @@
 -- that the style is visually applied after the switch by checking that
 -- the correct widget types exist with the expected labels AND that the
 -- platform logs show the style being applied (or not).
+--
+-- A text beside it has a width on the first screen and none on the
+-- second, which the platform is told is no longer set.
 module Main where
 
 import Data.IORef (IORef, newIORef, readIORef, modifyIORef')
@@ -88,4 +91,10 @@ styledTypeChangeView screenState switchAction noopAction = do
         , bcTextColor = Nothing
         }
     , styledChild
+    , Styled defaultStyle { wsWidth = if screen == ScreenA then Just 200 else Nothing }
+        (Text TextConfig
+          { tcLabel = "WIDTH_TEXT"
+          , tcFontConfig = Nothing
+          , tcTextColor = Nothing
+          })
     ]

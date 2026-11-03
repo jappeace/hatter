@@ -100,7 +100,10 @@ class WatchUIBridgeState: ObservableObject {
             os_log("setNumProp(node=%d, touchPassthrough=%.0f) — no-op on watchOS", log: bridgeLog, type: .info, nodeId, value)
         case 13: // UI_PROP_WIDTH
             os_log("setNumProp(node=%d, width=%.1f)", log: bridgeLog, type: .info, nodeId, value)
-            node.width = CGFloat(value)
+            node.width = value.isNaN ? nil : CGFloat(value)
+        case 30: // UI_PROP_CHECKED
+            os_log("setNumProp(node=%d, checked=%.0f)", log: bridgeLog, type: .info, nodeId, value)
+            node.checked = value != 0
         default:
             os_log("setNumProp: unknown propId %d", log: bridgeLog, type: .info, propId)
         }

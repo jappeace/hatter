@@ -26,6 +26,13 @@ collect_logcat "permission"
 assert_logcat "$LOGCAT_FILE" "Permission result: PermissionGranted" "permission callback fires with PermissionGranted"
 assert_logcat "$LOGCAT_FILE" "permission_request\|PermissionBridge" "permission bridge log present"
 
+# Approximate location only, as a user may allow: that grants location.
+"$ADB" -s "$EMULATOR_SERIAL" shell pm grant "$PACKAGE" android.permission.ACCESS_COARSE_LOCATION
+tap_button "Request Location" || { echo "FAIL: could not tap Request Location"; EXIT_CODE=1; }
+wait_for_logcat "Location permission result" 15 || true
+collect_logcat "permission_location"
+assert_logcat "$LOGCAT_FILE" "Location permission result: PermissionGranted" "approximate location grants PermissionLocation"
+
 "$ADB" -s "$EMULATOR_SERIAL" uninstall "$PACKAGE" 2>/dev/null || true
 
 exit $EXIT_CODE

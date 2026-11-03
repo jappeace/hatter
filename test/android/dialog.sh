@@ -42,6 +42,22 @@ LOGCAT_FILE2="$WORK_DIR/dialog_logcat2.txt"
 
 assert_logcat "$LOGCAT_FILE2" "Dialog confirm result: DialogButton2" "confirm callback fires with DialogButton2"
 
+# Turning the screen recreates the activity: the alert stays and still answers.
+"$ADB" -s "$EMULATOR_SERIAL" logcat -c
+tap_button "Show Alert" || { echo "FAIL: could not tap Show Alert"; EXIT_CODE=1; }
+sleep 1
+turn_screen 1
+wait_for_logcat "Android dialog bridge initialized" 30 || true
+sleep 2
+tap_button "OK" || { echo "FAIL: could not tap OK after turning"; EXIT_CODE=1; }
+wait_for_logcat "Dialog alert result" 15 || true
+turn_screen 0
+
+LOGCAT_FILE3="$WORK_DIR/dialog_logcat3.txt"
+"$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_FILE3" 2>&1
+
+assert_logcat "$LOGCAT_FILE3" "Dialog alert result: DialogButton1" "alert answers after the activity is recreated"
+
 "$ADB" -s "$EMULATOR_SERIAL" uninstall "$PACKAGE" 2>/dev/null || true
 
 exit $EXIT_CODE

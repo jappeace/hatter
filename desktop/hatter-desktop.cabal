@@ -1,0 +1,46 @@
+cabal-version:      3.0
+
+name:           hatter-desktop
+version:        0.1.0
+category:       Mobile
+synopsis:       Run Hatter apps on desktops, with Qt Quick
+description:
+  A Hatter platform for Linux, macOS and Windows: the host in host/ shows an
+  app's widgets as Qt Quick items in a window.
+license:        MIT
+build-type:     Simple
+
+common common-options
+  ghc-options:
+    -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates
+    -Widentities -Wredundant-constraints -Wunused-packages
+  default-language: Haskell2010
+
+library
+  import: common-options
+  exposed-modules:
+      Hatter.Desktop
+  hs-source-dirs:
+      src
+  c-sources:
+      cbits/qt_main.c
+  -- Its C main calls Hatter's entry points.
+  ghc-options: -Wno-unused-packages
+  pkgconfig-depends:
+      hatter-qt-host
+  build-depends:
+      base <5,
+      hatter
+
+executable hatter-desktop-demo
+  import: common-options
+  main-is: Main.hs
+  hs-source-dirs:
+      demo
+  ghc-options: -no-hs-main -threaded
+  build-depends:
+      base <5,
+      bytestring,
+      hatter,
+      hatter-desktop,
+      text

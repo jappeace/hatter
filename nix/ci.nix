@@ -8,6 +8,8 @@ let
   # New targets added here are automatically picked up by `all-builds`.
   buildTargets = {
     native = import ../default.nix {};
+    terminal = (import ./hpkgs.nix {}).hatter-terminal;
+    desktop = (import ./hpkgs.nix {}).hatter-desktop;
     android-aarch64 = import ./android.nix { inherit sources; };
     android-armv7a = import ./android.nix { inherit sources; androidArch = "armv7a"; };
     apk = import ./apk.nix { inherit sources; };
@@ -81,6 +83,9 @@ let
   # Emulator/simulator test runners — heavy (include system images),
   # need dedicated CI jobs with enough disk space.
   testRunners = {
+    # A NixOS VM cut off just after the desktop and terminal platforms made
+    # their database keys: needs KVM.
+    database-key-crash = import ./database-key-crash-test.nix { inherit pkgs; };
     emulator-all = import ./emulator-all.nix { inherit sources; };
     emulator-armv7a = import ./emulator-all.nix {
       inherit sources; androidArch = "armv7a";
@@ -145,6 +150,7 @@ in
       shellcheck -x \
         --source-path=${testScripts}/watchos \
         ${testScripts}/watchos/*.sh
+      shellcheck ${testScripts}/browser/*.sh
       echo "All shell scripts passed shellcheck."
       touch $out
     '';

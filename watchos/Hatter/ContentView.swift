@@ -48,6 +48,13 @@ struct NodeView: View {
             }
         case 4: // UI_NODE_TEXT_INPUT
             TextInputNodeView(node: node)
+        case 12: // UI_NODE_SWITCH
+            // On as the app says; a flip moves it and tells the app.
+            Toggle("", isOn: Binding(get: { node.checked }, set: { on in
+                node.checked = on
+                HaskellBridge.onUIEvent(node.callbackId)
+            }))
+            .labelsHidden()
         case 5: // UI_NODE_SCROLL_VIEW
             ScrollView {
                 VStack {

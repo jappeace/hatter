@@ -77,9 +77,10 @@ void setup_android_animation_bridge(JNIEnv *env, jobject activity, void *haskell
     g_env = env;
     g_haskell_ctx = haskellCtx;
 
-    if (!g_activity) {
-        g_activity = (*env)->NewGlobalRef(env, activity);
+    if (g_activity) {
+        (*env)->DeleteGlobalRef(env, g_activity);
     }
+    g_activity = (*env)->NewGlobalRef(env, activity);
 
     jclass actClass = (*env)->GetObjectClass(env, activity);
 

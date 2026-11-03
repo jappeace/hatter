@@ -9,13 +9,21 @@ module Test.Helpers
   , viewIsErrorWidget
   , oneTwoThree
   , captureStderr
+  , inCLocale
   ) where
 
+import Control.Concurrent.MVar (MVar, newMVar, withMVar)
+import Control.Exception (bracket)
+import Data.ByteString qualified as BS
 import Data.IORef (readIORef)
+import Data.Text qualified as Text
+import Data.Text.Encoding qualified as Text
 import Foreign.Ptr (Ptr)
+import GHC.IO.Encoding (getForeignEncoding, mkTextEncoding, setForeignEncoding)
 import GHC.IO.Handle (hDuplicate, hDuplicateTo)
 import System.IO (stderr, hFlush, openTempFile, hClose)
-import System.Directory (removeFile)
+import System.Directory (getTemporaryDirectory, removeFile)
+import System.IO.Unsafe (unsafePerformIO)
 import Hatter
   ( MobileApp(..)
   , UserState(..)
@@ -66,7 +74,7 @@ makeDummyApp :: (LifecycleEvent -> IO ()) -> IO MobileApp
 makeDummyApp callback = do
   actionState <- newActionState
   pure MobileApp
-    { maContext     = MobileContext { onLifecycle = callback, onError = \_ -> pure () }
+    { maContext     = defaultMobileContext { onLifecycle = callback, onError = \_ -> pure () }
     , maView        = \_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing })
     , maActionState = actionState
     }
@@ -122,6 +130,8 @@ viewIsErrorWidget ctxPtr = do
     Text _                   -> pure False
     Button _                 -> pure False
     TextInput _              -> pure False
+    Switch _                 -> pure False
+    LazyColumn _             -> pure False
     Image _                  -> pure False
     WebView _                -> pure False
     MapView _                -> pure False
@@ -129,24 +139,40 @@ viewIsErrorWidget ctxPtr = do
     Stack _                  -> pure False
     Styled _ _               -> pure False
     Animated _ _             -> pure False
+    Tappable _ _             -> pure False
+    LongPressable _ _        -> pure False
+    Scrolled _ _ _           -> pure False
 
--- | Capture stderr output produced during an IO action.
+-- | Capture stderr output produced during an IO action, as the UTF-8 the
+-- bridges' stubs print. One at a time, as each redirects the process's
+-- stderr; what other tests write meanwhile is captured too.
 captureStderr :: IO a -> IO (a, String)
-captureStderr action = do
+captureStderr action = withMVar capturing $ \() -> do
   hFlush stderr
   oldStderr <- hDuplicate stderr
-  (tmpPath, tmpHandle) <- openTempFile "/tmp" "stderr-capture.txt"
+  tmpDir <- getTemporaryDirectory
+  (tmpPath, tmpHandle) <- openTempFile tmpDir "stderr-capture.txt"
   hDuplicateTo tmpHandle stderr
+  -- On macOS a write from another thread fails while dup2 swaps fd 2, and
+  -- then C prints nothing more until this.
+  c_clearStderrError
   result <- action
   hFlush stderr
   hDuplicateTo oldStderr stderr
   hClose oldStderr
   hClose tmpHandle
-  captured <- readFile tmpPath
-  -- Force the lazy read before removing
-  _ <- evaluate (length captured)
+  captured <- BS.readFile tmpPath
   removeFile tmpPath
-  pure (result, captured)
-  where
-    evaluate :: a -> IO a
-    evaluate x = x `seq` pure x
+  pure (result, Text.unpack (Text.decodeUtf8Lenient captured))
+
+-- | Run an action with C strings encoded as the C locale has them, ASCII.
+inCLocale :: IO a -> IO a
+inCLocale action = do
+  ascii <- mkTextEncoding "ASCII//ROUNDTRIP"
+  bracket getForeignEncoding setForeignEncoding (\_ -> setForeignEncoding ascii >> action)
+
+capturing :: MVar ()
+capturing = unsafePerformIO (newMVar ())
+{-# NOINLINE capturing #-}
+
+foreign import ccall unsafe "hatter_test_clear_stderr_error" c_clearStderrError :: IO ()

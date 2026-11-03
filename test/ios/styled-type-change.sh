@@ -7,6 +7,9 @@
 # State0: Styled redBackground (Text "STYLED_TEXT")
 # State1: Styled redBackground (Button "STYLED_BUTTON")
 #
+# A text beside it loses its width in State1: iOS logs the width it was
+# set to only once it has the constraint, here NaN for no width.
+#
 # --autotest fires callbackId=0 (the switch button) after 3s.
 #
 # Required env vars (set by simulator-all.nix harness):
@@ -28,6 +31,7 @@ collect_logs "styled-type-change"
 assert_log "$FULL_LOG" "setRoot" "setRoot called"
 assert_log "$FULL_LOG" "Current screen: ScreenA" "Initial screen is ScreenA"
 assert_log "$FULL_LOG" "Current screen: ScreenB" "Switched to ScreenB"
+assert_log "$FULL_LOG" "width=nan" "Width taken off without a crash"
 
 cleanup_app
 

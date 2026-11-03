@@ -17,13 +17,11 @@ let
     aarch64 = {
       crossAttr = "aarch64-android-prebuilt";
       ndkTarget = "aarch64-linux-android26";
-      ghcPkgArch = "aarch64-linux";
       abiDir = "arm64-v8a";
     };
     armv7a = {
       crossAttr = "armv7a-android-prebuilt";
       ndkTarget = "armv7a-linux-androideabi26";
-      ghcPkgArch = "armv7-linux";
       abiDir = "armeabi-v7a";
     };
   }.${androidArch};
@@ -47,10 +45,9 @@ let
   # libraries with the LLVM ARM backend triggers an llc crash in
   # ARMAsmPrinter::emitXXStructor (LLVM bug).  Disable profiling for armv7a.
   ghc = if androidArch == "armv7a"
-    then androidPkgs.haskellPackages.ghc.override { enableProfiledLibs = false; }
-    else androidPkgs.haskellPackages.ghc;
+    then (import ./ghc.nix androidPkgs).ghc.override { enableProfiledLibs = false; }
+    else (import ./ghc.nix androidPkgs).ghc;
   ghcCmd = "${ghc}/bin/${ghc.targetPrefix}ghc";
-  ghcPkgDir = "${ghc}/lib/${ghc.targetPrefix}ghc-${ghc.version}/lib/${archConfig.ghcPkgArch}-ghc-${ghc.version}";
 
   androidComposition = pkgs.androidenv.composeAndroidPackages {
     includeNDK = true;
@@ -71,7 +68,7 @@ let
 
   # --- Apple (iOS/watchOS) shared infrastructure ---
   applePkgs = import sources.nixpkgs {};
-  appleGhc = applePkgs.haskellPackages.ghc;
+  appleGhc = (import ./ghc.nix applePkgs).ghc;
 
   # Issue #216: Constrain instruction set to deviceCpu on device builds
   # to prevent ARMv8.4+ instructions (UDOT/SDOT) that crash on pre-A13.
@@ -117,7 +114,8 @@ let
     "dialog_bridge" "location_bridge" "auth_session_bridge"
     "platform_sign_in_bridge" "camera_bridge" "bottom_sheet_bridge"
     "http_bridge" "network_status_bridge" "animation_bridge"
-    "redraw_bridge" "files_dir" "device_info"
+    "redraw_bridge" "files_dir" "device_info" "notification_bridge"
+    "call_audio_bridge" "call_video_bridge" "picture_bridge"
   ];
 
   # Bridge headers shipped in output include/
@@ -126,6 +124,7 @@ let
     "BleBridge.h" "DialogBridge.h" "LocationBridge.h" "AuthSessionBridge.h"
     "PlatformSignInBridge.h" "CameraBridge.h" "BottomSheetBridge.h"
     "HttpBridge.h" "NetworkStatusBridge.h" "AnimationBridge.h" "RedrawBridge.h"
+    "NotificationBridge.h" "CallAudioBridge.h" "CallVideoBridge.h" "PictureBridge.h"
   ];
 
   # Android C files with identical NDK compile pattern (JNI_PACKAGE=me_jappie_hatter)
@@ -135,6 +134,8 @@ let
     "auth_session_android" "platform_sign_in_android" "camera_bridge_android"
     "bottom_sheet_android" "http_bridge_android" "network_status_android"
     "animation_bridge_android" "redraw_bridge_android"
+    "notification_bridge_android" "call_audio_android"
+    "call_video_android" "picture_bridge_android"
   ];
 
   # Haskell symbols kept alive via -u linker flags.
@@ -148,7 +149,7 @@ let
     "haskellOnBottomSheetResult" "haskellOnHttpResult"
     "haskellOnNetworkStatusChange" "haskellLogLocale"
   ];
-  androidOnlySymbols = [ "haskellOnUITextChange" ];
+  androidOnlySymbols = [ "haskellOnUITextChange" "haskellResetUI" "haskellOnBack" "haskellOnNotificationOpened" "haskellOnCallButton" "haskellOnLazyBind" "haskellOnFilePicked" "haskellOnPicturePicked" ];
   appleOnlySymbols = [ "haskellLogDeviceInfo" ];
 
   # -------------------------------------------------------------------------
@@ -156,10 +157,10 @@ let
   # -------------------------------------------------------------------------
 
   # NDK compile one C file with JNI_PACKAGE and standard includes
-  ndkCompileJni = hatterSrc: cName:
+  ndkCompileJni = hatterSrc: flags: cName:
     ''
       ${ndkCc} -c -fPIC \
-        -DJNI_PACKAGE=me_jappie_hatter \
+        -DJNI_PACKAGE=me_jappie_hatter ${flags} \
         -I${sysroot}/usr/include \
         -I$RTS_INCLUDE \
         -I${hatterSrc}/include \
@@ -358,12 +359,15 @@ in {
     , extraGhcFlags ? []        # additional flags passed to cross-GHC
     , maxNodes ? 256            # static pool size (ignored when dynamicNodePool=true)
     , dynamicNodePool ? false   # use malloc/realloc instead of fixed array
+    , threadedRts ? false       # run forkIO threads between JNI callbacks too
+    , rtsOpts ? null            # RTS options, e.g. "-T" to keep GHC.Stats
     , soMaxSizeMB ? 200         # fail build if .so exceeds this (MB), catches whole-archive bloat
     }:
     let
       # Must match HatterActivity.java's System.loadLibrary("hatter").
       # Not configurable — any other name guarantees UnsatisfiedLinkError.
       soName = "libhatter.so";
+      rtsOptsFlag = if rtsOpts == null then "" else "-DHATTER_RTS_OPTS='\"${rtsOpts}\"'";
 
       jniPackageMacro = builtins.replaceStrings ["."] ["_"] javaPackageName;
 
@@ -401,7 +405,7 @@ in {
         # Core library C files always use me_jappie_hatter because
         # native methods are declared on HatterActivity (the library's
         # own class), not the consumer's subclass.
-        ${builtins.concatStringsSep "\n" (map (ndkCompileJni hatterSrc) androidJniBridgeFiles)}
+        ${builtins.concatStringsSep "\n" (map (ndkCompileJni hatterSrc rtsOptsFlag) androidJniBridgeFiles)}
 
         ${ndkCc} -c -fPIC \
           ${if dynamicNodePool then "-DDYNAMIC_NODE_POOL"
@@ -446,7 +450,9 @@ in {
 
         # Step 3: Link shared library.
         # Discover boot library paths dynamically — hash suffixes vary.
-        GHC_PKG_DIR="${ghcPkgDir}"
+        # Under GHC's libdir, whose per-platform directory GHC 9.14 names with
+        # a hash suffix.
+        GHC_PKG_DIR="$GHC_LIBDIR"
 
         find_lib() {
           local result
@@ -462,7 +468,11 @@ in {
           echo "$result"
         }
 
+        ${if threadedRts then ''
+        RTS_LIB=$(find "$GHC_PKG_DIR" -name 'libHSrts-*_thr.a' | head -1)
+        '' else ''
         RTS_LIB=$(find_lib "rts")
+        ''}
         GHC_PRIM_LIB=$(find_lib "ghc-prim")
         GHC_BIGNUM_LIB=$(find_lib "ghc-bignum")
         GHC_INTERNAL_LIB=$(find_lib "ghc-internal")
@@ -578,6 +588,9 @@ in {
     , baseJavaSrc ? null      # path to hatter's android/java/ for consumer APKs
     , apkName ? "app.apk"
     , name ? "app-apk"
+    , keystore ? null         # signs the APK with its key "debug", password
+                              # "android". If null, each build makes a new
+                              # one, which Android won't install over the last
     }:
     let
       resolvedLibs =
@@ -648,6 +661,9 @@ in {
         ${buildTools}/zipalign -f 4 unsigned.apk aligned.apk
 
         echo "=== Step 7: Sign APK ==="
+        ${if keystore != null then ''
+        cp ${keystore} debug.keystore
+        '' else ''
         keytool -genkeypair \
           -keystore debug.keystore \
           -storepass android \
@@ -657,6 +673,7 @@ in {
           -keysize 2048 \
           -validity 10000 \
           -dname "CN=Debug, OU=Debug, O=Debug, L=Debug, ST=Debug, C=US"
+        ''}
 
         ${buildTools}/apksigner sign \
           --ks debug.keystore \

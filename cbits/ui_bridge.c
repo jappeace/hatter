@@ -114,3 +114,99 @@ void ui_clear(void)
     g_stub_next_id = 1;
     fprintf(stderr, "[UIBridge stub] clear()\n");
 }
+
+int32_t ui_dark_mode(void)
+{
+    if (g_callbacks && g_callbacks->darkMode) {
+        return g_callbacks->darkMode();
+    }
+    return 0;
+}
+
+void ui_copy_text(const char *text)
+{
+    if (g_callbacks && g_callbacks->copyText) {
+        g_callbacks->copyText(text);
+        return;
+    }
+    fprintf(stderr, "[UIBridge stub] copyText(\"%s\")\n", text);
+}
+
+void ui_pick_file(const char *mimeType)
+{
+    if (g_callbacks && g_callbacks->pickFile) {
+        g_callbacks->pickFile(mimeType);
+        return;
+    }
+    fprintf(stderr, "[UIBridge stub] pickFile(\"%s\")\n", mimeType);
+}
+
+int32_t ui_clock24(void)
+{
+    if (g_callbacks && g_callbacks->clock24) {
+        return g_callbacks->clock24();
+    }
+    return 0;
+}
+
+void ui_pick_files(const char *mimeType)
+{
+    if (g_callbacks && g_callbacks->pickFiles) {
+        g_callbacks->pickFiles(mimeType);
+        return;
+    }
+    fprintf(stderr, "[UIBridge stub] pickFiles(\"%s\")\n", mimeType);
+}
+
+void ui_capture_picture(void)
+{
+    if (g_callbacks && g_callbacks->capturePicture) {
+        g_callbacks->capturePicture();
+        return;
+    }
+    fprintf(stderr, "[UIBridge stub] capturePicture()\n");
+}
+
+void ui_pick_picture(const int32_t *sides, int32_t count, int32_t limit)
+{
+    if (g_callbacks && g_callbacks->pickPicture) {
+        g_callbacks->pickPicture(sides, count, limit);
+        return;
+    }
+    fprintf(stderr, "[UIBridge stub] pickPicture(%d sides, %d bytes)\n", count, limit);
+}
+
+void ui_save_file(const char *path, const char *name, const char *mimeType)
+{
+    if (g_callbacks && g_callbacks->saveFile) {
+        g_callbacks->saveFile(path, name, mimeType);
+        return;
+    }
+    fprintf(stderr, "[UIBridge stub] saveFile(\"%s\", \"%s\", \"%s\")\n", path, name, mimeType);
+}
+
+int32_t ui_image_size(const char *path, int32_t *width, int32_t *height)
+{
+    if (g_callbacks && g_callbacks->imageSize) {
+        return g_callbacks->imageSize(path, width, height);
+    }
+    return 0;
+}
+
+void ui_open_uri(const char *uri)
+{
+    if (g_callbacks && g_callbacks->openUri) {
+        g_callbacks->openUri(uri);
+        return;
+    }
+    fprintf(stderr, "[UIBridge stub] openUri(\"%s\")\n", uri);
+}
+
+void ui_open_file(const char *path)
+{
+    if (g_callbacks && g_callbacks->openFile) {
+        g_callbacks->openFile(path);
+        return;
+    }
+    fprintf(stderr, "[UIBridge stub] openFile(\"%s\")\n", path);
+}

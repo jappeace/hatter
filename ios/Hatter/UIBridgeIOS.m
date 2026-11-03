@@ -14,6 +14,7 @@
 #import <os/log.h>
 #import <objc/runtime.h>
 #include <sys/utsname.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include "UIBridge.h"
@@ -89,6 +90,7 @@ static UIViewController *g_viewController = nil;
 @property (nonatomic, assign) void *haskellCtx;
 + (instancetype)shared;
 - (void)handleTap:(UIButton *)sender;
+- (void)handleFlip:(UISwitch *)sender;
 - (void)handleTextChange:(UITextField *)sender;
 @end
 
@@ -106,6 +108,13 @@ static UIViewController *g_viewController = nil;
 - (void)handleTap:(UIButton *)sender {
     int32_t callbackId = (int32_t)sender.tag;
     LOGI("Click dispatched: callbackId=%d", callbackId);
+    haskellOnUIEvent(self.haskellCtx, callbackId);
+}
+
+/* Only the user's flips: setting a switch's state sends no event. */
+- (void)handleFlip:(UISwitch *)sender {
+    int32_t callbackId = (int32_t)sender.tag;
+    LOGI("Flip dispatched: callbackId=%d", callbackId);
     haskellOnUIEvent(self.haskellCtx, callbackId);
 }
 
@@ -315,6 +324,15 @@ static int32_t ios_create_node(int32_t nodeType)
                    action:@selector(handleTap:)
          forControlEvents:UIControlEventTouchUpInside];
         view = button;
+        break;
+    }
+    case UI_NODE_SWITCH: {
+        UISwitch *toggle = [[UISwitch alloc] init];
+        toggle.translatesAutoresizingMaskIntoConstraints = NO;
+        [toggle addTarget:[IOSBridgeHandler shared]
+                   action:@selector(handleFlip:)
+         forControlEvents:UIControlEventValueChanged];
+        view = toggle;
         break;
     }
     case UI_NODE_COLUMN: {
@@ -546,6 +564,11 @@ static void ios_set_num_prop(int32_t nodeId, int32_t propId, double value)
     if (!view) return;
 
     switch (propId) {
+    case UI_PROP_CHECKED:
+        if ([view isKindOfClass:[UISwitch class]]) {
+            [(UISwitch *)view setOn:(value != 0) animated:YES];
+        }
+        break;
     case UI_PROP_FONT_SIZE: {
         UIFont *font = [UIFont systemFontOfSize:(CGFloat)value];
         if ([view isKindOfClass:[UILabel class]]) {
@@ -570,6 +593,7 @@ static void ios_set_num_prop(int32_t nodeId, int32_t propId, double value)
             default: kbType = UIKeyboardTypeDefault;    break;
             }
             ((UITextField *)view).keyboardType = kbType;
+            ((UITextField *)view).secureTextEntry = (inputType == 3);
         }
         LOGI("setNumProp(node=%d, inputType=%d)", nodeId, inputType);
         break;
@@ -584,7 +608,7 @@ static void ios_set_num_prop(int32_t nodeId, int32_t propId, double value)
         /* Fixed width in points; a constraint overrides the
          * intrinsic content width inside the UIStackView layout.
          * Deactivate any width constraint from an earlier render
-         * before pinning the new one. */
+         * before pinning the new one. NaN takes the width off. */
         CGFloat pt = (CGFloat)value;
         NSArray<NSLayoutConstraint *> *existing = [view.constraints copy];
         for (NSLayoutConstraint *constraint in existing) {
@@ -594,7 +618,9 @@ static void ios_set_num_prop(int32_t nodeId, int32_t propId, double value)
                 constraint.active = NO;
             }
         }
-        [view.widthAnchor constraintEqualToConstant:pt].active = YES;
+        if (!isnan(value)) {
+            [view.widthAnchor constraintEqualToConstant:pt].active = YES;
+        }
         LOGI("setNumProp(node=%d, width=%.1f)", nodeId, value);
         break;
     }

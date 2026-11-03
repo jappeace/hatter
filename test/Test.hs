@@ -1,5 +1,6 @@
 module Main where
 
+import System.IO (BufferMode(..), hSetBuffering, stderr)
 import Test.Tasty
 
 import Hatter (startMobileApp)
@@ -15,15 +16,18 @@ import Hatter.PlatformSignIn (PlatformSignInState)
 import Test.Helpers (testApp)
 import Test.CoreTests (qcProps, unitTests, lifecycleTests, localeTests, i18nTests)
 import Test.WidgetTests (uiTests, scrollViewTests, stackTests, textInputTests, imageTests, webViewTests, mapViewTests, styledTests, textAlignTests, colorTests)
-import Test.PlatformTests (permissionTests, secureStorageTests, bleTests, dialogTests, authSessionTests, platformSignInTests, locationTests, bottomSheetTests, cameraTests, httpTests, networkStatusTests)
+import Test.PlatformTests (permissionTests, secureStorageTests, bleTests, dialogTests, authSessionTests, platformSignInTests, locationTests, notificationTests, bottomSheetTests, cameraTests, httpTests, networkStatusTests)
 import Test.AppContextTests (registrationTests, appContextTests, exceptionHandlerTests)
 import Test.ActionTests (actionTests, widgetEqTests, incrementalRenderTests)
 import Test.AnimationTests (animationTests)
 import Test.FilesDirTests (filesDirTests)
 import Test.DeviceInfoTests (deviceInfoTests)
+import Test.EncodingTests (encodingTests)
 
 main :: IO ()
 main = do
+  -- Tests run at once and log: whole lines, not their letters mixed.
+  hSetBuffering stderr LineBuffering
   -- Create a single FFI context for permission round-trip tests.
   -- The C desktop stub uses a process-wide g_permission_ctx, so only
   -- one context can be active for FFI permission dispatch.
@@ -66,6 +70,7 @@ tests ffiPermState ffiSecureStorageState ffiBleState ffiDialogState ffiAuthSessi
     , cameraTests
     , authSessionTests ffiAuthSessionState
     , platformSignInTests ffiPlatformSignInState
+    , notificationTests
     , bottomSheetTests ffiBottomSheetState
     , httpTests ffiHttpState
     , networkStatusTests
@@ -77,4 +82,5 @@ tests ffiPermState ffiSecureStorageState ffiBleState ffiDialogState ffiAuthSessi
     , animationTests
     , filesDirTests
     , deviceInfoTests
+    , encodingTests
     ]

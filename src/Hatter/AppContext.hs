@@ -1,8 +1,7 @@
 -- | Internal context type that bundles a 'MobileContext' (user callbacks)
--- with a 'RenderState' (UI callback registry), a 'PermissionState'
--- (permission callback registry), and the current view function.
--- Passed through the C FFI as a single 'StablePtr', eliminating the
--- need for global mutable state.
+-- with the rendering engine's state, each platform subsystem's, and the
+-- current view function.  Passed through the C FFI as a single
+-- 'StablePtr', eliminating the need for global mutable state.
 module Hatter.AppContext
   ( AppContext(..)
   , newAppContext
@@ -33,8 +32,7 @@ import Hatter.Types (MobileApp(..), UserState(..))
 import Hatter.Widget (Widget)
 
 -- | Combines user-supplied lifecycle callbacks with the rendering engine's
--- mutable state, the permission callback registry, the secure storage
--- callback registry, and the current view function.
+-- mutable state, each platform subsystem's, and the current view function.
 -- One of these is created per platform bridge session.
 data AppContext = AppContext
   { acMobileContext       :: MobileContext

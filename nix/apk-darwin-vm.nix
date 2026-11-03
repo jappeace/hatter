@@ -14,17 +14,26 @@
 # Darwin cross-compile) are discussed in docs/android-apk-on-macos.md.
 { sources ? import ../npins }:
 let
-  pkgs = import sources.nixpkgs { };
+  # The Mac's side comes from the same stable nixpkgs as the VM: the
+  # project's pin no longer supports Intel Macs. The APK inside the VM still
+  # builds with the project's pin.
+  pkgs = import sources.nixpkgs-linux-builder { };
   lib = pkgs.lib;
 
   # The VM (a NixOS guest that runs on the Darwin host).  Its run-script is a
   # Darwin derivation; the x86_64-linux guest closure substitutes from cache.
-  # run-builder is the upstream wrapper that boots the VM after copying the
-  # keys dir into the store with `nix-store --add` -- we use it (rather than
-  # the raw vm runner) so the guest's /var/keys share is a store path with
-  # proper ownership, which sshd's StrictModes requires to accept the key.
   builder = import ./linux-builder.nix { inherit sources; };
-  runBuilder = lib.getExe builder.run-builder;
+  runVm = lib.getExe builder.passthru.nixosConfig.system.build.vm;
+
+  # The VM's SSH key, shared into it as /var/keys.  A store path, so it has
+  # the ownership sshd's StrictModes wants.  Made as a derivation, not by
+  # upstream's run-builder, which adds it to the store from inside this build:
+  # the host's Nix daemon dropped that connection on CI (Nix 2.35.5), and the
+  # VM then booted with no keys.
+  keys = pkgs.runCommand "builder-keys" { nativeBuildInputs = [ pkgs.openssh ]; } ''
+    mkdir $out
+    ssh-keygen -q -t ed25519 -N "" -C builder@localhost -f $out/builder_ed25519
+  '';
 
   # The repo, copied into the VM and built there.  Exclude VCS noise and build
   # artifacts (including any qcow2 disk images this build itself produces).
@@ -49,6 +58,7 @@ let
   # knows cache.nixos.org by default).  builder is a trusted user in the VM,
   # so passing these via --option is honoured.
   jappieKey = "nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=";
+  toktokKey = "toktok.cachix.org-1:ZijcpD+vG99+1uX65TlXaROvLqP//CGCiFlB5OrIGXY=";
 
   # The minimal builder VM has no CA bundle, so the in-VM nix-build cannot
   # fetch the nixpkgs tarball or NARs over HTTPS.  Ship one in and point both
@@ -71,26 +81,21 @@ pkgs.stdenv.mkDerivation {
 
   buildCommand = ''
     export HOME="$PWD"
-    keydir="$PWD/keys"
-    mkdir -p "$keydir"
-    ssh-keygen -q -t ed25519 -N "" -C builder@localhost -f "$keydir/builder_ed25519"
-
-    # run-builder calls `nix-store --add` on the keys dir, which needs the
-    # daemon; __noChroot exposes the daemon socket, so point nix at it.
-    export NIX_REMOTE=daemon
+    # ssh refuses a private key that others can read, as the store's copy is.
+    install -m 600 ${keys}/builder_ed25519 "$PWD/builder_ed25519"
 
     echo "Booting the linux-builder VM (TCG software emulation, noapic)..."
-    KEYS="$keydir" \
+    KEYS=${keys} \
     QEMU_KERNEL_PARAMS="noapic" \
     NIX_DISK_IMAGE="$PWD/builder.qcow2" \
-      ${runBuilder} > "$PWD/vm.log" 2>&1 &
+      ${runVm} > "$PWD/vm.log" 2>&1 &
     vmpid=$!
     trap 'kill "$vmpid" 2>/dev/null || true' EXIT
 
     # accept-new + a throwaway known_hosts: the VM's host key is fixed and the
     # keydir is per-build, so there is nothing to pre-seed.  127.0.0.1 (not
     # "localhost") avoids ssh trying ::1 first against an IPv4-only forward.
-    ssh_opts="-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$PWD/known_hosts -o ConnectTimeout=5 -i $keydir/builder_ed25519 -p 31022"
+    ssh_opts="-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$PWD/known_hosts -o ConnectTimeout=5 -i $PWD/builder_ed25519 -p 31022"
     host="builder@127.0.0.1"
 
     echo "Waiting for the VM to accept SSH..."
@@ -125,7 +130,7 @@ pkgs.stdenv.mkDerivation {
 
     echo "Building the APK inside the VM (this is the real cross-compile)..."
     ssh $ssh_opts $host \
-      "NIX_SSL_CERT_FILE=/tmp/ca.pem nix-build /tmp/src/nix/apk.nix --option ssl-cert-file /tmp/ca.pem --option extra-substituters https://nix-cache.jappie.me --option extra-trusted-public-keys '${jappieKey}' -o /tmp/apk-result"
+      "NIX_SSL_CERT_FILE=/tmp/ca.pem nix-build /tmp/src/nix/apk.nix --option ssl-cert-file /tmp/ca.pem --option extra-substituters 'https://nix-cache.jappie.me https://toktok.cachix.org' --option extra-trusted-public-keys '${jappieKey} ${toktokKey}' -o /tmp/apk-result"
 
     echo "Copying the APK out of the VM..."
     mkdir -p "$out"

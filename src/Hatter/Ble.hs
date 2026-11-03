@@ -79,14 +79,15 @@ import Data.ByteString qualified as BS
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.String (IsString)
-import Data.Text (Text, pack, toLower, unpack)
+import Data.Text (Text, toLower, unpack)
 import Data.Word (Word8)
-import Foreign.C.String (CString, peekCString, withCString)
+import Foreign.C.String (CString)
 import Foreign.C.Types (CInt(..))
-import Foreign.Marshal.Utils (maybeWith)
-import Foreign.Ptr (Ptr, castPtr, nullPtr)
+import Foreign.Ptr (Ptr, nullPtr)
 import Hatter.BleAdvertisement
+import Hatter.Marshal (peekBytes, peekMaybeText, withMaybeText, withText)
 import System.IO (hPutStrLn, stderr)
 import Unwitch.Convert.CInt qualified as CInt
 import Unwitch.Convert.Int qualified as Int
@@ -423,7 +424,7 @@ startBleScanInternal bleState maybeServiceUuid callback = do
   writeIORef (blesScanCallback bleState) (Just callback)
   -- Start scanning via C bridge
   ctx <- readIORef (blesContextPtr bleState)
-  maybeWith (withCString . unpack . unBleServiceUuid) maybeServiceUuid
+  withMaybeText (unBleServiceUuid <$> maybeServiceUuid)
     (c_bleStartScan ctx)
 
 -- | Stop a running BLE scan. Clears the callback so that any
@@ -445,7 +446,7 @@ connectBleDevice :: BleState -> BleDeviceAddress -> (BleConnectionEvent -> IO ()
 connectBleDevice bleState address callback = do
   writeIORef (blesConnectionCallback bleState) (Just callback)
   ctx <- readIORef (blesContextPtr bleState)
-  withCString (unpack (unBleDeviceAddress address)) (c_bleConnect ctx)
+  withText (unBleDeviceAddress address) (c_bleConnect ctx)
 
 -- | Disconnect the active BLE connection. The registered connection
 -- callback stays in place so the resulting 'BleConnectionClosed'
@@ -497,8 +498,8 @@ readBleCharacteristic bleState serviceUuid characteristicUuid callback =
     (PendingBleRead callback)
     (callback . Left)
     (do ctx <- readIORef (blesContextPtr bleState)
-        withCString (unpack (unBleServiceUuid serviceUuid)) $ \cService ->
-          withCString (unpack (unBleCharacteristicUuid characteristicUuid)) $ \cCharacteristic ->
+        withText (unBleServiceUuid serviceUuid) $ \cService ->
+          withText (unBleCharacteristicUuid characteristicUuid) $ \cCharacteristic ->
             c_bleReadCharacteristic ctx cService cCharacteristic)
 
 -- | Write a characteristic's value.  'BleWriteWithoutResponse'
@@ -518,8 +519,8 @@ writeBleCharacteristic bleState serviceUuid characteristicUuid writeMode payload
     (PendingBleWrite callback)
     (callback . Left)
     (do ctx <- readIORef (blesContextPtr bleState)
-        withCString (unpack (unBleServiceUuid serviceUuid)) $ \cService ->
-          withCString (unpack (unBleCharacteristicUuid characteristicUuid)) $ \cCharacteristic ->
+        withText (unBleServiceUuid serviceUuid) $ \cService ->
+          withText (unBleCharacteristicUuid characteristicUuid) $ \cCharacteristic ->
             BS.useAsCStringLen (unBleCharacteristicValue payload) $ \(cPayload, payloadLength) -> do
               cLength <- case Int.toCInt payloadLength of
                 Just converted -> pure converted
@@ -556,8 +557,8 @@ subscribeBleCharacteristic bleState serviceUuid characteristicUuid onNotificatio
         modifyIORef' (blesNotificationCallbacks bleState) (Map.delete key)
         onSubscribed (Left gattError))
     (do ctx <- readIORef (blesContextPtr bleState)
-        withCString (unpack (unBleServiceUuid serviceUuid)) $ \cService ->
-          withCString (unpack (unBleCharacteristicUuid characteristicUuid)) $ \cCharacteristic ->
+        withText (unBleServiceUuid serviceUuid) $ \cService ->
+          withText (unBleCharacteristicUuid characteristicUuid) $ \cCharacteristic ->
             c_bleSetCharacteristicNotification ctx cService cCharacteristic 1)
 
 -- | Stop receiving notifications for a characteristic.  The
@@ -573,8 +574,8 @@ unsubscribeBleCharacteristic bleState serviceUuid characteristicUuid callback =
     (PendingBleUnsubscribe (bleCharacteristicKey serviceUuid characteristicUuid) callback)
     (callback . Left)
     (do ctx <- readIORef (blesContextPtr bleState)
-        withCString (unpack (unBleServiceUuid serviceUuid)) $ \cService ->
-          withCString (unpack (unBleCharacteristicUuid characteristicUuid)) $ \cCharacteristic ->
+        withText (unBleServiceUuid serviceUuid) $ \cService ->
+          withText (unBleCharacteristicUuid characteristicUuid) $ \cCharacteristic ->
             c_bleSetCharacteristicNotification ctx cService cCharacteristic 0)
 
 -- | Negotiate a larger ATT MTU.  Android asks the peripheral for the
@@ -607,15 +608,9 @@ dispatchBleScanResult bleState cName cAddr cRssi advPtr advLength = do
   case maybeCallback of
     Nothing -> pure ()  -- No active scan, drop result
     Just callback -> do
-      nameStr <- if cName == nullPtr
-        then pure ""
-        else pack <$> peekCString cName
-      addrStr <- if cAddr == nullPtr
-        then pure ""
-        else pack <$> peekCString cAddr
-      advertisementBytes <- if advPtr == nullPtr || advLength <= 0
-        then pure BS.empty
-        else BS.packCStringLen (castPtr advPtr, CInt.toInt advLength)
+      nameStr <- fromMaybe "" <$> peekMaybeText cName
+      addrStr <- fromMaybe "" <$> peekMaybeText cAddr
+      advertisementBytes <- peekBytes advPtr advLength
       let parsedAdvertisement = parseBleAdvertisement advertisementBytes
       -- Log defects loudly (what, why and where, including which
       -- device sent them) but still deliver the scan result: a

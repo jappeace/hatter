@@ -7,8 +7,8 @@
 -- the C stub auto-grants every permission so that @cabal test@ works
 -- without native code.
 --
--- The callback registry follows the same sequential 'IORef' 'Int32'
--- pattern used by "Hatter.Render".
+-- Results come back by request number, as for the other platform
+-- requests ("Hatter.Requests").
 module Hatter.Permission
   ( Permission(..)
   , PermissionStatus(..)
@@ -22,19 +22,16 @@ module Hatter.Permission
   )
 where
 
-import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
-import Data.Int (Int32)
-import Data.IntMap.Strict (IntMap)
-import Data.IntMap.Strict qualified as IntMap
+import Data.IORef (IORef, newIORef, readIORef)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
+import Hatter.Requests (Requests, answered, newRequests, request)
 import System.IO (hPutStrLn, stderr)
-import Unwitch.Convert.CInt qualified as CInt
-import Unwitch.Convert.Int32 qualified as Int32
 
 -- | Dangerous permissions that require runtime consent on mobile.
 data Permission
   = PermissionLocation
+    -- ^ Precise or approximate, as the user allows.
   | PermissionBluetooth
   | PermissionCamera
   | PermissionMicrophone
@@ -48,14 +45,12 @@ data PermissionStatus
   | PermissionDenied
   deriving (Show, Eq, Ord, Enum, Bounded)
 
--- | Mutable state for the permission callback registry.
+-- | What waits for the platform's permission requests.
 -- Holds pending callbacks, the next request ID counter, and
 -- the opaque context pointer passed to the C bridge for dispatch.
 data PermissionState = PermissionState
-  { psCallbacks  :: IORef (IntMap (PermissionStatus -> IO ()))
-    -- ^ Map from requestId -> result callback
-  , psNextId     :: IORef Int32
-    -- ^ Next available request ID
+  { psRequests   :: Requests (PermissionStatus -> IO ())
+    -- ^ What waits for each request's result.
   , psContextPtr :: IORef (Ptr ())
     -- ^ Opaque context pointer passed to the C bridge.
     -- Set by 'AppContext.newAppContext' after the 'StablePtr' is created.
@@ -66,12 +61,10 @@ data PermissionState = PermissionState
 -- 'psContextPtr' before calling 'requestPermission'.
 newPermissionState :: IO PermissionState
 newPermissionState = do
-  callbacks  <- newIORef IntMap.empty
-  nextId     <- newIORef 0
+  requests   <- newRequests
   contextPtr <- newIORef nullPtr
   pure PermissionState
-    { psCallbacks  = callbacks
-    , psNextId     = nextId
+    { psRequests   = requests
     , psContextPtr = contextPtr
     }
 
@@ -99,11 +92,9 @@ permissionStatusFromInt _ = Nothing
 -- through to the C bridge so it can dispatch results back.
 requestPermission :: PermissionState -> Permission -> (PermissionStatus -> IO ()) -> IO ()
 requestPermission permissionState permission callback = do
-  requestId <- readIORef (psNextId permissionState)
-  modifyIORef' (psCallbacks permissionState) (IntMap.insert (Int32.toInt requestId) callback)
-  writeIORef (psNextId permissionState) (requestId + 1)
+  requestId <- request (psRequests permissionState) callback
   ctx <- readIORef (psContextPtr permissionState)
-  c_permissionRequest ctx (permissionToInt permission) (Int32.toCInt requestId)
+  c_permissionRequest ctx (permissionToInt permission) requestId
 
 -- | Check whether a permission is currently granted (synchronous).
 checkPermission :: Permission -> IO PermissionStatus
@@ -124,13 +115,8 @@ dispatchPermissionResult permissionState requestId statusCode =
     Nothing -> hPutStrLn stderr $
       "dispatchPermissionResult: unknown status code " ++ show statusCode
     Just status -> do
-      callbacks <- readIORef (psCallbacks permissionState)
-      case IntMap.lookup (CInt.toInt requestId) callbacks of
-        Nothing -> hPutStrLn stderr $
-          "dispatchPermissionResult: unknown request ID " ++ show requestId
-        Just callback -> do
-          modifyIORef' (psCallbacks permissionState) (IntMap.delete (CInt.toInt requestId))
-          callback status
+      waiting <- answered "dispatchPermissionResult" (psRequests permissionState) requestId
+      mapM_ ($ status) waiting
 
 -- | FFI import: request a permission via the C bridge.
 -- Takes an opaque context pointer, permission code, and request ID.

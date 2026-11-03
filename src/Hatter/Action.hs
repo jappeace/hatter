@@ -18,18 +18,22 @@ module Hatter.Action
   ( -- * Handles
     Action(..)
   , OnChange(..)
+  , OnScroll(..)
+  , ListPosition(..)
     -- * Callback registry
   , ActionState(..)
     -- * Restricted construction monad
   , ActionM
   , createAction
   , createOnChange
+  , createOnScroll
   , liftIO
     -- * Framework-internal
   , newActionState
   , runActionM
   , lookupAction
   , lookupTextAction
+  , lookupScrollAction
   )
 where
 
@@ -52,27 +56,49 @@ newtype Action = Action { actionId :: Int32 }
 newtype OnChange = OnChange { onChangeId :: Int32 }
   deriving stock (Eq, Show)
 
+-- | An opaque handle to a callback that hears where a list is.
+newtype OnScroll = OnScroll { onScrollId :: Int32 }
+  deriving stock (Eq, Show)
+
+-- | What a scrolling list shows. The platforms report these by their
+-- numbers, from 0. Near its start is within a screen of it, so what comes
+-- before can be there before it is. A list near its start is reported again
+-- when its items change, as what came in may not have taken it away.
+data ListPosition
+  = ListStart
+    -- ^ Near its start.
+  | ListMiddle
+  | ListEnd
+    -- ^ At its end, away from its start.
+  | ListBoth
+    -- ^ At its end and near its start, as a short list is.
+  deriving stock (Eq, Show, Enum, Bounded)
+
 -- | Mutable callback storage shared between 'ActionM' (creation)
 -- and the render/dispatch engine (lookup).
 data ActionState = ActionState
-  { asCallbacks     :: IORef (IntMap (IO ()))
+  { asCallbacks       :: IORef (IntMap (IO ()))
     -- ^ Click/tap callbacks keyed by handle ID.
-  , asTextCallbacks :: IORef (IntMap (Text -> IO ()))
+  , asTextCallbacks   :: IORef (IntMap (Text -> IO ()))
     -- ^ Text-change callbacks keyed by handle ID.
-  , asNextId        :: IORef Int32
+  , asScrollCallbacks :: IORef (IntMap (ListPosition -> IO ()))
+    -- ^ List position callbacks keyed by handle ID.
+  , asNextId          :: IORef Int32
     -- ^ Monotonically increasing counter for the next handle ID.
   }
 
 -- | Create a fresh empty 'ActionState'.
 newActionState :: IO ActionState
 newActionState = do
-  callbacks     <- newIORef IntMap.empty
-  textCallbacks <- newIORef IntMap.empty
-  nextId        <- newIORef 0
+  callbacks       <- newIORef IntMap.empty
+  textCallbacks   <- newIORef IntMap.empty
+  scrollCallbacks <- newIORef IntMap.empty
+  nextId          <- newIORef 0
   pure ActionState
-    { asCallbacks     = callbacks
-    , asTextCallbacks = textCallbacks
-    , asNextId        = nextId
+    { asCallbacks       = callbacks
+    , asTextCallbacks   = textCallbacks
+    , asScrollCallbacks = scrollCallbacks
+    , asNextId          = nextId
     }
 
 -- | A restricted monad for creating callback handles.
@@ -99,6 +125,14 @@ createOnChange callback = ActionM $ \state -> do
   modifyIORef' (asNextId state) (+ 1)
   pure (OnChange handleId)
 
+-- | Register a callback for where a list is, and return its opaque handle.
+createOnScroll :: (ListPosition -> IO ()) -> ActionM OnScroll
+createOnScroll callback = ActionM $ \state -> do
+  handleId <- readIORef (asNextId state)
+  modifyIORef' (asScrollCallbacks state) (IntMap.insert (Int32.toInt handleId) callback)
+  modifyIORef' (asNextId state) (+ 1)
+  pure (OnScroll handleId)
+
 -- | Run an 'ActionM' computation against a given 'ActionState'.
 runActionM :: ActionState -> ActionM a -> IO a
 runActionM state (ActionM f) = f state
@@ -115,4 +149,11 @@ lookupAction state handleId = do
 lookupTextAction :: ActionState -> Int32 -> IO (Maybe (Text -> IO ()))
 lookupTextAction state handleId = do
   callbacks <- readIORef (asTextCallbacks state)
+  pure (IntMap.lookup (Int32.toInt handleId) callbacks)
+
+-- | Look up a list position callback by handle ID.
+-- Returns 'Nothing' if the ID is not registered.
+lookupScrollAction :: ActionState -> Int32 -> IO (Maybe (ListPosition -> IO ()))
+lookupScrollAction state handleId = do
+  callbacks <- readIORef (asScrollCallbacks state)
   pure (IntMap.lookup (Int32.toInt handleId) callbacks)

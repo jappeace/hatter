@@ -1,0 +1,9 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+libdir=@CMAKE_INSTALL_FULL_LIBDIR@
+includedir=@CMAKE_INSTALL_FULL_INCLUDEDIR@/hatter-qt
+
+Name: hatter-qt-host
+Description: Hatter's Qt Quick host
+Version: 0.1.0
+Libs: -L${libdir} -lhatter-qt-host
+Cflags: -I${includedir}

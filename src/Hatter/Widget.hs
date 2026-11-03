@@ -16,10 +16,19 @@ module Hatter.Widget
   , LayoutSettings(..)
   , WidgetKey(..)
   , LayoutItem(..)
-  , WidgetStyle(..)
+  , WidgetStyle(wsPadding, wsPaddingY, wsTextAlign, wsBackgroundColor, wsTranslateX, wsTranslateY, wsWidth, wsTouchPassthrough, wsHeight, wsWeight, wsAlignSelf, wsMargin, wsMaxWidth, wsMaxLines, wsCorners, wsKeepAtEnd)
+  , SelfAlignment(..)
   , defaultStyle
   , ButtonConfig(..)
-  , FontConfig(..)
+  , SwitchConfig(..)
+  , FontConfig(fontSize, fontWeight, fontFamily, fontSlant)
+  , FontWeight(..)
+  , FontFamily(..)
+  , FontSlant(..)
+  , Corners(..)
+  , rounded
+  , sameRadius
+  , fontOfSize
   , ImageConfig(..)
   , ImageSource(..)
   , InputType(..)
@@ -49,11 +58,13 @@ module Hatter.Widget
   , normalizeAnimated
   , wrapLayoutItemAnimated
   , interpolateColor
+  , interpolateCorners
   , lerpWord8
   -- ** key resolution
   , resolveKeyAtIndex
   -- ** smart constructors
   , button
+  , switch
   , column
   , item
   , keyedItem
@@ -66,23 +77,42 @@ module Hatter.Widget
   )
 where
 
-import Data.ByteString (ByteString)
-import Data.Char (digitToInt, isHexDigit, intToDigit)
-import Data.Fixed (Fixed, E6)
-import Data.Text (Text)
-import Data.Text qualified as Text
-import Data.Time.Clock (NominalDiffTime)
-import Data.Word (Word8)
-import Hatter.Action (Action, OnChange)
-import Unwitch.Convert.Int qualified as Int
-import Unwitch.Convert.Word8 qualified as Word8
+import           Data.ByteString       (ByteString)
+import           Data.Char             (digitToInt, intToDigit, isHexDigit)
+import           Data.Fixed            (E6, Fixed)
+import           Data.Maybe            (fromMaybe)
+import           Data.Text             (Text)
+import qualified Data.Text             as Text
+import           Data.Time.Clock       (NominalDiffTime)
+import           Data.Word             (Word8)
+import           Hatter.Action         (Action, OnChange, OnScroll)
+import qualified Unwitch.Convert.Int   as Int
+import qualified Unwitch.Convert.Word8 as Word8
 
 -- | Font configuration for text-bearing widgets.
 -- Only 'Text', 'Button', and 'TextInput' can carry a 'FontConfig'.
-newtype FontConfig = FontConfig
-  { fontSize :: Double
+-- Start from 'fontOfSize' and set the fields that differ, so fonts
+-- gaining a field later don't break the code.
+data FontConfig = FontConfig
+  { fontSize   :: Double
     -- ^ Font size in platform-native units (sp on Android, pt on iOS).
+  , fontWeight :: FontWeight
+  , fontFamily :: FontFamily
+  , fontSlant  :: FontSlant
   } deriving (Show, Eq)
+
+data FontWeight = FontRegular | FontBold
+  deriving (Show, Eq)
+
+data FontFamily = FontProportional | FontMonospace
+  deriving (Show, Eq)
+
+data FontSlant = FontUpright | FontItalic
+  deriving (Show, Eq)
+
+-- | The platform's regular font, of a size.
+fontOfSize :: Double -> FontConfig
+fontOfSize size = FontConfig size FontRegular FontProportional FontUpright
 
 -- | Configuration for a read-only text label.
 data TextConfig = TextConfig
@@ -111,10 +141,25 @@ data ButtonConfig = ButtonConfig
     -- ^ Optional label color, see 'tcTextColor'.
   } deriving (Show, Eq)
 
+-- | Configuration for an on/off switch, the platform's own. It moves as
+-- the user flips it, and fires its action, so the app should change
+-- 'swOn' to match: Hatter sends it only when it changes.
+data SwitchConfig = SwitchConfig
+  { swOn     :: Bool
+  , swAction :: Action
+    -- ^ Fired when the user flips it.
+  } deriving (Show, Eq)
+
 -- | The kind of on-screen keyboard to show for a 'TextInput'.
 data InputType
   = InputText    -- ^ Default text keyboard.
   | InputNumber  -- ^ Numeric keyboard with decimal support.
+  | InputMultiline
+    -- ^ Text keyboard for prose: the field grows with its lines, and
+    -- sentences start with a capital.
+  | InputPassword
+    -- ^ Text keyboard for a secret: what is typed is hidden, and the
+    -- keyboard neither learns nor suggests it.
   deriving (Show, Eq)
 
 -- | Configuration for a text input field.
@@ -163,7 +208,7 @@ colorFromText raw = do
   if all isHexDigit hex
     then case hex of
       [r1, g1, b1] ->
-        let expand ch = let val = digitToInt ch in maybe 0 id (Int.toWord8 (val * 16 + val))
+        let expand ch = let val = digitToInt ch in fromMaybe 0 (Int.toWord8 (val * 16 + val))
         in Just (Color (expand r1) (expand g1) (expand b1) 255)
       [r1, r2, g1, g2, b1, b2] ->
         Just (Color (hexByte r1 r2) (hexByte g1 g2) (hexByte b1 b2) 255)
@@ -174,7 +219,7 @@ colorFromText raw = do
 
 -- | Convert two hex characters to a Word8.
 hexByte :: Char -> Char -> Word8
-hexByte high low = maybe 0 id (Int.toWord8 (digitToInt high * 16 + digitToInt low))
+hexByte high low = fromMaybe 0 (Int.toWord8 (digitToInt high * 16 + digitToInt low))
 
 -- | Convert a 'Color' to a hex string in @"#AARRGGBB"@ format for the C bridge.
 colorToHex :: Color -> Text
@@ -186,22 +231,27 @@ colorToHex (Color r g b a) = Text.pack ('#' : toHexByte a ++ toHexByte r ++ toHe
 -- | Visual style overrides for a widget node.
 -- Font size is not here — it belongs in the config records of
 -- text-bearing widgets ('TextConfig', 'ButtonConfig', 'TextInputConfig').
+-- Start from 'defaultStyle' and set the fields you want, so styles
+-- gaining a field later don't break the code.
 data WidgetStyle = WidgetStyle
-  { wsPadding         :: Maybe Double
+  { wsPadding          :: Maybe Double
     -- ^ Uniform padding in platform-native units (px on Android, pt on iOS).
-  , wsTextAlign       :: Maybe TextAlignment
+  , wsPaddingY         :: Maybe Double
+    -- ^ Padding at the top and bottom, where it differs from 'wsPadding',
+    -- which then pads the sides.
+  , wsTextAlign        :: Maybe TextAlignment
     -- ^ Horizontal text alignment override.
-  , wsBackgroundColor :: Maybe Color
+  , wsBackgroundColor  :: Maybe Color
     -- ^ Background color.
-  , wsTranslateX      :: Maybe Double
+  , wsTranslateX       :: Maybe Double
     -- ^ Horizontal translation offset in platform-native units.
     -- Moves the widget without affecting sibling layout
     -- (Android: @translationX@, iOS: @CGAffineTransform@,
     -- watchOS: @.offset(x:y:)@).
-  , wsTranslateY      :: Maybe Double
+  , wsTranslateY       :: Maybe Double
     -- ^ Vertical translation offset in platform-native units.
     -- Moves the widget without affecting sibling layout.
-  , wsWidth           :: Maybe Double
+  , wsWidth            :: Maybe Double
     -- ^ Fixed width in platform-native units (px on Android, pt on
     -- iOS), like 'wsPadding'. Meaningful on any node, so sibling
     -- rows can align into table columns (#245).
@@ -211,18 +261,76 @@ data WidgetStyle = WidgetStyle
     -- Android: @setClickable(false)@/@setFocusable(false)@.
     -- iOS: @userInteractionEnabled = NO@.
     -- watchOS: no-op (hit testing is automatic with ZStack).
+  , wsHeight           :: Maybe Double
+    -- ^ Fixed height in platform-native units, like 'wsWidth'.
+  , wsWeight           :: Maybe Double
+    -- ^ The widget's share of the space its 'Column' or 'Row' has left
+    -- along its axis, like Flutter's @Expanded(flex:)@.
+  , wsAlignSelf        :: Maybe SelfAlignment
+    -- ^ Where the widget sits across its 'Column' or 'Row', or where in
+    -- its 'Stack'.
+  , wsMargin           :: Maybe Double
+    -- ^ Uniform space around the widget, in platform-native units.
+  , wsMaxWidth         :: Maybe Double
+    -- ^ Widest a text-bearing widget grows before its text wraps, in
+    -- platform-native units.
+  , wsMaxLines         :: Maybe Int
+    -- ^ Most lines a text-bearing widget shows. Text that doesn't fit
+    -- ends in an ellipsis, unless it is being edited.
+  , wsCorners          :: Maybe Corners
+    -- ^ Rounds the widget's background, and also what's on it where all
+    -- four corners are the same ('rounded'). Half its size makes a circle.
+  , wsKeepAtEnd        :: Maybe Bool
+    -- ^ On a scrolling 'Column', as chats have it: its children sit at its
+    -- end while they don't fill it, and it follows its end as they grow,
+    -- unless scrolled away from it.
   } deriving (Show, Eq)
+
+-- | The radius of each corner, in platform-native units.
+data Corners = Corners
+  { cornerTopLeft     :: Double
+  , cornerTopRight    :: Double
+  , cornerBottomRight :: Double
+  , cornerBottomLeft  :: Double
+  } deriving (Show, Eq)
+
+-- | Every corner with the same radius.
+rounded :: Double -> Corners
+rounded radius = Corners radius radius radius radius
+
+-- | The radius of every corner, where they all have the same.
+sameRadius :: Corners -> Maybe Double
+sameRadius (Corners a b c d) = if all (== a) [b, c, d] then Just a else Nothing
+
+-- | Where a widget sits across its container's axis: horizontally in a
+-- 'Column', vertically in a 'Row'. In a 'Stack', 'SelfStart' is the top
+-- start corner, 'SelfEnd' the bottom end corner.
+data SelfAlignment
+  = SelfStart
+  | SelfCenter
+  | SelfEnd
+  | SelfStretch  -- ^ Fills the container across its axis, or all of a 'Stack'.
+  deriving (Show, Eq)
 
 -- | No style overrides — all fields are 'Nothing'.
 defaultStyle :: WidgetStyle
 defaultStyle = WidgetStyle
   { wsPadding          = Nothing
+  , wsPaddingY         = Nothing
   , wsTextAlign        = Nothing
   , wsBackgroundColor  = Nothing
   , wsTranslateX       = Nothing
   , wsTranslateY       = Nothing
   , wsWidth            = Nothing
   , wsTouchPassthrough = Nothing
+  , wsHeight           = Nothing
+  , wsWeight           = Nothing
+  , wsAlignSelf        = Nothing
+  , wsMargin           = Nothing
+  , wsMaxWidth         = Nothing
+  , wsMaxLines         = Nothing
+  , wsCorners          = Nothing
+  , wsKeepAtEnd        = Nothing
   }
 
 -- | A normalised keyframe position in the range [0, 1].
@@ -326,12 +434,23 @@ sampledAnimation curve duration fromStyle toStyle = AnimatedConfig
 lerpStyle :: Double -> WidgetStyle -> WidgetStyle -> WidgetStyle
 lerpStyle t from to = WidgetStyle
   { wsPadding          = lerpMaybeDouble (wsPadding from) (wsPadding to)
+  , wsPaddingY         = lerpMaybeDouble (wsPaddingY from) (wsPaddingY to)
   , wsTextAlign        = snapMaybe (wsTextAlign from) (wsTextAlign to)
   , wsBackgroundColor  = lerpMaybeColor (wsBackgroundColor from) (wsBackgroundColor to)
   , wsTranslateX       = lerpMaybeDouble (wsTranslateX from) (wsTranslateX to)
   , wsTranslateY       = lerpMaybeDouble (wsTranslateY from) (wsTranslateY to)
   , wsWidth            = lerpMaybeDouble (wsWidth from) (wsWidth to)
   , wsTouchPassthrough = snapMaybe (wsTouchPassthrough from) (wsTouchPassthrough to)
+  , wsHeight           = lerpMaybeDouble (wsHeight from) (wsHeight to)
+  , wsWeight           = lerpMaybeDouble (wsWeight from) (wsWeight to)
+  , wsAlignSelf        = snapMaybe (wsAlignSelf from) (wsAlignSelf to)
+  , wsMargin           = lerpMaybeDouble (wsMargin from) (wsMargin to)
+  , wsMaxWidth         = lerpMaybeDouble (wsMaxWidth from) (wsMaxWidth to)
+  , wsMaxLines         = snapMaybe (wsMaxLines from) (wsMaxLines to)
+  , wsCorners          = case (wsCorners from, wsCorners to) of
+      (Just a, Just b) -> Just (interpolateCorners a b t)
+      (a, b)           -> snapMaybe a b
+  , wsKeepAtEnd        = snapMaybe (wsKeepAtEnd from) (wsKeepAtEnd to)
   }
   where
     lerpMaybeDouble :: Maybe Double -> Maybe Double -> Maybe Double
@@ -394,6 +513,12 @@ interpolateColor (Color r1 g1 b1 a1) (Color r2 g2 b2 a2) progress = Color
   , colorAlpha = lerpWord8 a1 a2 progress
   }
 
+-- | Interpolate between two shapes by lerping each corner's radius.
+interpolateCorners :: Corners -> Corners -> Double -> Corners
+interpolateCorners (Corners a1 b1 c1 d1) (Corners a2 b2 c2 d2) progress =
+  Corners (lerp a1 a2) (lerp b1 b2) (lerp c1 c2) (lerp d1 d2)
+  where lerp from to = from + (to - from) * progress
+
 -- | Normalize an 'Animated' wrapper before rendering.
 --
 -- * Distributes 'Animated' over container children ('Column', 'Row').
@@ -441,6 +566,9 @@ data ImageSource
   = ImageResource ResourceName  -- ^ Platform resource by name.
   | ImageData ByteString        -- ^ Raw image bytes (PNG/JPEG).
   | ImageFile FilePath          -- ^ Absolute file path to an image on disk.
+  | ImageStream Text
+    -- ^ Frames drawn into it by key with 'Hatter.CallVideo.showVideoFrame',
+    -- the last one staying until the next.
   deriving (Show, Eq)
 
 -- | Configuration for an image widget.
@@ -513,6 +641,10 @@ button :: Text -> Action -> Widget
 button txt action = Button $ ButtonConfig
   { bcLabel = txt, bcAction = action, bcFontConfig = Nothing, bcTextColor = Nothing }
 
+-- | An on/off switch, firing the action as the user flips it.
+switch :: Bool -> Action -> Widget
+switch on action = Switch SwitchConfig { swOn = on, swAction = action }
+
 -- | Wrap a widget in a 'LayoutItem' with no explicit key.
 -- The diff algorithm will use the child's list index as its key.
 item :: Widget -> LayoutItem
@@ -558,6 +690,8 @@ data Widget
     -- ^ A tappable button with a label and click handler.
   | TextInput TextInputConfig
     -- ^ A text input field.
+  | Switch SwitchConfig
+    -- ^ An on/off switch.
   | Column LayoutSettings
     -- ^ A vertical container laying out children top-to-bottom.
     -- When @'lsScrollable' = 'True'@, renders as a vertically scrollable container.
@@ -567,6 +701,14 @@ data Widget
   | Stack [LayoutItem]
     -- ^ A z-order container: children overlap, first at bottom, last on top.
     -- Maps to FrameLayout (Android), plain UIView (iOS), ZStack (watchOS).
+  | LazyColumn [LayoutItem]
+    -- ^ A vertically scrolling list that makes native views only for the
+    -- items on screen, and reuses them as it scrolls, so it suits long
+    -- lists.  Each item is laid out as a child of a 'Column'.  With
+    -- 'wsKeepAtEnd' it starts at the end and follows it, as chats do.
+    -- Keyed items stay where they are on screen when items before them
+    -- come or go (key all of them or none).
+    -- A 'LazyColumn' inside another one's items is not supported.
   | Image ImageConfig
     -- ^ An image widget displaying resource, file, or raw data.
   | WebView WebViewConfig
@@ -575,6 +717,16 @@ data Widget
     -- ^ An embedded map view (native MapKit on iOS, placeholder elsewhere).
   | Styled WidgetStyle Widget
     -- ^ Apply visual style overrides to a child widget.
+  | Tappable Action Widget
+    -- ^ Fires the action when the child is tapped, whatever it is.
+  | Scrolled OnScroll Int Widget
+    -- ^ A 'LazyColumn' that tells where it is as that changes. When the
+    -- number differs from the one rendered before, it scrolls to its end:
+    -- count up for each jump, as a view has no handle on the list to ask
+    -- it directly.
+  | LongPressable Action Widget
+    -- ^ Fires the action when the child is held, whatever it is. It can
+    -- wrap a 'Tappable' or be wrapped by one, for both.
   | Animated AnimatedConfig Widget
     -- ^ Animate property changes on the child widget using keyframes.
     -- When wrapping a container ('Column', 'Row'), the animation is

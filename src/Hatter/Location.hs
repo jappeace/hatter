@@ -67,7 +67,8 @@ startLocationUpdates locationState callback = do
   c_locationStartUpdates ctx
 
 -- | Stop receiving location updates. Clears the callback so that any
--- late-arriving fixes are silently dropped.
+-- late-arriving fixes are silently dropped. On Android, any thread may
+-- call this and 'startLocationUpdates'.
 stopLocationUpdates :: LocationState -> IO ()
 stopLocationUpdates locationState = do
   writeIORef (lsUpdateCallback locationState) Nothing
