@@ -20,6 +20,7 @@ module Hatter.Camera
   , CameraStatus(..)
   , Picture(..)
   , CameraResult(..)
+  , CameraRequest(..)
   , CameraState(..)
   , newCameraState
   , cameraSourceToInt
@@ -36,12 +37,11 @@ module Hatter.Camera
 where
 
 import Data.ByteString (ByteString)
-import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
+import Data.IORef (IORef, newIORef, readIORef)
 import Data.Int (Int32)
-import Data.IntMap.Strict (IntMap)
-import Data.IntMap.Strict qualified as IntMap
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
+import Hatter.Requests (Requests, answered, answering, newRequests, request)
 import System.IO (hPutStrLn, stderr)
 import Unwitch.Convert.CInt qualified as CInt
 import Unwitch.Convert.Int32 qualified as Int32
@@ -79,17 +79,19 @@ data CameraResult = CameraResult
     -- results and error results.
   } deriving (Show, Eq)
 
--- | Mutable state for the camera callback registry.
+-- | What waits for a capture: its result, and a video's frames and sound
+-- while it records.
+data CameraRequest = CameraRequest
+  { crqResult :: CameraResult -> IO ()
+  , crqFrame  :: Picture -> IO ()
+  , crqAudio  :: ByteString -> IO ()
+  }
+
+-- | What waits for the platform's camera.
 data CameraState = CameraState
-  { csCallbacks      :: IORef (IntMap (CameraResult -> IO ()))
-    -- ^ Map from requestId -> capture result callback.
-  , csFrameCallbacks :: IORef (IntMap (Picture -> IO ()))
-    -- ^ Map from requestId -> per-frame callback (video recording).
-  , csAudioCallbacks :: IORef (IntMap (ByteString -> IO ()))
-    -- ^ Map from requestId -> per-audio-chunk callback (video recording).
-  , csNextId         :: IORef Int32
-    -- ^ Next available request ID.
-  , csContextPtr     :: IORef (Ptr ())
+  { csRequests   :: Requests CameraRequest
+    -- ^ What waits for each capture.
+  , csContextPtr :: IORef (Ptr ())
     -- ^ Opaque context pointer passed to the C bridge.
     -- Set by 'AppContext.newAppContext' after the 'StablePtr' is created.
   }
@@ -98,19 +100,7 @@ data CameraState = CameraState
 -- The context pointer is initially null and must be set via
 -- 'csContextPtr' before calling any camera operation.
 newCameraState :: IO CameraState
-newCameraState = do
-  callbacks      <- newIORef IntMap.empty
-  frameCallbacks <- newIORef IntMap.empty
-  audioCallbacks <- newIORef IntMap.empty
-  nextId         <- newIORef 0
-  contextPtr     <- newIORef nullPtr
-  pure CameraState
-    { csCallbacks      = callbacks
-    , csFrameCallbacks = frameCallbacks
-    , csAudioCallbacks = audioCallbacks
-    , csNextId         = nextId
-    , csContextPtr     = contextPtr
-    }
+newCameraState = CameraState <$> newRequests <*> newIORef nullPtr
 
 -- | Convert a 'CameraSource' to its C integer code.
 cameraSourceToInt :: CameraSource -> Int32
@@ -145,11 +135,10 @@ stopCameraSession _cameraState =
 -- desktop via the stub).
 capturePhoto :: CameraState -> (CameraResult -> IO ()) -> IO ()
 capturePhoto cameraState callback = do
-  requestId <- readIORef (csNextId cameraState)
-  modifyIORef' (csCallbacks cameraState) (IntMap.insert (Int32.toInt requestId) callback)
-  writeIORef (csNextId cameraState) (requestId + 1)
+  requestId <- request (csRequests cameraState)
+    CameraRequest { crqResult = callback, crqFrame = \_ -> pure (), crqAudio = \_ -> pure () }
   ctx <- readIORef (csContextPtr cameraState)
-  c_cameraCapturePhoto ctx (Int32.toCInt requestId)
+  c_cameraCapturePhoto ctx requestId
 
 -- | Start recording video.  Registers three callbacks:
 --
@@ -164,14 +153,10 @@ startVideoCapture :: CameraState
                   -> (CameraResult -> IO ())   -- ^ Called when recording stops.
                   -> IO ()
 startVideoCapture cameraState frameCallback audioCallback completionCallback = do
-  requestId <- readIORef (csNextId cameraState)
-  let reqKey = Int32.toInt requestId
-  modifyIORef' (csCallbacks cameraState) (IntMap.insert reqKey completionCallback)
-  modifyIORef' (csFrameCallbacks cameraState) (IntMap.insert reqKey frameCallback)
-  modifyIORef' (csAudioCallbacks cameraState) (IntMap.insert reqKey audioCallback)
-  writeIORef (csNextId cameraState) (requestId + 1)
+  requestId <- request (csRequests cameraState)
+    CameraRequest { crqResult = completionCallback, crqFrame = frameCallback, crqAudio = audioCallback }
   ctx <- readIORef (csContextPtr cameraState)
-  c_cameraStartVideo ctx (Int32.toCInt requestId)
+  c_cameraStartVideo ctx requestId
 
 -- | Stop recording video. The callback registered by 'startVideoCapture'
 -- will be fired with a completion result.
@@ -193,8 +178,7 @@ dispatchCameraResult cameraState requestId statusCode
     Nothing -> hPutStrLn stderr $
       "dispatchCameraResult: unknown status code " ++ show statusCode
     Just status -> do
-      let reqKey = CInt.toInt requestId
-          maybePicture = case status of
+      let maybePicture = case status of
             CameraSuccess -> case maybeImageData of
               Just imageBytes -> Just Picture
                 { pictureWidth  = CInt.toInt imageWidth
@@ -207,44 +191,29 @@ dispatchCameraResult cameraState requestId statusCode
             { crStatus   = status
             , crPicture  = maybePicture
             }
-      callbacks <- readIORef (csCallbacks cameraState)
-      case IntMap.lookup reqKey callbacks of
-        Just callback -> do
-          modifyIORef' (csCallbacks cameraState) (IntMap.delete reqKey)
-          modifyIORef' (csFrameCallbacks cameraState) (IntMap.delete reqKey)
-          modifyIORef' (csAudioCallbacks cameraState) (IntMap.delete reqKey)
-          callback result
-        Nothing -> hPutStrLn stderr $
-          "dispatchCameraResult: unknown request ID " ++ show requestId
+      waiting <- answered "dispatchCameraResult" (csRequests cameraState) requestId
+      mapM_ (\capture -> crqResult capture result) waiting
 
 -- | Dispatch a video frame from the platform to the registered frame
 -- callback.  Does not remove the callback — it stays active until
 -- recording stops.
 dispatchVideoFrame :: CameraState -> CInt -> ByteString -> CInt -> CInt -> IO ()
 dispatchVideoFrame cameraState requestId frameBytes frameWidth frameHeight = do
-  let reqKey = CInt.toInt requestId
-      picture = Picture
+  let picture = Picture
         { pictureWidth  = CInt.toInt frameWidth
         , pictureHeight = CInt.toInt frameHeight
         , pictureData   = frameBytes
         }
-  frameCallbacks <- readIORef (csFrameCallbacks cameraState)
-  case IntMap.lookup reqKey frameCallbacks of
-    Just callback -> callback picture
-    Nothing -> hPutStrLn stderr $
-      "dispatchVideoFrame: unknown request ID " ++ show requestId
+  waiting <- answering "dispatchVideoFrame" (csRequests cameraState) requestId
+  mapM_ (\capture -> crqFrame capture picture) waiting
 
 -- | Dispatch an audio chunk from the platform to the registered audio
 -- callback.  Does not remove the callback — it stays active until
 -- recording stops.
 dispatchAudioChunk :: CameraState -> CInt -> ByteString -> IO ()
 dispatchAudioChunk cameraState requestId audioBytes = do
-  let reqKey = CInt.toInt requestId
-  audioCallbacks <- readIORef (csAudioCallbacks cameraState)
-  case IntMap.lookup reqKey audioCallbacks of
-    Just callback -> callback audioBytes
-    Nothing -> hPutStrLn stderr $
-      "dispatchAudioChunk: unknown request ID " ++ show requestId
+  waiting <- answering "dispatchAudioChunk" (csRequests cameraState) requestId
+  mapM_ (\capture -> crqAudio capture audioBytes) waiting
 
 -- | FFI import: start a camera session via the C bridge.
 foreign import ccall "camera_start_session"

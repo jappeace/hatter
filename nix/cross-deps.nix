@@ -253,11 +253,11 @@ WRAPPER
   # ARMAsmPrinter::emitXXStructor when compiling profiled libraries.
   ghcOverride = if androidArch == "armv7a"
     then {
-      ghc = androidPkgs.haskellPackages.ghc.override { enableProfiledLibs = false; };
+      ghc = (import ./ghc.nix androidPkgs).ghc.override { enableProfiledLibs = false; };
     }
     else {};
 
-  crossHaskellPkgs = androidPkgs.haskellPackages.override ({
+  crossHaskellPkgs = (import ./ghc.nix androidPkgs).override ({
     overrides = pkgs.lib.composeExtensions defaultOverrides hpkgs;
   } // ghcOverride);
 
@@ -273,7 +273,7 @@ WRAPPER
   # Replicates the wrapper pattern from nixpkgs generic-builder.nix so
   # mkAndroidLib can pass -fexternal-interpreter -pgmi <wrapper> to GHC.
   iservHost = crossHaskellPkgs.iserv-proxy;   # target binary (statically linked)
-  iservBuild = pkgs.haskellPackages.iserv-proxy; # native build-host binary
+  iservBuild = (import ./ghc.nix pkgs).iserv-proxy; # native build-host binary
   emulatorCmd = if androidArch == "aarch64"
     then "${pkgs.qemu-user}/bin/qemu-aarch64"   # overlay adds -B 0x4000000000
     else "${pkgs.qemu-user}/bin/qemu-arm";

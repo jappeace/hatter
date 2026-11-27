@@ -11,6 +11,9 @@ import Test.Tasty.HUnit
 import Control.Exception (IOException, throwIO, try)
 import Data.IORef (newIORef, readIORef, writeIORef, modifyIORef')
 import Data.List (isInfixOf)
+import Foreign.C.String (withCString)
+import Data.ByteString qualified as BS
+import Data.Text.Encoding qualified as Text
 import Hatter
   ( MobileApp(..)
   , UserState(..)
@@ -22,11 +25,17 @@ import Hatter
   , haskellRenderUI
   , haskellOnUIEvent
   , haskellOnLifecycle
+  , haskellOnBack
+  , haskellOnNotificationOpened
+  , haskellOnCallButton
+  , haskellOnFilePicked
+  , PickedFile(..)
   )
 import Hatter.AppContext (AppContext(..), newAppContext, freeAppContext, derefAppContext)
 import Unwitch.Convert.Int32 qualified as Int32
 import Hatter.Lifecycle
   ( LifecycleEvent(..)
+  , CallButton(..)
   , MobileContext(..)
   , defaultMobileContext
   )
@@ -60,7 +69,7 @@ registrationTests = testGroup "Registration"
   , testCase "view function produces a widget through AppContext" $ do
       actionState <- newActionState
       let customApp = MobileApp
-            { maContext     = MobileContext { onLifecycle = \_ -> pure (), onError = \_ -> pure () }
+            { maContext     = defaultMobileContext { onLifecycle = \_ -> pure (), onError = \_ -> pure () }
             , maView        = \_userState -> pure (Text TextConfig { tcLabel = "custom", tcFontConfig = Nothing, tcTextColor = Nothing })
             , maActionState = actionState
             }
@@ -164,7 +173,7 @@ appContextTests = testGroup "AppContext"
       ref <- newIORef ([] :: [LifecycleEvent])
       actionState <- newActionState
       let app = MobileApp
-            { maContext     = MobileContext { onLifecycle = \event -> modifyIORef' ref (++ [event]), onError = \_ -> pure () }
+            { maContext     = defaultMobileContext { onLifecycle = \event -> modifyIORef' ref (++ [event]), onError = \_ -> pure () }
             , maView        = \_userState -> pure (Text TextConfig { tcLabel = "dummy", tcFontConfig = Nothing, tcTextColor = Nothing })
             , maActionState = actionState
             }
@@ -246,10 +255,93 @@ exceptionHandlerTests = testGroup "ExceptionHandler"
       assertBool "should no longer show error widget after dismiss" (not isStillError)
       freeAppContext ctxPtr
 
+  , testCase "Back the app handles renders again" $ do
+      renders <- newIORef (0 :: Int)
+      actionState <- newActionState
+      ctxPtr <- newAppContext MobileApp
+        { maContext     = defaultMobileContext { onBack = pure True }
+        , maView        = \_userState -> do
+            modifyIORef' renders (+ 1)
+            pure (Text TextConfig { tcLabel = "back", tcFontConfig = Nothing, tcTextColor = Nothing })
+        , maActionState = actionState
+        }
+      handled <- haskellOnBack ctxPtr
+      handled @?= 1
+      readIORef renders >>= (@?= 1)
+      freeAppContext ctxPtr
+
+  , testCase "A tapped notification tells the app its key and renders again" $ do
+      opened <- newIORef []
+      renders <- newIORef (0 :: Int)
+      actionState <- newActionState
+      ctxPtr <- newAppContext MobileApp
+        { maContext     = defaultMobileContext
+            { onNotificationOpened = \key -> modifyIORef' opened (++ [key]) }
+        , maView        = \_userState -> do
+            modifyIORef' renders (+ 1)
+            pure (Text TextConfig { tcLabel = "opened", tcFontConfig = Nothing, tcTextColor = Nothing })
+        , maActionState = actionState
+        }
+      withCString "chat-1" (haskellOnNotificationOpened ctxPtr)
+      readIORef opened >>= (@?= ["chat-1"])
+      readIORef renders >>= (@?= 1)
+      freeAppContext ctxPtr
+
+  , testCase "A call's buttons reach the app, rendering after answering" $ do
+      pressed <- newIORef []
+      renders <- newIORef (0 :: Int)
+      actionState <- newActionState
+      ctxPtr <- newAppContext MobileApp
+        { maContext     = defaultMobileContext
+            { onCallButton = \key button -> modifyIORef' pressed (++ [(key, button)]) }
+        , maView        = \_userState -> do
+            modifyIORef' renders (+ 1)
+            pure (Text TextConfig { tcLabel = "call", tcFontConfig = Nothing, tcTextColor = Nothing })
+        , maActionState = actionState
+        }
+      withCString "call" $ \key -> haskellOnCallButton ctxPtr key 1 >> haskellOnCallButton ctxPtr key 0
+      readIORef pressed >>= (@?= [("call", Decline), ("call", Answer)])
+      readIORef renders >>= (@?= 1)
+      freeAppContext ctxPtr
+
+  , testCase "A picked file reaches the app with its name and renders again" $ do
+      picked <- newIORef []
+      renders <- newIORef (0 :: Int)
+      actionState <- newActionState
+      ctxPtr <- newAppContext MobileApp
+        { maContext     = defaultMobileContext
+            { onFilePicked = \file -> modifyIORef' picked (++ [file]) }
+        , maView        = \_userState -> do
+            modifyIORef' renders (+ 1)
+            pure (Text TextConfig { tcLabel = "picked", tcFontConfig = Nothing, tcTextColor = Nothing })
+        , maActionState = actionState
+        }
+      BS.useAsCString "/cache/picked/1/caf_.txt" $ \path ->
+        BS.useAsCString (Text.encodeUtf8 "caf\233.txt") $ \name ->
+          haskellOnFilePicked ctxPtr path name 12
+      readIORef picked >>= (@?= [PickedFile "/cache/picked/1/caf_.txt" "caf\233.txt" 12])
+      readIORef renders >>= (@?= 1)
+      freeAppContext ctxPtr
+
+  , testCase "Back the app leaves alone goes to the platform" $ do
+      renders <- newIORef (0 :: Int)
+      actionState <- newActionState
+      ctxPtr <- newAppContext MobileApp
+        { maContext     = defaultMobileContext
+        , maView        = \_userState -> do
+            modifyIORef' renders (+ 1)
+            pure (Text TextConfig { tcLabel = "back", tcFontConfig = Nothing, tcTextColor = Nothing })
+        , maActionState = actionState
+        }
+      handled <- haskellOnBack ctxPtr
+      handled @?= 0
+      readIORef renders >>= (@?= 0)
+      freeAppContext ctxPtr
+
   , testCase "onError callback fires on exception" $ do
       ref <- newIORef (Nothing :: Maybe String)
       actionState <- newActionState
-      let ctx = MobileContext
+      let ctx = defaultMobileContext
             { onLifecycle = \_ -> pure ()
             , onError     = \exc -> writeIORef ref (Just (show exc))
             }
@@ -268,7 +360,7 @@ exceptionHandlerTests = testGroup "ExceptionHandler"
 
   , testCase "exception in onError does not crash" $ do
       actionState <- newActionState
-      let ctx = MobileContext
+      let ctx = defaultMobileContext
             { onLifecycle = \_ -> pure ()
             , onError     = \_ -> throwIO (userError "secondary-boom")
             }
@@ -288,7 +380,7 @@ exceptionHandlerTests = testGroup "ExceptionHandler"
   , testCase "exception in lifecycle handler is caught" $ do
       actionState <- newActionState
       let crashingApp = MobileApp
-            { maContext     = MobileContext
+            { maContext     = defaultMobileContext
                 { onLifecycle = \_ -> throwIO (userError "lifecycle-boom")
                 , onError     = \_ -> pure ()
                 }

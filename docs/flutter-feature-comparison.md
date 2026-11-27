@@ -12,7 +12,7 @@ A feature-by-feature comparison of Flutter's capabilities against what hatter cu
 | 2 | [Layout system](#2-layout-system) | Constraint-based, Flex, Stack, Grid, Sliver | Column, Row, ScrollView | Large |
 | 3 | [Text rendering](#3-text-rendering) | Rich text, spans, fonts, selectable | Plain text with font size and color | Medium |
 | 4 | [Input handling](#4-input-handling) | Text, gestures, focus, keyboard shortcuts | Button tap, text input (text/numeric) | Large |
-| 5 | [Scrolling and lists](#5-scrolling-and-lists) | ListView, GridView, Slivers, lazy loading | ScrollView (full rebuild, no lazy) | Large |
+| 5 | [Scrolling and lists](#5-scrolling-and-lists) | ListView, GridView, Slivers, lazy loading | ScrollView, LazyColumn (native views for visible items only, Android) | Large |
 | 6 | [Navigation and routing](#6-navigation-and-routing) | Navigator 2.0, named routes, deep links | None (manual view switching) | Large |
 | 7 | [Animation](#7-animation) | Implicit, explicit, hero, physics-based | None | Full gap |
 | 8 | [Theming and styling](#8-theming-and-styling) | Material 3, Cupertino, full theme system | Padding, text/bg color, font size, alignment | Large |
@@ -142,8 +142,9 @@ No flex weights, no alignment control on containers, no stacking/overlapping, no
 
 **hatter** supports:
 - `ScrollView [Widget]` -- vertically scrollable container with all children built eagerly
+- `LazyColumn [Widget]` -- vertically scrolling list that makes native views only for the items on screen and reuses them as it scrolls (Android only)
 
-**Gap**: No lazy list construction (all items built on every render), no grid scrolling, no horizontal scrolling, no scroll controllers, no pull-to-refresh, no reorderable lists, no slivers, no pagination.
+**Gap**: Every item is still built as a widget on every render, though only the visible ones get native views; no lazy list on iOS or watchOS, no grid scrolling, no horizontal scrolling, no scroll controllers, no pull-to-refresh, no reorderable lists, no slivers, no pagination.
 
 ---
 

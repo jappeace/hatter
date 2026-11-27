@@ -14,13 +14,13 @@ concurrency:
 jobs:
   nix-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 360
     steps:
     - name: Free disk space
       run: |
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
         df -h
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: cachix/install-nix-action@v31
       with:
         extra_nix_config: |
@@ -37,8 +37,42 @@ jobs:
           # macos-apk deliberately omits them (HTTP/1.1 stalled its downloads).
           http2 = false
           download-attempts = 10
+    # Our own cache: a fast machine fills it with the Linux builds, and every
+    # job adds what it builds, so each cold build happens once.
+    - uses: cachix/cachix-action@v17
+      with:
+        name: toktok
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - name: Build all nix targets (excludes emulator/simulator runners)
       run: nix-build nix/ci.nix -A all-builds
+    - name: Cancel workflow on failure
+      if: failure()
+      continue-on-error: true
+      run: gh run cancel ${{ github.run_id }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+  # The browser platform: builds the demo page with GHC's wasm toolchain and
+  # drives it in headless Chromium. Outside nix-build, as cabal and npm fetch
+  # packages as they build.
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - uses: actions/checkout@v7
+    - uses: cachix/install-nix-action@v31
+      with:
+        extra_nix_config: |
+          access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+          http2 = false
+          download-attempts = 10
+    - uses: cachix/cachix-action@v17
+      with:
+        name: toktok
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    - name: Run the browser test
+      # nix-shell takes its bash from <nixpkgs>, which the runner doesn't have.
+      run: nix-shell -I nixpkgs=nix/pkgs.nix browser/shell.nix --run test/browser/test-all.sh
     - name: Cancel workflow on failure
       if: failure()
       continue-on-error: true
@@ -67,9 +101,9 @@ jobs:
     # and the new uuid-types closure (PR #239) blew the 120-minute
     # budget at exactly 2h00m (run 29272233710). Once the cache
     # carries the closure this job returns to ~45 minutes.
-    timeout-minutes: 180
+    timeout-minutes: 360
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: cachix/install-nix-action@v31
       with:
         extra_nix_config: |
@@ -83,6 +117,9 @@ jobs:
           # apk.nix boots a qemu VM, so its build is __noChroot; relaxed permits
           # that while still sandboxing everything else.
           sandbox = relaxed
+    # No toktok cachix step here: cachix-action installs cachix from nixpkgs
+    # 26.11, which doesn't support Intel Macs. The VM reads the cache itself
+    # (nix/apk-darwin-vm.nix), and it does all the building.
     - name: Nix store cache
       uses: nix-community/cache-nix-action@v7
       with:
@@ -111,13 +148,13 @@ jobs:
     # externally, and the budget must fit a full cold build; run
     # 29340371964 timed out at exactly 45 minutes mid emulator test
     # on such a build. Warm runs take ~25 minutes.
-    timeout-minutes: 70
+    timeout-minutes: 360
     steps:
     - name: Free disk space
       run: |
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
         df -h
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: cachix/install-nix-action@v31
       with:
         extra_nix_config: |
@@ -126,6 +163,10 @@ jobs:
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
           http2 = false
           download-attempts = 10
+    - uses: cachix/cachix-action@v17
+      with:
+        name: toktok
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - name: Run combined emulator test (lifecycle + UI + buttons + scroll)
       run: nix-build nix/ci.nix -A emulator-all -o result-emulator-all && ./result-emulator-all/bin/test-all
     - name: Cancel workflow on failure
@@ -138,13 +179,13 @@ jobs:
   # armv7a (armeabi-v7a) — 32-bit ARM, used by Wear OS watches
   android-armv7a-emulator:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 360
     steps:
     - name: Free disk space
       run: |
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
         df -h
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: cachix/install-nix-action@v31
       with:
         extra_nix_config: |
@@ -153,6 +194,10 @@ jobs:
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
           http2 = false
           download-attempts = 10
+    - uses: cachix/cachix-action@v17
+      with:
+        name: toktok
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - name: Run armv7a emulator test
       run: nix-build nix/ci.nix -A emulator-armv7a -o result-emulator-armv7a && ./result-emulator-armv7a/bin/test-all
     - name: Cancel workflow on failure
@@ -161,6 +206,170 @@ jobs:
       run: gh run cancel ${{ github.run_id }}
       env:
         GH_TOKEN: ${{ github.token }}
+
+  # The Qt Quick desktop on macOS: the host with its tests, and hatter-desktop
+  # with its demo, from Nix as on Linux. While it's new, its failing
+  # doesn't cancel the other jobs.
+  desktop-macos:
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+    - uses: actions/checkout@v7
+    - uses: cachix/install-nix-action@v31
+      with:
+        extra_nix_config: |
+          access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+          extra-substituters = https://nix-cache.jappie.me
+          extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
+          http2 = false
+          download-attempts = 10
+    - uses: cachix/cachix-action@v17
+      with:
+        name: toktok
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    - run: nix-build nix/ci.nix -A desktop
+
+  # The Qt Quick desktop on Windows, without Nix: GHC from ghcup, and the
+  # host built with the toolchain of Qt's LLVM-MinGW build, a DLL the app's
+  # program only calls in C. While it's new, its failing doesn't cancel
+  # the other jobs.
+  desktop-windows:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+    - uses: actions/checkout@v7
+    - uses: haskell-actions/setup@v2
+      id: haskell
+      with:
+        ghc-version: '9.14.1'
+        cabal-version: latest
+    - uses: jurplel/install-qt-action@v4
+      with:
+        version: '6.10.2'
+        arch: win64_llvm_mingw
+        modules: qtmultimedia
+        tools: tools_llvm_mingw1706,qt.tools.win64_llvm_mingw1706 tools_ninja,qt.tools.ninja
+        cache: true
+    - name: Build the host and run its tests
+      run: |
+        export PATH="$IQTA_TOOLS/llvm-mingw1706_64/bin:$IQTA_TOOLS/Ninja:$PATH"
+        cmake -G Ninja -S desktop/host -B build/host -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_INSTALL_PREFIX="$PWD/build/prefix"
+        cmake --build build/host
+        ctest --test-dir build/host --output-on-failure
+        cmake --install build/host
+        # Where cabal's pkg-config finds it from here on.
+        echo "PKG_CONFIG_PATH=$(cygpath -m "$PWD/build/prefix/lib/pkgconfig")" >> "$GITHUB_ENV"
+    - uses: actions/cache@v6
+      with:
+        path: ${{ steps.haskell.outputs.cabal-store }}
+        key: desktop-windows-cabal-store-ghc-9.14.1
+    - name: Build hatter-desktop with its demo, and run Hatter's tests
+      run: |
+        choco install -y --no-progress pkgconfiglite
+        cd desktop
+        cabal update
+        cabal build --project-file=cabal.project.ghcup --enable-tests hatter-desktop-demo hatter:unit
+        cabal test --project-file=cabal.project.ghcup --enable-tests hatter:unit
+    # As someone would get it: the demo with the host, Qt and the toolchain's
+    # runtime beside it, started on the desktop with none of them on the
+    # PATH, and kept running a while.
+    - name: Package the demo and start it
+      run: |
+        mkdir -p build/demo
+        cp "$(cd desktop && cabal list-bin --project-file=cabal.project.ghcup hatter-desktop-demo)" build/prefix/bin/libhatter-qt-host.dll \
+          "$IQTA_TOOLS"/llvm-mingw1706_64/x86_64-w64-mingw32/bin/*.dll build/demo/
+        windeployqt --qmldir desktop/host/qml --no-translations build/demo/hatter-desktop-demo.exe
+        bare=/usr/bin:/c/Windows/system32:/c/Windows
+        status=0
+        PATH=$bare timeout 15 build/demo/hatter-desktop-demo.exe > build/demo.log 2>&1 || status=$?
+        cat build/demo.log
+        if [ "$status" != 124 ] || ! grep -q 'Lifecycle: Resume' build/demo.log; then
+          echo "What the folder lacks:"
+          PATH=$bare ldd build/demo/hatter-desktop-demo.exe build/demo/*.dll | grep -i 'not found' | sort -u
+          exit 1
+        fi
+    - uses: actions/upload-artifact@v7
+      with:
+        name: hatter-desktop-demo-windows
+        path: build/demo
+
+  # The Qt Quick desktop on macOS as someone would get it, without Nix: GHC
+  # from ghcup and Qt's own build, the demo in an app bundle with Qt in it,
+  # which its notifications need, signed for this Mac only, started, and
+  # kept. While it's new, its failing doesn't cancel the other jobs.
+  desktop-macos-app:
+    runs-on: macos-latest
+    timeout-minutes: 120
+    # For the oldest macOS Qt 6.10 runs on, not the runner's own.
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+    steps:
+    - uses: actions/checkout@v7
+    - uses: haskell-actions/setup@v2
+      id: haskell
+      with:
+        ghc-version: '9.14.1'
+        cabal-version: latest
+    - uses: jurplel/install-qt-action@v4
+      with:
+        version: '6.10.2'
+        arch: clang_64
+        modules: qtmultimedia
+        cache: true
+    - name: Build the host and run its tests
+      run: |
+        brew install ninja pkgconf
+        # Its Qt kept, for macdeployqt to find.
+        cmake -G Ninja -S desktop/host -B build/host -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DCMAKE_INSTALL_PREFIX="$PWD/build/prefix" -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON
+        cmake --build build/host
+        ctest --test-dir build/host --output-on-failure
+        cmake --install build/host
+        echo "PKG_CONFIG_PATH=$PWD/build/prefix/lib/pkgconfig" >> "$GITHUB_ENV"
+    - uses: actions/cache@v6
+      with:
+        path: ${{ steps.haskell.outputs.cabal-store }}
+        key: desktop-macos-app-cabal-store-ghc-9.14.1-macos-13
+    - name: Build the demo
+      run: |
+        cd desktop
+        cabal update
+        cabal build --project-file=cabal.project.ghcup hatter-desktop-demo
+    - name: Bundle the demo and start it
+      run: |
+        app=build/HatterDemo.app
+        mkdir -p $app/Contents/MacOS $app/Contents/Frameworks
+        cp desktop/demo/Info.plist $app/Contents/
+        cp "$(cd desktop && cabal list-bin --project-file=cabal.project.ghcup hatter-desktop-demo)" $app/Contents/MacOS/
+        cp build/prefix/lib/libhatter-qt-host.dylib $app/Contents/Frameworks/
+        install_name_tool -add_rpath @executable_path/../Frameworks $app/Contents/MacOS/hatter-desktop-demo
+        macdeployqt $app -qmldir=desktop/host/qml -always-overwrite
+        # Qt's database drivers, which nothing here uses, some needing
+        # libraries no Mac has.
+        rm -r $app/Contents/PlugIns/sqldrivers
+        codesign --force --deep --sign - $app
+        # What it logs goes to the system's log.
+        log stream --level info --style compact --predicate 'subsystem == "me.jappie.hatter"' > build/demo.log 2>&1 &
+        logging=$!
+        sleep 2
+        QT_FORCE_STDERR_LOGGING=1 $app/Contents/MacOS/hatter-desktop-demo > build/demo.out 2>&1 &
+        demo=$!
+        sleep 15
+        running=0
+        kill -0 $demo && running=1 && kill $demo
+        sleep 2
+        kill $logging
+        cat build/demo.out build/demo.log
+        [ "$running" = 1 ] && grep -q 'Lifecycle: Resume' build/demo.log
+        ditto -c -k --keepParent $app build/HatterDemo.zip
+    - uses: actions/upload-artifact@v7
+      with:
+        name: hatter-desktop-demo-macos
+        path: build/HatterDemo.zip
 
   ios:
     runs-on: macos-latest
@@ -171,9 +380,9 @@ jobs:
     # cutoff has eaten the simulator test after a successful build
     # twice (run 29281533228 on #239, run 29344658446 on #244) and
     # once mid-compile before that (9dcf105).
-    timeout-minutes: 70
+    timeout-minutes: 360
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: cachix/install-nix-action@v31
       with:
         extra_nix_config: |
@@ -182,6 +391,10 @@ jobs:
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
           http2 = false
           download-attempts = 10
+    - uses: cachix/cachix-action@v17
+      with:
+        name: toktok
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - run: nix-build nix/ci.nix -A simulator-all -A ios-lib
     - name: Run combined simulator test (lifecycle + UI + buttons + scroll)
       run: nix-build nix/ci.nix -A simulator-all -o result-simulator-all && ./result-simulator-all/bin/test-all-ios
@@ -196,9 +409,9 @@ jobs:
 
   watchos:
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 360
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: cachix/install-nix-action@v31
       with:
         extra_nix_config: |
@@ -207,6 +420,10 @@ jobs:
           extra-trusted-public-keys = nix-cache.jappie.me:WjkKcvFtHih2i+n7bdsrJ3HuGboJiU2hA2CZbf9I9oc=
           http2 = false
           download-attempts = 10
+    - uses: cachix/cachix-action@v17
+      with:
+        name: toktok
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - name: Build watchOS (with diagnostics)
       run: |
         # Background watchdog: every 60s log what nix is building + system load

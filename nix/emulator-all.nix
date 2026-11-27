@@ -147,9 +147,25 @@ let
     name = "hatter-dialog-apk";
   };
 
+  pictureAndroid = import ./android.nix {
+    inherit sources androidArch;
+    mainModule = ../test/PictureDemoMain.hs;
+  };
+  pictureApk = lib.mkApk {
+    sharedLibs = [{ lib = pictureAndroid; inherit abiDir; }];
+    androidSrc = ../android;
+    apkName = "hatter-picture.apk";
+    name = "hatter-picture-apk";
+  };
+  bigPicture = pkgs.runCommand "hatter-big.png" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+    python3 ${../test/android/big_picture.py} $out
+  '';
+
   locationAndroid = import ./android.nix {
     inherit sources androidArch;
     mainModule = ../test/LocationDemoMain.hs;
+    # Stopping from another OS thread, as apps do.
+    threadedRts = true;
   };
   locationApk = lib.mkApk {
     sharedLibs = [{ lib = locationAndroid; inherit abiDir; }];
@@ -312,6 +328,17 @@ let
     name = "hatter-stack-apk";
   };
 
+  stretchAndroid = import ./android.nix {
+    inherit sources androidArch;
+    mainModule = ../test/StretchDemoMain.hs;
+  };
+  stretchApk = lib.mkApk {
+    sharedLibs = [{ lib = stretchAndroid; inherit abiDir; }];
+    androidSrc = ../android;
+    apkName = "hatter-stretch.apk";
+    name = "hatter-stretch-apk";
+  };
+
   scrollviewSwitchAndroid = import ./android.nix {
     inherit sources androidArch;
     mainModule = ../test/ScrollViewSwitchDemoMain.hs;
@@ -442,6 +469,8 @@ IMAGE_APK="${imageApk}/hatter-image.apk"
 NODEPOOL_APK="${nodepoolApk}/hatter-nodepool.apk"
 BLE_APK="${bleApk}/hatter-ble.apk"
 DIALOG_APK="${dialogApk}/hatter-dialog.apk"
+PICTURE_APK="${pictureApk}/hatter-picture.apk"
+BIG_PICTURE="${bigPicture}"
 LOCATION_APK="${locationApk}/hatter-location.apk"
 WEBVIEW_APK="${webviewApk}/hatter-webview.apk"
 AUTH_SESSION_APK="${authSessionApk}/hatter-authsession.apk"
@@ -457,6 +486,7 @@ FILES_DIR_APK="${filesDirApk}/hatter-filesdir.apk"
 DEVICE_INFO_APK="${deviceInfoApk}/hatter-deviceinfo.apk"
 TEXTINPUT_RERENDER_APK="${textinputRerenderApk}/hatter-textinput-rerender.apk"
 STACK_APK="${stackApk}/hatter-stack.apk"
+STRETCH_APK="${stretchApk}/hatter-stretch.apk"
 SCROLLVIEW_SWITCH_APK="${scrollviewSwitchApk}/hatter-scrollview-switch.apk"
 STYLED_TYPE_CHANGE_APK="${styledTypeChangeApk}/hatter-styled-type-change.apk"
 HORIZONTAL_SCROLL_APK="${horizontalScrollApk}/hatter-horizontal-scroll.apk"
@@ -489,6 +519,7 @@ for so_path in \
     "${nodepoolAndroid}/lib/${abiDir}/libhatter.so" \
     "${bleAndroid}/lib/${abiDir}/libhatter.so" \
     "${dialogAndroid}/lib/${abiDir}/libhatter.so" \
+    "${pictureAndroid}/lib/${abiDir}/libhatter.so" \
     "${webviewAndroid}/lib/${abiDir}/libhatter.so" \
     "${authSessionAndroid}/lib/${abiDir}/libhatter.so" \
     "${platformSignInAndroid}/lib/${abiDir}/libhatter.so" \
@@ -503,6 +534,7 @@ for so_path in \
     "${deviceInfoAndroid}/lib/${abiDir}/libhatter.so" \
     "${textinputRerenderAndroid}/lib/${abiDir}/libhatter.so" \
     "${stackAndroid}/lib/${abiDir}/libhatter.so" \
+    "${stretchAndroid}/lib/${abiDir}/libhatter.so" \
     "${styledTypeChangeAndroid}/lib/${abiDir}/libhatter.so" \
     "${horizontalScrollAndroid}/lib/${abiDir}/libhatter.so" \
     "${redrawAndroid}/lib/${abiDir}/libhatter.so" \
@@ -730,7 +762,7 @@ done
 # ===========================================================================
 # PHASE 1 + PHASE 2 — Run test scripts
 # ===========================================================================
-export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK SCROLL_TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK PLATFORM_SIGN_IN_APK CAMERA_APK BOTTOM_SHEET_APK HTTP_APK NETWORK_STATUS_APK MAPVIEW_APK ANIMATION_APK KEYFRAME_APK FILES_DIR_APK DEVICE_INFO_APK TEXTINPUT_RERENDER_APK STACK_APK SCROLLVIEW_SWITCH_APK STYLED_TYPE_CHANGE_APK HORIZONTAL_SCROLL_APK ASYNC_OOM_APK REDRAW_APK CONFETTI_REPRO_APK PACKAGE ACTIVITY WORK_DIR BLE_SIM BUMBLE_PYTHON
+export ADB EMULATOR_SERIAL COUNTER_APK SCROLL_APK TEXTINPUT_APK SCROLL_TEXTINPUT_APK PERMISSION_APK SECURE_STORAGE_APK IMAGE_APK NODEPOOL_APK BLE_APK DIALOG_APK PICTURE_APK BIG_PICTURE LOCATION_APK WEBVIEW_APK AUTH_SESSION_APK PLATFORM_SIGN_IN_APK CAMERA_APK BOTTOM_SHEET_APK HTTP_APK NETWORK_STATUS_APK MAPVIEW_APK ANIMATION_APK KEYFRAME_APK FILES_DIR_APK DEVICE_INFO_APK TEXTINPUT_RERENDER_APK STACK_APK STRETCH_APK SCROLLVIEW_SWITCH_APK STYLED_TYPE_CHANGE_APK HORIZONTAL_SCROLL_APK ASYNC_OOM_APK REDRAW_APK CONFETTI_REPRO_APK PACKAGE ACTIVITY WORK_DIR BLE_SIM BUMBLE_PYTHON
 
 PHASE1_EXIT=0
 PHASE2_EXIT=0
@@ -823,6 +855,8 @@ echo "--- ble ---"
 run_with_retry "ble" bash "$TEST_SCRIPTS/android/ble.sh" || PHASE7_EXIT=1
 echo "--- dialog ---"
 run_with_retry "dialog" bash "$TEST_SCRIPTS/android/dialog.sh" || PHASE8_EXIT=1
+echo "--- picture ---"
+run_with_retry "picture" bash "$TEST_SCRIPTS/android/picture.sh" || PHASE8_EXIT=1
 echo "--- location ---"
 run_with_retry "location" bash "$TEST_SCRIPTS/android/location.sh" || PHASE7_EXIT=1
 echo "--- webview ---"
@@ -853,6 +887,8 @@ echo "--- textinput_rerender ---"
 run_with_retry "textinput_rerender" bash "$TEST_SCRIPTS/android/textinput_rerender.sh" || PHASE15_EXIT=1
 echo "--- stack ---"
 run_with_retry "stack" bash "$TEST_SCRIPTS/android/stack.sh" || PHASE16_EXIT=1
+echo "--- stretch ---"
+run_with_retry "stretch" bash "$TEST_SCRIPTS/android/stretch.sh" || PHASE16_EXIT=1
 echo "--- scrollview-switch ---"
 run_with_retry "scrollview-switch" bash "$TEST_SCRIPTS/android/scrollview-switch.sh" || PHASE17_EXIT=1
 echo "--- styled-type-change ---"
@@ -1211,9 +1247,9 @@ else
 fi
 
 if [ $PHASE16_OK -eq 1 ]; then
-    echo "PASS  Phase 16 — Stack demo app"
+    echo "PASS  Phase 16 — Stack and stretch demo apps"
 else
-    echo "FAIL  Phase 16 — Stack demo app"
+    echo "FAIL  Phase 16 — Stack and stretch demo apps"
     FINAL_EXIT=1
 fi
 

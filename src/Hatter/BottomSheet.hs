@@ -9,8 +9,8 @@
 -- Bottom sheets are fire-and-forget: the platform manages the sheet lifecycle
 -- independently of the Haskell UI rendering loop.
 --
--- The callback registry follows the same sequential 'IORef' 'Int32'
--- pattern used by "Hatter.Dialog" and "Hatter.Permission".
+-- Results come back by request number, as for the other platform
+-- requests ("Hatter.Requests").
 module Hatter.BottomSheet
   ( BottomSheetAction(..)
   , BottomSheetConfig(..)
@@ -22,18 +22,17 @@ module Hatter.BottomSheet
   )
 where
 
-import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
+import Data.IORef (IORef, newIORef, readIORef)
 import Data.Int (Int32)
-import Data.IntMap.Strict (IntMap)
-import Data.IntMap.Strict qualified as IntMap
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Foreign.C.String (CString, withCString)
+import Foreign.C.String (CString)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
+import Hatter.Marshal (withText)
+import Hatter.Requests (Requests, answered, newRequests, request)
 import System.IO (hPutStrLn, stderr)
 import Unwitch.Convert.CInt qualified as CInt
-import Unwitch.Convert.Int32 qualified as Int32
 
 -- | Result of a bottom sheet interaction.
 data BottomSheetAction
@@ -44,15 +43,13 @@ data BottomSheetAction
 -- | Configuration for a bottom sheet.
 data BottomSheetConfig = BottomSheetConfig
   { bscTitle :: Text       -- ^ Sheet title
-  , bscItems :: [Text]     -- ^ Selectable item labels
+  , bscItems :: [Text]     -- ^ Selectable item labels, each on one line
   }
 
--- | Mutable state for the bottom sheet callback registry.
+-- | What waits for the platform's bottom sheet requests.
 data BottomSheetState = BottomSheetState
-  { bssCallbacks  :: IORef (IntMap (BottomSheetAction -> IO ()))
-    -- ^ Map from requestId -> bottom sheet result callback
-  , bssNextId     :: IORef Int32
-    -- ^ Next available request ID
+  { bssRequests   :: Requests (BottomSheetAction -> IO ())
+    -- ^ What waits for each request's result.
   , bssContextPtr :: IORef (Ptr ())
     -- ^ Opaque context pointer passed to the C bridge.
     -- Set by 'AppContext.newAppContext' after the 'StablePtr' is created.
@@ -63,12 +60,10 @@ data BottomSheetState = BottomSheetState
 -- 'bssContextPtr' before calling 'showBottomSheet'.
 newBottomSheetState :: IO BottomSheetState
 newBottomSheetState = do
-  callbacks  <- newIORef IntMap.empty
-  nextId     <- newIORef 0
+  requests   <- newRequests
   contextPtr <- newIORef nullPtr
   pure BottomSheetState
-    { bssCallbacks  = callbacks
-    , bssNextId     = nextId
+    { bssRequests   = requests
     , bssContextPtr = contextPtr
     }
 
@@ -87,14 +82,13 @@ bottomSheetActionFromInt code
 -- desktop via the stub that auto-selects the first item).
 showBottomSheet :: BottomSheetState -> BottomSheetConfig -> (BottomSheetAction -> IO ()) -> IO ()
 showBottomSheet bottomSheetState config callback = do
-  requestId <- readIORef (bssNextId bottomSheetState)
-  modifyIORef' (bssCallbacks bottomSheetState) (IntMap.insert (Int32.toInt requestId) callback)
-  writeIORef (bssNextId bottomSheetState) (requestId + 1)
+  requestId <- request (bssRequests bottomSheetState) callback
   ctx <- readIORef (bssContextPtr bottomSheetState)
-  let joinedItems = Text.unpack (Text.intercalate "\n" (bscItems config))
-  withCString (Text.unpack (bscTitle config)) $ \cTitle ->
-    withCString joinedItems $ \cItems ->
-      c_bottomSheetShow ctx (Int32.toCInt requestId) cTitle cItems
+  -- The platforms split the items at newlines.
+  let joinedItems = Text.intercalate "\n" (map (Text.replace "\n" " ") (bscItems config))
+  withText (bscTitle config) $ \cTitle ->
+    withText joinedItems $ \cItems ->
+      c_bottomSheetShow ctx requestId cTitle cItems
 
 -- | Dispatch a bottom sheet result from the platform back to the
 -- registered Haskell callback.  Removes the callback after firing.
@@ -105,14 +99,8 @@ dispatchBottomSheetResult bottomSheetState requestId actionCode =
     Nothing -> hPutStrLn stderr $
       "dispatchBottomSheetResult: unknown action code " ++ show actionCode
     Just action -> do
-      let reqKey = CInt.toInt requestId
-      callbacks <- readIORef (bssCallbacks bottomSheetState)
-      case IntMap.lookup reqKey callbacks of
-        Just callback -> do
-          modifyIORef' (bssCallbacks bottomSheetState) (IntMap.delete reqKey)
-          callback action
-        Nothing -> hPutStrLn stderr $
-          "dispatchBottomSheetResult: unknown request ID " ++ show requestId
+      waiting <- answered "dispatchBottomSheetResult" (bssRequests bottomSheetState) requestId
+      mapM_ ($ action) waiting
 
 -- | FFI import: show a bottom sheet via the C bridge.
 foreign import ccall "bottom_sheet_show"

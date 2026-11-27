@@ -17,8 +17,9 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Foreign.C.String (CString, peekCString)
+import Foreign.C.String (CString)
 import Hatter.Lifecycle (platformLog)
+import Hatter.Marshal (peekText)
 
 -- | ISO 639-1 language codes as a sum type.
 data Language
@@ -120,8 +121,7 @@ foreign import ccall "getSystemLocale" c_getSystemLocale :: IO CString
 -- * Desktop: @LANG@ environment variable, defaults to @\"en\"@
 getSystemLocale :: IO Text
 getSystemLocale = do
-  cstr <- c_getSystemLocale
-  Text.pack <$> peekCString cstr
+  peekText =<< c_getSystemLocale
 
 -- | Render a 'Language' to its ISO 639-1 code.
 languageToCode :: Language -> Text

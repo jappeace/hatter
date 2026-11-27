@@ -9,7 +9,7 @@ let
     ${pkgs.gawk}/bin/awk '
       /^## Writing your app/ { found_section=1 }
       found_section && /^```haskell/ { capture=1; next }
-      capture && /^```/ { capture=0 }
+      capture && /^```/ { exit }
       capture { print }
     ' ${readme} > $out
 

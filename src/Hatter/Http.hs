@@ -14,8 +14,8 @@
 --   * watchOS: @NSURLSession.dataTask@
 --   * Desktop: stub returns 200 OK with empty body synchronously
 --
--- The callback registry follows the same sequential 'IORef' 'Int32'
--- pattern used by "Hatter.Dialog" and "Hatter.AuthSession".
+-- Results come back by request number, as for the other platform
+-- requests ("Hatter.Requests").
 module Hatter.Http
   ( HttpMethod(..)
   , HttpRequest(..)
@@ -33,19 +33,17 @@ where
 
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
-import Data.Int (Int32)
-import Data.IntMap.Strict (IntMap)
-import Data.IntMap.Strict qualified as IntMap
+import Data.IORef (IORef, newIORef, readIORef)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Foreign.C.String (CString, withCString)
+import Foreign.C.String (CString)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
-import System.IO (hPutStrLn, stderr)
+import Hatter.Marshal (withText)
+import Hatter.Requests (Requests, answered, newRequests, request)
 import Unwitch.Convert.CInt qualified as CInt
 import Unwitch.Convert.Int qualified as Int
-import Unwitch.Convert.Int32 qualified as Int32
 
 -- | HTTP request method.
 data HttpMethod
@@ -76,12 +74,10 @@ data HttpError
   | HttpTimeout
   deriving (Show, Eq)
 
--- | Mutable state for the HTTP callback registry.
+-- | What waits for the platform's HTTP requests.
 data HttpState = HttpState
-  { hsCallbacks  :: IORef (IntMap (Either HttpError HttpResponse -> IO ()))
-    -- ^ Map from requestId -> HTTP result callback
-  , hsNextId     :: IORef Int32
-    -- ^ Next available request ID
+  { hsRequests   :: Requests (Either HttpError HttpResponse -> IO ())
+    -- ^ What waits for each request's result.
   , hsContextPtr :: IORef (Ptr ())
     -- ^ Opaque context pointer passed to the C bridge.
     -- Set by 'AppContext.newAppContext' after the 'StablePtr' is created.
@@ -92,12 +88,10 @@ data HttpState = HttpState
 -- 'hsContextPtr' before calling 'performRequest'.
 newHttpState :: IO HttpState
 newHttpState = do
-  callbacks  <- newIORef IntMap.empty
-  nextId     <- newIORef 0
+  requests   <- newRequests
   contextPtr <- newIORef nullPtr
   pure HttpState
-    { hsCallbacks  = callbacks
-    , hsNextId     = nextId
+    { hsRequests   = requests
     , hsContextPtr = contextPtr
     }
 
@@ -129,41 +123,33 @@ parseHeaders headerText =
 -- Registers @callback@ and calls the C bridge. The callback fires
 -- when the request completes (or synchronously on desktop via the stub).
 performRequest :: HttpState -> HttpRequest -> (Either HttpError HttpResponse -> IO ()) -> IO ()
-performRequest httpState request callback = do
-  requestId <- readIORef (hsNextId httpState)
-  modifyIORef' (hsCallbacks httpState) (IntMap.insert (Int32.toInt requestId) callback)
-  writeIORef (hsNextId httpState) (requestId + 1)
+performRequest httpState httpRequest callback = do
+  requestId <- request (hsRequests httpState) callback
   ctx <- readIORef (hsContextPtr httpState)
-  let methodInt = httpMethodToInt (hrMethod request)
-      headerStr = Text.unpack (serializeHeaders (hrHeaders request))
-  withCString (Text.unpack (hrUrl request)) $ \cUrl ->
-    withCString headerStr $ \cHeaders ->
-      BS.useAsCStringLen (hrBody request) $ \(cBody, bodyLen) ->
-        c_httpRequest ctx (Int32.toCInt requestId) methodInt
-                      cUrl cHeaders cBody (maybe 0 id (Int.toCInt bodyLen))
+  let methodInt = httpMethodToInt (hrMethod httpRequest)
+  withText (hrUrl httpRequest) $ \cUrl ->
+    withText (serializeHeaders (hrHeaders httpRequest)) $ \cHeaders ->
+      BS.useAsCStringLen (hrBody httpRequest) $ \(cBody, bodyLen) ->
+        c_httpRequest ctx requestId methodInt
+                      cUrl cHeaders cBody (fromMaybe 0 (Int.toCInt bodyLen))
 
 -- | Dispatch an HTTP result from the platform back to the registered
 -- Haskell callback. Removes the callback after firing.
 -- Unknown request IDs or result codes are silently logged to stderr.
 dispatchHttpResult :: HttpState -> CInt -> CInt -> CInt -> Maybe Text -> ByteString -> IO ()
 dispatchHttpResult httpState requestId resultCode httpStatus maybeHeaders responseBody = do
-  let reqKey = CInt.toInt requestId
-  callbacks <- readIORef (hsCallbacks httpState)
-  case IntMap.lookup reqKey callbacks of
-    Just callback -> do
-      modifyIORef' (hsCallbacks httpState) (IntMap.delete reqKey)
-      let result = case resultCode of
-            0 -> Right HttpResponse
-              { hrStatusCode  = CInt.toInt httpStatus
-              , hrRespHeaders = maybe [] parseHeaders maybeHeaders
-              , hrRespBody    = responseBody
-              }
-            1 -> Left (HttpNetworkError (maybe "" id maybeHeaders))
-            2 -> Left HttpTimeout
-            _ -> Left (HttpNetworkError ("unknown result code: " <> Text.pack (show resultCode)))
-      callback result
-    Nothing -> hPutStrLn stderr $
-      "dispatchHttpResult: unknown request ID " ++ show requestId
+  waiting <- answered "dispatchHttpResult" (hsRequests httpState) requestId
+  mapM_ ($ result) waiting
+  where
+    result = case resultCode of
+      0 -> Right HttpResponse
+        { hrStatusCode  = CInt.toInt httpStatus
+        , hrRespHeaders = maybe [] parseHeaders maybeHeaders
+        , hrRespBody    = responseBody
+        }
+      1 -> Left (HttpNetworkError (fromMaybe "" maybeHeaders))
+      2 -> Left HttpTimeout
+      _ -> Left (HttpNetworkError ("unknown result code: " <> Text.pack (show resultCode)))
 
 -- | FFI import: send an HTTP request via the C bridge.
 foreign import ccall "http_request"

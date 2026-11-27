@@ -13,9 +13,8 @@
 --   * watchOS: @ASWebAuthenticationSession@
 --   * Desktop: stub returns a fake redirect URL synchronously
 --
--- The callback registry follows the same sequential 'IORef' 'Int32'
--- pattern used by "Hatter.Dialog".
--- Single callback map (only one operation type).
+-- Results come back by request number, as for the other platform
+-- requests ("Hatter.Requests").
 module Hatter.AuthSession
   ( AuthSessionResult(..)
   , AuthSessionState(..)
@@ -26,18 +25,14 @@ module Hatter.AuthSession
   )
 where
 
-import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
-import Data.Int (Int32)
-import Data.IntMap.Strict (IntMap)
-import Data.IntMap.Strict qualified as IntMap
+import Data.IORef (IORef, newIORef, readIORef)
 import Data.Text (Text)
-import Data.Text qualified as Text
-import Foreign.C.String (CString, withCString)
+import Foreign.C.String (CString)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
+import Hatter.Marshal (withText)
+import Hatter.Requests (Requests, answered, newRequests, request)
 import System.IO (hPutStrLn, stderr)
-import Unwitch.Convert.CInt qualified as CInt
-import Unwitch.Convert.Int32 qualified as Int32
 
 -- | Result of an authentication session.
 data AuthSessionResult
@@ -46,12 +41,10 @@ data AuthSessionResult
   | AuthSessionError Text     -- ^ Platform-specific error message
   deriving (Show, Eq)
 
--- | Mutable state for the auth session callback registry.
+-- | What waits for the platform's auth session requests.
 data AuthSessionState = AuthSessionState
-  { asCallbacks  :: IORef (IntMap (AuthSessionResult -> IO ()))
-    -- ^ Map from requestId -> auth session result callback
-  , asNextId     :: IORef Int32
-    -- ^ Next available request ID
+  { asRequests   :: Requests (AuthSessionResult -> IO ())
+    -- ^ What waits for each request's result.
   , asContextPtr :: IORef (Ptr ())
     -- ^ Opaque context pointer passed to the C bridge.
     -- Set by 'AppContext.newAppContext' after the 'StablePtr' is created.
@@ -62,12 +55,10 @@ data AuthSessionState = AuthSessionState
 -- 'asContextPtr' before calling 'startAuthSession'.
 newAuthSessionState :: IO AuthSessionState
 newAuthSessionState = do
-  callbacks  <- newIORef IntMap.empty
-  nextId     <- newIORef 0
+  requests   <- newRequests
   contextPtr <- newIORef nullPtr
   pure AuthSessionState
-    { asCallbacks  = callbacks
-    , asNextId     = nextId
+    { asRequests   = requests
     , asContextPtr = contextPtr
     }
 
@@ -89,13 +80,11 @@ authSessionResultFromInt _ _                  _          = Nothing
 -- the stub that returns a fake redirect URL).
 startAuthSession :: AuthSessionState -> Text -> Text -> (AuthSessionResult -> IO ()) -> IO ()
 startAuthSession authSessionState authUrl callbackScheme callback = do
-  requestId <- readIORef (asNextId authSessionState)
-  modifyIORef' (asCallbacks authSessionState) (IntMap.insert (Int32.toInt requestId) callback)
-  writeIORef (asNextId authSessionState) (requestId + 1)
+  requestId <- request (asRequests authSessionState) callback
   ctx <- readIORef (asContextPtr authSessionState)
-  withCString (Text.unpack authUrl) $ \cUrl ->
-    withCString (Text.unpack callbackScheme) $ \cScheme ->
-      c_authSessionStart ctx (Int32.toCInt requestId) cUrl cScheme
+  withText authUrl $ \cUrl ->
+    withText callbackScheme $ \cScheme ->
+      c_authSessionStart ctx requestId cUrl cScheme
 
 -- | Dispatch an auth session result from the platform back to the
 -- registered Haskell callback. Removes the callback after firing.
@@ -106,14 +95,8 @@ dispatchAuthSessionResult authSessionState requestId statusCode maybeRedirectUrl
     Nothing -> hPutStrLn stderr $
       "dispatchAuthSessionResult: unknown status code " ++ show statusCode
     Just result -> do
-      let reqKey = CInt.toInt requestId
-      callbacks <- readIORef (asCallbacks authSessionState)
-      case IntMap.lookup reqKey callbacks of
-        Just callback -> do
-          modifyIORef' (asCallbacks authSessionState) (IntMap.delete reqKey)
-          callback result
-        Nothing -> hPutStrLn stderr $
-          "dispatchAuthSessionResult: unknown request ID " ++ show requestId
+      waiting <- answered "dispatchAuthSessionResult" (asRequests authSessionState) requestId
+      mapM_ ($ result) waiting
 
 -- | FFI import: start an auth session via the C bridge.
 foreign import ccall "auth_session_start"

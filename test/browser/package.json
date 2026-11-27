@@ -1,0 +1,8 @@
+{
+  "name": "hatter-browser-test",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "puppeteer-core": "25.16.0"
+  }
+}

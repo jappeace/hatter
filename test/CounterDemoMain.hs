@@ -10,7 +10,7 @@ import Data.Text qualified as Text
 import Foreign.Ptr (Ptr)
 import Hatter (startMobileApp, platformLog, loggingMobileContext, MobileApp(..), newActionState, runActionM, createAction, Action)
 import Hatter.AppContext (AppContext)
-import Hatter.Widget (ButtonConfig(..), Color(..), FontConfig(..), TextAlignment(..), TextConfig(..), Widget(..), WidgetStyle(..), column, defaultStyle, row)
+import Hatter.Widget (ButtonConfig(..), Color(..), FontConfig(..), fontOfSize, TextAlignment(..), TextConfig(..), Widget(..), WidgetStyle(..), column, defaultStyle, row)
 
 main :: IO (Ptr AppContext)
 main = do
@@ -35,7 +35,7 @@ counterView counterState onIncrement onDecrement = do
     [ Styled ((defaultStyle { wsPadding = Just 16.0, wsTextAlign = Just AlignCenter, wsBackgroundColor = Just (Color 0 255 0 255) }))
         (Text TextConfig
           { tcLabel      = "Counter: " <> Text.pack (show n)
-          , tcFontConfig = Just (FontConfig 24.0)
+          , tcFontConfig = Just (fontOfSize 24.0)
           , tcTextColor  = Just (Color 255 0 0 255)
           })
     , row [ Button ButtonConfig

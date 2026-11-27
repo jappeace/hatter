@@ -56,6 +56,30 @@ else
     echo "PASS: No crash during location test"
 fi
 
+# Stop from an OS thread other than the UI's, as an app's timeout does: no
+# crash (CheckJNI aborts on a JNIEnv used from the wrong thread), and no fix
+# after.
+"$ADB" -s "$EMULATOR_SERIAL" logcat -c
+tap_button "Start Location" || { echo "FAIL: could not tap Start Location"; EXIT_CODE=1; }
+sleep 1
+tap_button "Stop Location From Thread" || { echo "FAIL: could not tap Stop Location From Thread"; EXIT_CODE=1; }
+wait_for_logcat "Location updates stopped from a thread" 15 || true
+sleep 2
+"$ADB" -s "$EMULATOR_SERIAL" emu geo fix 6.0 54.0 0.0 2>/dev/null || true
+sleep 3
+LOGCAT_FILE3="$WORK_DIR/location_logcat3.txt"
+"$ADB" -s "$EMULATOR_SERIAL" logcat -d '*:I' > "$LOGCAT_FILE3" 2>&1 || true
+assert_logcat "$LOGCAT_FILE3" "Location updates stopped from a thread" "Stopped from another thread"
+if grep -q "Location:.*54.0" "$LOGCAT_FILE3"; then
+    echo "FAIL: Location update received after stopping from another thread"
+    EXIT_CODE=1
+fi
+if grep -qE "$FATAL_PATTERNS|JNI DETECTED ERROR" "$LOGCAT_FILE3"; then
+    echo "FAIL: Crash stopping location updates from another thread"
+    grep -E "$FATAL_PATTERNS|JNI DETECTED ERROR" "$LOGCAT_FILE3" | tail -10
+    EXIT_CODE=1
+fi
+
 "$ADB" -s "$EMULATOR_SERIAL" uninstall "$PACKAGE" 2>/dev/null || true
 
 exit $EXIT_CODE

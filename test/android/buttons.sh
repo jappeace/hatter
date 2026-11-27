@@ -16,7 +16,7 @@ LOGCAT_STREAM_FILE="$WORK_DIR/buttons_log.txt"
 LOGCAT_STREAM_PID=$!
 
 # Wait for initial render
-wait_for_logcat "setStrProp.*Counter: 0" 120
+wait_for_logcat "setRoot" 120
 WAIT_RC=$?
 if [ $WAIT_RC -eq 2 ]; then
     dump_logcat "buttons"
@@ -25,49 +25,22 @@ if [ $WAIT_RC -eq 2 ]; then
     exit 1
 fi
 
-assert_logcat "$LOGCAT_STREAM_FILE" "setStrProp.*Counter: 0" "Counter: 0 at start"
+wait_for_ui_text "Counter: 0" 30 || true
+assert_ui_text "Counter: 0" "Counter: 0 at start"
 
-# Tap 1: + → Counter: 1
-echo "=== Tap 1: + (expect Counter: 1) ==="
-tap_button "+" || "$ADB" -s "$EMULATOR_SERIAL" shell input tap 300 600
-wait_for_logcat "Counter: 1" 15 || true
-assert_logcat "$LOGCAT_STREAM_FILE" "setStrProp.*Counter: 1" "Counter: 1 after tap 1"
+# tap BUTTON EXPECTED LABEL FALLBACK_X
+tap() {
+    echo "=== $3: $1 (expect $2) ==="
+    tap_button "$1" || "$ADB" -s "$EMULATOR_SERIAL" shell input tap "$4" 600
+    wait_for_ui_text "$2" 15 || true
+    assert_ui_text "$2" "$2 after $3"
+}
 
-# Tap 2: + → Counter: 2
-echo "=== Tap 2: + (expect Counter: 2) ==="
-tap_button "+" || "$ADB" -s "$EMULATOR_SERIAL" shell input tap 300 600
-wait_for_logcat "Counter: 2" 15 || true
-assert_logcat "$LOGCAT_STREAM_FILE" "setStrProp.*Counter: 2" "Counter: 2 after tap 2"
-
-# Tap 3: - → Counter: 1 again (expect ≥2 occurrences)
-echo "=== Tap 3: - (expect Counter: 1 again) ==="
-tap_button "-" || "$ADB" -s "$EMULATOR_SERIAL" shell input tap 700 600
-wait_for_logcat "Counter: 1" 15 || true
-count_1=$(grep -c 'setStrProp.*Counter: 1' "$LOGCAT_STREAM_FILE" 2>/dev/null || echo "0")
-if [ "$count_1" -ge 2 ]; then
-    echo "PASS: Counter: 1 seen $count_1 times (tap 3)"
-else
-    echo "FAIL: Counter: 1 seen $count_1 times, expected >=2 (tap 3)"
-    EXIT_CODE=1
-fi
-
-# Tap 4: - → Counter: 0 again (expect ≥2 occurrences)
-echo "=== Tap 4: - (expect Counter: 0 again) ==="
-tap_button "-" || "$ADB" -s "$EMULATOR_SERIAL" shell input tap 700 600
-wait_for_logcat "Counter: 0" 15 || true
-count_0=$(grep -c 'setStrProp.*Counter: 0' "$LOGCAT_STREAM_FILE" 2>/dev/null || echo "0")
-if [ "$count_0" -ge 2 ]; then
-    echo "PASS: Counter: 0 seen $count_0 times (tap 4)"
-else
-    echo "FAIL: Counter: 0 seen $count_0 times, expected >=2 (tap 4)"
-    EXIT_CODE=1
-fi
-
-# Tap 5: - → Counter: -1
-echo "=== Tap 5: - (expect Counter: -1) ==="
-tap_button "-" || "$ADB" -s "$EMULATOR_SERIAL" shell input tap 700 600
-wait_for_logcat "Counter: -1" 15 || true
-assert_logcat "$LOGCAT_STREAM_FILE" "setStrProp.*Counter: -1" "Counter: -1 after tap 5"
+tap "+" "Counter: 1" "tap 1" 300
+tap "+" "Counter: 2" "tap 2" 300
+tap "-" "Counter: 1" "tap 3" 700
+tap "-" "Counter: 0" "tap 4" 700
+tap "-" "Counter: -1" "tap 5" 700
 
 kill "$LOGCAT_STREAM_PID" 2>/dev/null || true
 "$ADB" -s "$EMULATOR_SERIAL" uninstall "$PACKAGE" 2>/dev/null || true

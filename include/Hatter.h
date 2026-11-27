@@ -106,6 +106,12 @@ void setDeviceScreenHeight(const char *value);
 /* Get the screen height string, or "0" on desktop. */
 const char* getDeviceScreenHeight(void);
 
+/* Set what draws the app's window, e.g. "OpenGL: <renderer>" or "software". */
+void setDeviceGraphics(const char *value);
+
+/* Get what draws the app's window, or "" where the platform doesn't say. */
+const char* getDeviceGraphics(void);
+
 /* Log all device info fields via platformLog.
  * Called from platform bridges after setDevice*() calls. */
 void haskellLogDeviceInfo(void);

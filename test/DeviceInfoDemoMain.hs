@@ -37,6 +37,7 @@ main = do
   platformLog ("DeviceInfo screenDensity: " <> Text.pack (show (diScreenDensity info)))
   platformLog ("DeviceInfo screenWidth: " <> Text.pack (show (diScreenWidth info)))
   platformLog ("DeviceInfo screenHeight: " <> Text.pack (show (diScreenHeight info)))
+  platformLog ("DeviceInfo graphics: " <> diGraphics info)
 
   pure ctxPtr
 
@@ -50,6 +51,7 @@ deviceInfoDemoView = do
     , infoRow "Density" (Text.pack (show (diScreenDensity info)))
     , infoRow "Width" (Text.pack (show (diScreenWidth info)))
     , infoRow "Height" (Text.pack (show (diScreenHeight info)))
+    , infoRow "Graphics" (diGraphics info)
     ]
 
 -- | A text widget showing a label-value pair.

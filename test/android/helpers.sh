@@ -115,6 +115,15 @@ wait_for_logcat() {
     return 1
 }
 
+# turn_screen ROTATION
+# Turns the screen: 0 upright, 1 sideways, with auto-rotate off. Through
+# the settings, as every Android version has them (cmd window's
+# user-rotation came with Android 12).
+turn_screen() {
+    "$ADB" -s "$EMULATOR_SERIAL" shell settings put system accelerometer_rotation 0
+    "$ADB" -s "$EMULATOR_SERIAL" shell settings put system user_rotation "$1"
+}
+
 # tap_button BUTTON_TEXT
 # Uses uiautomator dump to find a button by text, extract its bounds,
 # compute the centre, and issue an adb input tap.
@@ -183,6 +192,27 @@ assert_logcat() {
         # shellcheck disable=SC2034  # set for caller
         EXIT_CODE=1
     fi
+}
+
+# wait_for_ui_text TEXT TIMEOUT_SECONDS
+# Polls the uiautomator view hierarchy until an on-screen node shows TEXT.
+# Returns 0 once it does, 1 on timeout.
+wait_for_ui_text() {
+    local text="$1"
+    local timeout_seconds="$2"
+    local dump_file="$WORK_DIR/ui_wait.xml"
+    local elapsed=0
+    while [ $elapsed -lt "$timeout_seconds" ]; do
+        if "$ADB" -s "$EMULATOR_SERIAL" shell uiautomator dump /data/local/tmp/ui.xml 2>&1 | grep -q "dumped" \
+            && "$ADB" -s "$EMULATOR_SERIAL" pull /data/local/tmp/ui.xml "$dump_file" >/dev/null 2>&1 \
+            && grep -qF "text=\"$text\"" "$dump_file"; then
+            return 0
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+    echo "WARNING: no on-screen node with text=\"$text\" after ${timeout_seconds}s"
+    return 1
 }
 
 # assert_ui_text TEXT LABEL

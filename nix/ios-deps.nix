@@ -53,7 +53,7 @@ let
       });
     } else {};
 
-  nativeHaskellPkgs = pkgs.haskellPackages.override {
+  nativeHaskellPkgs = (import ./ghc.nix pkgs).override {
     overrides = pkgs.lib.composeManyExtensions [
       unwitchOverride
       hatterOverride

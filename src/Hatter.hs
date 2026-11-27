@@ -4,9 +4,10 @@
 -- Module      : Hatter
 -- Description : Cross-platform mobile UI framework for Haskell
 --
--- Hatter lets you build native mobile apps in Haskell.  Define your UI
--- as a pure 'Widget' tree, wire up callbacks with 'Action' handles, and
--- the framework takes care of rendering on Android, iOS, and watchOS.
+-- Hatter lets you build native apps in Haskell.  Define your UI as a
+-- pure 'Widget' tree, wire up callbacks with 'Action' handles, and the
+-- framework takes care of rendering on Android, iOS, watchOS, desktops
+-- (Qt), terminals and browsers.
 --
 -- = Getting started
 --
@@ -53,11 +54,19 @@ module Hatter
   , startMobileApp
     -- * Widget
   , Widget(..)
-  , WidgetStyle(..)
+  , WidgetStyle(wsPadding, wsPaddingY, wsTextAlign, wsBackgroundColor, wsTranslateX, wsTranslateY, wsWidth, wsTouchPassthrough, wsHeight, wsWeight, wsAlignSelf, wsMargin, wsMaxWidth, wsMaxLines, wsCorners, wsKeepAtEnd)
+  , SelfAlignment(..)
   , defaultStyle
   , ButtonConfig(..)
+  , SwitchConfig(..)
   , TextConfig(..)
-  , FontConfig(..)
+  , FontConfig(fontSize, fontWeight, fontFamily, fontSlant)
+  , FontWeight(..)
+  , FontFamily(..)
+  , FontSlant(..)
+  , Corners(..)
+  , rounded
+  , fontOfSize
   , TextInputConfig(..)
   , InputType(..)
   , LayoutSettings(..)
@@ -75,6 +84,7 @@ module Hatter
   , colorToHex
     -- ** Smart constructors
   , button
+  , switch
   , column
   , item
   , keyedItem
@@ -85,10 +95,13 @@ module Hatter
     -- * Actions
   , Action(..)
   , OnChange(..)
+  , OnScroll(..)
+  , ListPosition(..)
   , ActionState
   , ActionM
   , createAction
   , createOnChange
+  , createOnScroll
   , newActionState
   , runActionM
     -- * Animation
@@ -105,10 +118,23 @@ module Hatter
   , lerpStyle
     -- * Lifecycle
   , LifecycleEvent(..)
-  , MobileContext(..)
+  , MobileContext(onLifecycle, onError, onBack, onNotificationOpened, onCallButton, onFilePicked, onPicturePicked, onRendered)
+  , CallButton(..)
   , defaultMobileContext
   , loggingMobileContext
   , platformLog
+  , isDarkMode
+  , is24HourClock
+  , copyToClipboard
+  , PickedFile(..)
+  , pickFile
+  , pickFiles
+  , pickPicture
+  , saveFile
+  , imageSize
+  , capturePicture
+  , openFile
+  , openUri
     -- * Error handling
   , errorWidget
     -- * Internal
@@ -116,29 +142,48 @@ module Hatter
     -- should not need them.  The remaining @foreign export ccall@
     -- functions (permission, BLE, camera, etc.) are visible to the
     -- C linker but not re-exported as Haskell API.
+  , currentWidget
   , haskellRenderUI
   , haskellOnUIEvent
+  , haskellOnUITextChange
   , haskellOnLifecycle
+  , haskellOnBack
+  , haskellOnNotificationOpened
+  , haskellOnCallButton
+  , haskellOnLazyBind
+  , haskellLazyItemKey
+  , haskellOnUIScroll
+  , haskellOnFilePicked
+  , haskellOnPicturePicked
+  , haskellOnDialogResult
+  , haskellOnBottomSheetResult
   )
 where
 
 import Control.Exception (SomeException, catch)
+import Control.Monad (when)
 import Data.IORef (readIORef, writeIORef)
 import Data.Text (Text, pack)
-import Foreign.C.String (CString, peekCString)
+import Data.Int (Int64)
+import Foreign.C.String (CString)
 import Foreign.C.Types (CDouble(..), CInt(..))
 import Foreign.Ptr (Ptr, castPtr, nullPtr)
 import Data.ByteString qualified as BS
 import Data.Word (Word8)
 import System.IO (hPutStrLn, stderr)
 import Unwitch.Convert.CInt qualified as CInt
+import Unwitch.Convert.Int qualified as Int
+import Unwitch.Convert.Int32 qualified as Int32
 import Hatter.Action
   ( Action(..)
   , OnChange(..)
+  , OnScroll(..)
+  , ListPosition(..)
   , ActionState
   , ActionM
   , createAction
   , createOnChange
+  , createOnScroll
   , newActionState
   , runActionM
   )
@@ -169,10 +214,14 @@ import Hatter.Camera
   , dispatchAudioChunk
   )
 import Hatter.Dialog (dispatchDialogResult)
+import GHC.Clock (getMonotonicTimeNSec)
 import Hatter.Http (dispatchHttpResult)
 import Hatter.Lifecycle
   ( LifecycleEvent(..)
   , MobileContext(..)
+  , CallButton(..)
+  , PickedFile(..)
+  , callButtonFromInt
   , defaultMobileContext
   , loggingMobileContext
   , platformLog
@@ -183,15 +232,24 @@ import Hatter.DeviceInfo ()  -- for foreign export ccall haskellLogDeviceInfo
 import Hatter.Location (dispatchLocationUpdate)
 import Hatter.NetworkStatus (dispatchNetworkStatusChange)
 import Hatter.Permission (dispatchPermissionResult)
-import Hatter.Render (renderWidget, dispatchEvent, dispatchTextEvent)
+import Hatter.Render (renderWidget, resetRender, dispatchEvent, dispatchTextEvent, dispatchScrollEvent, bindLazyRow, lazyItemKey)
 import Hatter.SecureStorage (dispatchSecureStorageResult)
 import Hatter.Types (MobileApp(..), UserState(..))
+import Hatter.UIBridge qualified as Bridge
+import Hatter.Marshal (peekBytes, peekMaybeText, peekPath, peekText)
 import Hatter.Widget
   ( AnimatedConfig(..)
   , ButtonConfig(..)
+  , SwitchConfig(..)
   , Color(..)
   , FontConfig(..)
+  , FontFamily(..)
+  , FontSlant(..)
+  , Corners(..)
+  , rounded
+  , FontWeight(..)
   , ImageConfig(..)
+  , fontOfSize
   , ImageSource(..)
   , InputType(..)
   , Keyframe(..)
@@ -201,6 +259,7 @@ import Hatter.Widget
   , MapViewConfig(..)
   , ResourceName(..)
   , ScaleType(..)
+  , SelfAlignment(..)
   , TextAlignment(..)
   , TextConfig(..)
   , TextInputConfig(..)
@@ -210,6 +269,7 @@ import Hatter.Widget
   , WidgetStyle(..)
   , andThen
   , button
+  , switch
   , easeInAnimation
   , easeInOutAnimation
   , easeOutAnimation
@@ -241,6 +301,12 @@ startMobileApp = newAppContext
 withExceptionHandler :: Ptr AppContext -> IO () -> IO ()
 withExceptionHandler ctxPtr action =
   catch action (handleException ctxPtr)
+
+-- | As 'withExceptionHandler', for an entry point that answers the
+-- platform: with the fallback after an exception.
+answering :: a -> Ptr AppContext -> IO a -> IO a
+answering fallback ctxPtr action =
+  catch action (\exc -> fallback <$ handleException ctxPtr exc)
 
 -- | Handle an uncaught exception from an FFI entry point.
 -- Overwrites the context's view function with an error widget so
@@ -277,6 +343,17 @@ fireUserErrorCallback appCtx exc =
 renderView :: Ptr AppContext -> IO ()
 renderView ctxPtr = do
   appCtx <- derefAppContext ctxPtr
+  start <- getMonotonicTimeNSec
+  widget <- currentWidget ctxPtr
+  renderWidget (acRenderState appCtx) widget
+  end <- getMonotonicTimeNSec
+  onRendered (acMobileContext appCtx) (end - start)
+
+-- | The widget the app shows now, for a platform that draws it itself
+-- rather than through the native views.
+currentWidget :: Ptr AppContext -> IO Widget
+currentWidget ctxPtr = do
+  appCtx <- derefAppContext ctxPtr
   viewFunction <- readIORef (acViewFunction appCtx)
   let userState = UserState
         { userPermissionState    = acPermissionState appCtx
@@ -294,8 +371,66 @@ renderView ctxPtr = do
         , userRequestRedraw         = c_requestRedraw (castPtr ctxPtr)
         }
   c_redrawStoreCtx (castPtr ctxPtr)
-  widget <- viewFunction userState
-  renderWidget (acRenderState appCtx) widget
+  viewFunction userState
+
+-- | Whether the platform shows dark colours now, for views that pick
+-- their own. It renders again when this changes.
+isDarkMode :: IO Bool
+isDarkMode = Bridge.darkMode
+
+-- | Whether the user wants times on a 24-hour clock, as the platform's
+-- setting says now. A 12-hour clock where it can't say.
+is24HourClock :: IO Bool
+is24HourClock = Bridge.clock24
+
+-- | Put text on the platform's clipboard, from an action.
+copyToClipboard :: Text -> IO ()
+copyToClipboard = Bridge.copyText
+
+-- | Let the user pick a file of a MIME type, such as @*/*@, from an action.
+-- 'onFilePicked' gets a copy of it.
+pickFile :: Text -> IO ()
+pickFile = Bridge.pickFile
+
+-- | Let the user save one of the app's files where they choose, under a
+-- suggested name and of a MIME type, from an action. The app's file is
+-- deleted afterwards, also if they cancel (it may hold secrets).
+saveFile :: FilePath -> Text -> Text -> IO ()
+saveFile = Bridge.saveFile
+
+-- | The width and height a picture file shows at, turned as its camera
+-- says, without decoding it all. Nothing if it isn't one, or where the
+-- platform can't tell.
+imageSize :: FilePath -> IO (Maybe (Int, Int))
+imageSize = Bridge.imageSize
+
+-- | Let the user pick a picture, from an action, which 'onPicturePicked'
+-- gets cut to a square and scaled to the first of the sides whose PNG has
+-- at most so many bytes. Nothing comes when none fits.
+pickPicture :: [Int] -> Int -> IO ()
+pickPicture = Bridge.pickPicture
+
+-- | As 'pickFile', letting the user pick several, each a call of
+-- 'onFilePicked'.
+pickFiles :: Text -> IO ()
+pickFiles = Bridge.pickFiles
+
+-- | Take a picture with the platform's camera app, from an action, which
+-- 'onFilePicked' gets as a file. Ask for the camera permission first, as
+-- some platforms don't start the camera app for an app declaring it
+-- without.
+capturePicture :: IO ()
+capturePicture = Bridge.capturePicture
+
+-- | Show one of the app's files in another app that takes its type, from an
+-- action.
+openFile :: FilePath -> IO ()
+openFile = Bridge.openFile
+
+-- | Open a web or mail address in another app that takes it, from an
+-- action.
+openUri :: Text -> IO ()
+openUri = Bridge.openUri
 
 -- | A widget that displays an error message with a dismiss button.
 -- The dismiss button uses a pre-registered 'Action' handle whose
@@ -304,7 +439,7 @@ errorWidget :: Action -> SomeException -> Widget
 errorWidget dismissAction exc = column
   [ Text TextConfig
       { tcLabel      = "An error occurred"
-      , tcFontConfig = Just (FontConfig 20.0)
+      , tcFontConfig = Just (fontOfSize 20.0)
       , tcTextColor  = Nothing
       }
   , Text TextConfig
@@ -330,6 +465,15 @@ haskellRenderUI ctxPtr =
 
 foreign export ccall haskellRenderUI :: Ptr AppContext -> IO ()
 
+-- | Forget the native views, for a platform that has dropped them.  The
+-- next 'haskellRenderUI' creates them all again.
+haskellResetUI :: Ptr AppContext -> IO ()
+haskellResetUI ctxPtr = do
+  appCtx <- derefAppContext ctxPtr
+  resetRender (acRenderState appCtx)
+
+foreign export ccall haskellResetUI :: Ptr AppContext -> IO ()
+
 -- | Handle a UI event from native code. Dispatches the callback
 -- identified by @callbackId@, then re-renders the UI.
 haskellOnUIEvent :: Ptr AppContext -> CInt -> IO ()
@@ -351,11 +495,22 @@ haskellOnUITextChange :: Ptr AppContext -> CInt -> CString -> IO ()
 haskellOnUITextChange ctxPtr callbackId cstr =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
-    str <- peekCString cstr
-    dispatchTextEvent (acRenderState appCtx) (CInt.toInt32 callbackId) (pack str)
+    typed <- peekText cstr
+    dispatchTextEvent (acRenderState appCtx) (CInt.toInt32 callbackId) typed
     renderView ctxPtr
 
 foreign export ccall haskellOnUITextChange :: Ptr AppContext -> CInt -> CString -> IO ()
+
+-- | Handle where a list is from native code, by 'ListPosition''s number,
+-- rendering again after.
+haskellOnUIScroll :: Ptr AppContext -> CInt -> CInt -> IO ()
+haskellOnUIScroll ctxPtr callbackId position =
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    dispatchScrollEvent (acRenderState appCtx) (CInt.toInt32 callbackId) (CInt.toInt position)
+    renderView ctxPtr
+
+foreign export ccall haskellOnUIScroll :: Ptr AppContext -> CInt -> CInt -> IO ()
 
 -- | Handle a permission result from native code. Dispatches to the
 -- callback registered by 'Hatter.Permission.requestPermission'.
@@ -401,8 +556,8 @@ haskellOnBleCharacteristicDiscovered
 haskellOnBleCharacteristicDiscovered ctxPtr cService cCharacteristic cProperties =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
-    serviceUuid <- pack <$> peekCString cService
-    characteristicUuid <- pack <$> peekCString cCharacteristic
+    serviceUuid <- peekText cService
+    characteristicUuid <- peekText cCharacteristic
     dispatchBleCharacteristicDiscovered (acBleState appCtx)
       BleDiscoveredCharacteristic
         { bdcService        = BleServiceUuid serviceUuid
@@ -429,9 +584,7 @@ haskellOnBleGattResult ctxPtr cOperation cStatus dataPtr dataLength =
         -- With a payload the length field is the payload size; without
         -- one it carries the granted MTU (nonzero only for MTU
         -- completions, see BleBridge.h).
-        payload <- if dataPtr == nullPtr || dataLength <= 0
-          then pure BS.empty
-          else BS.packCStringLen (castPtr dataPtr, CInt.toInt dataLength)
+        payload <- peekBytes dataPtr dataLength
         let grantedMtu = if dataPtr == nullPtr then CInt.toInt dataLength else 0
         dispatchBleGattCompletion (acBleState appCtx) BleGattCompletion
           { bgcOperation  = operation
@@ -451,11 +604,9 @@ haskellOnBleNotification
 haskellOnBleNotification ctxPtr cService cCharacteristic dataPtr dataLength =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
-    serviceUuid <- pack <$> peekCString cService
-    characteristicUuid <- pack <$> peekCString cCharacteristic
-    payload <- if dataPtr == nullPtr || dataLength <= 0
-      then pure BS.empty
-      else BS.packCStringLen (castPtr dataPtr, CInt.toInt dataLength)
+    serviceUuid <- peekText cService
+    characteristicUuid <- peekText cCharacteristic
+    payload <- peekBytes dataPtr dataLength
     dispatchBleNotification (acBleState appCtx)
       (BleServiceUuid serviceUuid)
       (BleCharacteristicUuid characteristicUuid)
@@ -500,6 +651,88 @@ haskellOnLifecycle ctxPtr code =
 
 foreign export ccall haskellOnLifecycle :: Ptr AppContext -> CInt -> IO ()
 
+-- | Handle Back from native code: 1 if the app handled it, after
+-- rendering again, 0 to leave it to the platform.
+haskellOnBack :: Ptr AppContext -> IO CInt
+haskellOnBack ctxPtr = answering 0 ctxPtr $ do
+  appCtx <- derefAppContext ctxPtr
+  handled <- onBack (acMobileContext appCtx)
+  when handled (withExceptionHandler ctxPtr (renderView ctxPtr))
+  pure (if handled then 1 else 0)
+
+foreign export ccall haskellOnBack :: Ptr AppContext -> IO CInt
+
+-- | Handle a tap on one of the app's notifications from native code, with
+-- its key in UTF-8, rendering again after.
+haskellOnNotificationOpened :: Ptr AppContext -> CString -> IO ()
+haskellOnNotificationOpened ctxPtr keyPtr = do
+  key <- peekText keyPtr
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    onNotificationOpened (acMobileContext appCtx) key
+    renderView ctxPtr
+
+foreign export ccall haskellOnNotificationOpened :: Ptr AppContext -> CString -> IO ()
+
+-- | Handle a button of a ringing notification from native code, with its
+-- key in UTF-8: 0 answers, which opened the app and renders again after,
+-- 1 declines, and 2 hangs up the call going on.
+haskellOnCallButton :: Ptr AppContext -> CString -> CInt -> IO ()
+haskellOnCallButton ctxPtr keyPtr code = do
+  key <- peekText keyPtr
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    let pressed = callButtonFromInt code
+    onCallButton (acMobileContext appCtx) key pressed
+    when (pressed == Answer) (renderView ctxPtr)
+
+foreign export ccall haskellOnCallButton :: Ptr AppContext -> CString -> CInt -> IO ()
+
+-- | Render a lazy column's item at a position into one of its rows, as
+-- the platform asks while it scrolls: the row's node ID, or 0 if the
+-- platform is to show nothing there.
+haskellOnLazyBind :: Ptr AppContext -> CInt -> CInt -> CInt -> IO CInt
+haskellOnLazyBind ctxPtr listId rowId position = answering 0 ctxPtr $ do
+  appCtx <- derefAppContext ctxPtr
+  Int32.toCInt <$> bindLazyRow (acRenderState appCtx) (CInt.toInt32 listId) (CInt.toInt32 rowId) (CInt.toInt position)
+
+foreign export ccall haskellOnLazyBind :: Ptr AppContext -> CInt -> CInt -> CInt -> IO CInt
+
+-- | The key of a lazy column's item at a position, as the platform's ID
+-- for it.
+haskellLazyItemKey :: Ptr AppContext -> CInt -> CInt -> IO Int64
+haskellLazyItemKey ctxPtr listId position =
+  answering (Int.toInt64 (CInt.toInt position)) ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    Int.toInt64 <$> lazyItemKey (acRenderState appCtx) (CInt.toInt32 listId) (CInt.toInt position)
+
+foreign export ccall haskellLazyItemKey :: Ptr AppContext -> CInt -> CInt -> IO Int64
+
+-- | Handle a file the user picked from native code: its path and name in
+-- UTF-8, and its size, rendering again after.
+haskellOnFilePicked :: Ptr AppContext -> CString -> CString -> Int64 -> IO ()
+haskellOnFilePicked ctxPtr pathPtr namePtr size = do
+  path <- peekPath pathPtr
+  name <- peekText namePtr
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    onFilePicked (acMobileContext appCtx) (PickedFile path name (toInteger size))
+    renderView ctxPtr
+
+foreign export ccall haskellOnFilePicked :: Ptr AppContext -> CString -> CString -> Int64 -> IO ()
+
+-- | Handle a picture the user picked from native code, as a PNG, rendering
+-- again after.
+haskellOnPicturePicked :: Ptr AppContext -> Ptr Word8 -> CInt -> IO ()
+haskellOnPicturePicked ctxPtr bytes size = do
+  png <- BS.packCStringLen (castPtr bytes, fromIntegral size)
+  withExceptionHandler ctxPtr $ do
+    appCtx <- derefAppContext ctxPtr
+    onPicturePicked (acMobileContext appCtx) png
+    renderView ctxPtr
+
+foreign export ccall haskellOnPicturePicked :: Ptr AppContext -> Ptr Word8 -> CInt -> IO ()
+
 -- | Handle a secure storage result from native code. Dispatches to the
 -- callback registered by 'Hatter.SecureStorage.secureStorageWrite',
 -- 'Hatter.SecureStorage.secureStorageRead', or
@@ -509,7 +742,7 @@ haskellOnSecureStorageResult :: Ptr AppContext -> CInt -> CInt -> CString -> IO 
 haskellOnSecureStorageResult ctxPtr requestId statusCode cValue =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
-    maybeValue <- peekOptionalCString cValue
+    maybeValue <- peekMaybeText cValue
     dispatchSecureStorageResult (acSecureStorageState appCtx) requestId statusCode maybeValue
 
 foreign export ccall haskellOnSecureStorageResult :: Ptr AppContext -> CInt -> CInt -> CString -> IO ()
@@ -522,8 +755,8 @@ haskellOnAuthSessionResult :: Ptr AppContext -> CInt -> CInt -> CString -> CStri
 haskellOnAuthSessionResult ctxPtr requestId statusCode cRedirectUrl cErrorMsg =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
-    maybeRedirectUrl <- peekOptionalCString cRedirectUrl
-    maybeErrorMsg <- peekOptionalCString cErrorMsg
+    maybeRedirectUrl <- peekMaybeText cRedirectUrl
+    maybeErrorMsg <- peekMaybeText cErrorMsg
     dispatchAuthSessionResult (acAuthSessionState appCtx) requestId statusCode maybeRedirectUrl maybeErrorMsg
 
 foreign export ccall haskellOnAuthSessionResult :: Ptr AppContext -> CInt -> CInt -> CString -> CString -> IO ()
@@ -536,10 +769,10 @@ haskellOnPlatformSignInResult :: Ptr AppContext -> CInt -> CInt -> CString -> CS
 haskellOnPlatformSignInResult ctxPtr requestId statusCode cIdentityToken cUserId cEmail cFullName cProvider =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
-    maybeToken    <- peekOptionalCString cIdentityToken
-    maybeUserId   <- peekOptionalCString cUserId
-    maybeEmail    <- peekOptionalCString cEmail
-    maybeFullName <- peekOptionalCString cFullName
+    maybeToken    <- peekMaybeText cIdentityToken
+    maybeUserId   <- peekMaybeText cUserId
+    maybeEmail    <- peekMaybeText cEmail
+    maybeFullName <- peekMaybeText cFullName
     dispatchPlatformSignInResult (acPlatformSignInState appCtx)
       requestId statusCode maybeToken maybeUserId maybeEmail maybeFullName cProvider
 
@@ -557,9 +790,8 @@ haskellOnCameraResult ctxPtr requestId statusCode
                       imageDataPtr imageDataLen width height =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
-    maybeImageData <- if imageDataPtr == nullPtr || imageDataLen <= 0
-      then pure Nothing
-      else Just <$> BS.packCStringLen (castPtr imageDataPtr, CInt.toInt imageDataLen)
+    imageData <- peekBytes imageDataPtr imageDataLen
+    let maybeImageData = if BS.null imageData then Nothing else Just imageData
     dispatchCameraResult (acCameraState appCtx) requestId statusCode
       maybeImageData width height
 
@@ -592,6 +824,7 @@ haskellOnAudioChunk ctxPtr requestId audioDataPtr audioDataLen =
 
 foreign export ccall haskellOnAudioChunk
   :: Ptr AppContext -> CInt -> Ptr Word8 -> CInt -> IO ()
+
 -- | Handle a bottom sheet result from native code. Dispatches to the
 -- callback registered by 'Hatter.BottomSheet.showBottomSheet'.
 haskellOnBottomSheetResult :: Ptr AppContext -> CInt -> CInt -> IO ()
@@ -612,10 +845,8 @@ haskellOnHttpResult ctxPtr requestId resultCode httpStatus
                     cHeaders bodyPtr bodyLen =
   withExceptionHandler ctxPtr $ do
     appCtx <- derefAppContext ctxPtr
-    maybeHeaders <- peekOptionalCString cHeaders
-    responseBody <- if bodyPtr == nullPtr || bodyLen <= 0
-      then pure BS.empty
-      else BS.packCStringLen (castPtr bodyPtr, CInt.toInt bodyLen)
+    maybeHeaders <- peekMaybeText cHeaders
+    responseBody <- peekBytes bodyPtr bodyLen
     dispatchHttpResult (acHttpState appCtx) requestId resultCode httpStatus
       maybeHeaders responseBody
 
@@ -644,13 +875,6 @@ haskellOnAnimationFrame ctxPtr (CDouble timestampMs) =
     renderView ctxPtr
 
 foreign export ccall haskellOnAnimationFrame :: Ptr AppContext -> CDouble -> IO ()
-
--- | Peek an optional CString: returns 'Nothing' for null pointers,
--- 'Just' with the decoded 'Text' otherwise.
-peekOptionalCString :: CString -> IO (Maybe Text)
-peekOptionalCString cstr
-  | cstr == nullPtr = pure Nothing
-  | otherwise       = Just . pack <$> peekCString cstr
 
 -- | FFI import for the platform-agnostic redraw bridge.
 -- On mobile, this posts to the main/UI thread; on desktop it calls

@@ -90,13 +90,13 @@ echo "==="
 # The key assertion: after typing, the view function should have been
 # called with the updated state, producing a logcat line like:
 #   view rebuilt: Typed: hello
-# AND a setStrProp call updating the Text widget:
-#   setStrProp(..., value="Typed: hello")
+# AND the Text widget showing it on screen.
 #
 # On master (broken): neither of these appear because OnChange
 # does not trigger renderView.
 assert_logcat "$LOGCAT_STREAM_FILE" 'view rebuilt: Typed: hello' "View rebuilt with typed text after OnChange"
-assert_logcat "$LOGCAT_STREAM_FILE" 'setStrProp.*Typed: hello' "Text widget updated to show typed text"
+wait_for_ui_text "Typed: hello" 15 || true
+assert_ui_text "Typed: hello" "Text widget updated to show typed text"
 
 kill "$LOGCAT_STREAM_PID" 2>/dev/null || true
 "$ADB" -s "$EMULATOR_SERIAL" uninstall "$PACKAGE" 2>/dev/null || true

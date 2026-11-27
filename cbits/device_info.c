@@ -8,6 +8,7 @@
  *          Build.MODEL, Build.VERSION.RELEASE, and DisplayMetrics.
  * iOS:     UIBridgeIOS.m calls setters in setup_ios_platform_globals
  *          after querying utsname, UIDevice, and UIScreen.
+ * Qt:      qt_main.c calls setters, the graphics too.
  * Desktop: falls back to sensible defaults ("desktop", "unknown", etc.).
  */
 
@@ -18,6 +19,7 @@ static const char *g_device_os_version = NULL;
 static const char *g_device_screen_density = NULL;
 static const char *g_device_screen_width = NULL;
 static const char *g_device_screen_height = NULL;
+static const char *g_device_graphics = NULL;
 
 void setDeviceModel(const char *value)
 {
@@ -67,4 +69,14 @@ void setDeviceScreenHeight(const char *value)
 const char* getDeviceScreenHeight(void)
 {
     return g_device_screen_height ? g_device_screen_height : "0";
+}
+
+void setDeviceGraphics(const char *value)
+{
+    g_device_graphics = value;
+}
+
+const char* getDeviceGraphics(void)
+{
+    return g_device_graphics ? g_device_graphics : "";
 }

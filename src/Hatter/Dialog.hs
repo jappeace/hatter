@@ -7,8 +7,8 @@
 -- Dialogs are fire-and-forget: the platform manages the dialog lifecycle
 -- independently of the Haskell UI rendering loop.
 --
--- The callback registry follows the same sequential 'IORef' 'Int32'
--- pattern used by "Hatter.SecureStorage" and "Hatter.Permission".
+-- Results come back by request number, as for the other platform
+-- requests ("Hatter.Requests").
 -- Up to 3 buttons are supported (Android AlertDialog's maximum).
 module Hatter.Dialog
   ( DialogAction(..)
@@ -21,18 +21,14 @@ module Hatter.Dialog
   )
 where
 
-import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
-import Data.Int (Int32)
-import Data.IntMap.Strict (IntMap)
-import Data.IntMap.Strict qualified as IntMap
+import Data.IORef (IORef, newIORef, readIORef)
 import Data.Text (Text)
-import Data.Text qualified as Text
-import Foreign.C.String (CString, withCString)
+import Foreign.C.String (CString)
 import Foreign.C.Types (CInt(..))
 import Foreign.Ptr (Ptr, nullPtr)
+import Hatter.Marshal (withMaybeText, withText)
+import Hatter.Requests (Requests, answered, newRequests, request)
 import System.IO (hPutStrLn, stderr)
-import Unwitch.Convert.CInt qualified as CInt
-import Unwitch.Convert.Int32 qualified as Int32
 
 -- | Which button was tapped, or whether the dialog was dismissed.
 data DialogAction
@@ -52,12 +48,10 @@ data DialogConfig = DialogConfig
   , dcButton3 :: Maybe Text
   }
 
--- | Mutable state for the dialog callback registry.
+-- | What waits for the platform's dialog requests.
 data DialogState = DialogState
-  { dsCallbacks  :: IORef (IntMap (DialogAction -> IO ()))
-    -- ^ Map from requestId -> dialog result callback
-  , dsNextId     :: IORef Int32
-    -- ^ Next available request ID
+  { dsRequests   :: Requests (DialogAction -> IO ())
+    -- ^ What waits for each request's result.
   , dsContextPtr :: IORef (Ptr ())
     -- ^ Opaque context pointer passed to the C bridge.
     -- Set by 'AppContext.newAppContext' after the 'StablePtr' is created.
@@ -68,12 +62,10 @@ data DialogState = DialogState
 -- 'dsContextPtr' before calling 'showDialog'.
 newDialogState :: IO DialogState
 newDialogState = do
-  callbacks  <- newIORef IntMap.empty
-  nextId     <- newIORef 0
+  requests   <- newRequests
   contextPtr <- newIORef nullPtr
   pure DialogState
-    { dsCallbacks  = callbacks
-    , dsNextId     = nextId
+    { dsRequests   = requests
     , dsContextPtr = contextPtr
     }
 
@@ -92,16 +84,14 @@ dialogActionFromInt _ = Nothing
 -- desktop via the stub that auto-presses button 1).
 showDialog :: DialogState -> DialogConfig -> (DialogAction -> IO ()) -> IO ()
 showDialog dialogState config callback = do
-  requestId <- readIORef (dsNextId dialogState)
-  modifyIORef' (dsCallbacks dialogState) (IntMap.insert (Int32.toInt requestId) callback)
-  writeIORef (dsNextId dialogState) (requestId + 1)
+  requestId <- request (dsRequests dialogState) callback
   ctx <- readIORef (dsContextPtr dialogState)
-  withCString (Text.unpack (dcTitle config)) $ \cTitle ->
-    withCString (Text.unpack (dcMessage config)) $ \cMessage ->
-      withCString (Text.unpack (dcButton1 config)) $ \cButton1 ->
-        withOptionalCString (dcButton2 config) $ \cButton2 ->
-          withOptionalCString (dcButton3 config) $ \cButton3 ->
-            c_dialogShow ctx (Int32.toCInt requestId) cTitle cMessage cButton1 cButton2 cButton3
+  withText (dcTitle config) $ \cTitle ->
+    withText (dcMessage config) $ \cMessage ->
+      withText (dcButton1 config) $ \cButton1 ->
+        withMaybeText (dcButton2 config) $ \cButton2 ->
+          withMaybeText (dcButton3 config) $ \cButton3 ->
+            c_dialogShow ctx requestId cTitle cMessage cButton1 cButton2 cButton3
 
 -- | Dispatch a dialog result from the platform back to the
 -- registered Haskell callback.  Removes the callback after firing.
@@ -112,19 +102,8 @@ dispatchDialogResult dialogState requestId actionCode =
     Nothing -> hPutStrLn stderr $
       "dispatchDialogResult: unknown action code " ++ show actionCode
     Just action -> do
-      let reqKey = CInt.toInt requestId
-      callbacks <- readIORef (dsCallbacks dialogState)
-      case IntMap.lookup reqKey callbacks of
-        Just callback -> do
-          modifyIORef' (dsCallbacks dialogState) (IntMap.delete reqKey)
-          callback action
-        Nothing -> hPutStrLn stderr $
-          "dispatchDialogResult: unknown request ID " ++ show requestId
-
--- | Helper: call a continuation with a CString or nullPtr.
-withOptionalCString :: Maybe Text -> (CString -> IO a) -> IO a
-withOptionalCString Nothing  action = action nullPtr
-withOptionalCString (Just t) action = withCString (Text.unpack t) action
+      waiting <- answered "dispatchDialogResult" (dsRequests dialogState) requestId
+      mapM_ ($ action) waiting
 
 -- | FFI import: show a dialog via the C bridge.
 foreign import ccall "dialog_show"

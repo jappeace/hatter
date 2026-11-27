@@ -27,27 +27,37 @@ main = do
   platformLog "Permission demo app registered"
   actionState <- newActionState
   permStateRef <- newIORef (Nothing :: Maybe PermissionState)
-  onRequestCamera <- runActionM actionState $
-    createAction $ do
+  (onRequestCamera, onRequestLocation) <- runActionM actionState $ (,)
+    <$> createAction (do
       Just permState <- readIORef permStateRef
       requestPermission permState PermissionCamera $ \status ->
-        platformLog ("Permission result: " <> pack (show status))
+        platformLog ("Permission result: " <> pack (show status)))
+    <*> createAction (do
+      Just permState <- readIORef permStateRef
+      requestPermission permState PermissionLocation $ \status ->
+        platformLog ("Location permission result: " <> pack (show status)))
   ctxPtr <- startMobileApp MobileApp
     { maContext     = loggingMobileContext
-    , maView        = \_userState -> permissionDemoView onRequestCamera
+    , maView        = \_userState -> permissionDemoView onRequestCamera onRequestLocation
     , maActionState = actionState
     }
   appCtx <- derefAppContext ctxPtr
   writeIORef permStateRef (Just (acPermissionState appCtx))
   pure ctxPtr
 
--- | Builds a Column with a label and a "Request Camera" button.
-permissionDemoView :: Action -> IO Widget
-permissionDemoView onRequestCamera = pure $ column
+-- | Builds a Column with a label and "Request Camera" and "Request Location" buttons.
+permissionDemoView :: Action -> Action -> IO Widget
+permissionDemoView onRequestCamera onRequestLocation = pure $ column
   [ Text TextConfig { tcLabel = "Permission Demo", tcFontConfig = Nothing, tcTextColor = Nothing }
   , Button ButtonConfig
       { bcLabel      = "Request Camera"
       , bcAction     = onRequestCamera
+      , bcFontConfig = Nothing
+      , bcTextColor = Nothing
+      }
+  , Button ButtonConfig
+      { bcLabel      = "Request Location"
+      , bcAction     = onRequestLocation
       , bcFontConfig = Nothing
       , bcTextColor = Nothing
       }

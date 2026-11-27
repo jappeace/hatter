@@ -5,8 +5,9 @@ module Test.AnimationTests (animationTests) where
 
 import Data.Fixed (Fixed, E6)
 import Data.IORef (readIORef, writeIORef)
-import Data.Int (Int32)
 import Data.IntMap.Strict qualified as IntMap
+import Data.List (isInfixOf)
+import Data.Maybe (listToMaybe)
 import Foreign.Ptr (nullPtr)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -30,12 +31,11 @@ import Hatter.Animation
   , AnimationState(..)
   , bracketKeyframes
   , dispatchAnimationFrame
-  , interpolateDouble
-  , interpolateStyle
   , newAnimationState
   , registerTween
   )
-import Hatter.Render (RenderState(..), RenderedNode(..), newRenderState, renderWidget)
+import Hatter.Render (RenderState(..), RenderedNode(..), newRenderState, renderWidget, renderedNodeId)
+import Test.Helpers (captureStderr)
 import Hatter.Widget
   ( Color(..)
   , LayoutSettings(..)
@@ -98,8 +98,7 @@ keyframeAtTests = testGroup "KeyframeAt"
       assertBool "0.0 accepted" (mkKeyframeAt 0 /= Nothing)
       assertBool "1.0 accepted" (mkKeyframeAt 1 /= Nothing)
   , testCase "unKeyframeAt round-trips" $ do
-      let Just kf = mkKeyframeAt 0.5
-      unKeyframeAt kf @?= (0.5 :: Fixed E6)
+      fmap unKeyframeAt (mkKeyframeAt 0.5) @?= Just (0.5 :: Fixed E6)
   ]
 
 -- ---------------------------------------------------------------------------
@@ -108,14 +107,7 @@ keyframeAtTests = testGroup "KeyframeAt"
 
 interpolationTests :: TestTree
 interpolationTests = testGroup "Interpolation"
-  [ testCase "interpolateDouble boundaries" $ do
-      interpolateDouble 10.0 20.0 0.0 @?= 10.0
-      interpolateDouble 10.0 20.0 1.0 @?= 20.0
-  , testCase "interpolateDouble midpoint" $
-      interpolateDouble 10.0 20.0 0.5 @?= 15.0
-  , testCase "interpolateDouble negative range" $
-      interpolateDouble (-10.0) 10.0 0.5 @?= 0.0
-  , testCase "lerpWord8 boundaries" $ do
+  [ testCase "lerpWord8 boundaries" $ do
       lerpWord8 0 255 0.0 @?= 0
       lerpWord8 0 255 1.0 @?= 255
   , testCase "lerpWord8 midpoint" $
@@ -240,6 +232,21 @@ tweenRegistryTests = testGroup "Tween registry"
       assertBool "Tween should be removed after completion" (IntMap.null tweens)
       loopActive <- readIORef (ansLoopActive animState)
       assertBool "Loop should be stopped" (not loopActive)
+  , testCase "a frame sets every field the style animates" $ do
+      animState <- newAnimationState
+      let tween = ActiveTween
+            { atStartTime  = Just 0
+            , atKeyframes  =
+                [ Keyframe (unsafeKfAt 0) defaultStyle { wsWeight = Just 1 }
+                , Keyframe (unsafeKfAt 1) defaultStyle { wsWeight = Just 3 }
+                ]
+            , atNodeId     = 7
+            , atDuration   = 1
+            }
+      writeIORef (ansTweens animState) (IntMap.singleton 7 tween)
+      ((), out) <- captureStderr (dispatchAnimationFrame animState 500)
+      -- The weight, halfway.
+      assertBool out ("setNumProp(node=7, prop=15, value=2.00)" `isInfixOf` out)
   ]
 
 -- ---------------------------------------------------------------------------
@@ -277,10 +284,10 @@ animatedWidgetRenderTests = testGroup "Animated widget rendering"
           widget = Animated config child
       renderWidget rs widget
       Just firstTree <- readIORef (rsRenderedTree rs)
-      let firstNodeId = renderedNodeIdSafe firstTree
+      let firstNodeId = renderedNodeId firstTree
       renderWidget rs widget
       Just secondTree <- readIORef (rsRenderedTree rs)
-      let secondNodeId = renderedNodeIdSafe secondTree
+      let secondNodeId = renderedNodeId secondTree
       firstNodeId @?= secondNodeId
   , testCase "Property change keeps same native node" $ do
       animState <- newAnimationState
@@ -300,10 +307,10 @@ animatedWidgetRenderTests = testGroup "Animated widget rendering"
           widget2 = Animated config2 child2
       renderWidget rs widget1
       Just firstTree <- readIORef (rsRenderedTree rs)
-      let firstNodeId = renderedNodeIdSafe firstTree
+      let firstNodeId = renderedNodeId firstTree
       renderWidget rs widget2
       Just secondTree <- readIORef (rsRenderedTree rs)
-      let secondNodeId = renderedNodeIdSafe secondTree
+      let secondNodeId = renderedNodeId secondTree
       firstNodeId @?= secondNodeId
   , testCase "Different node type destroys and recreates" $ do
       animState <- newAnimationState
@@ -320,10 +327,10 @@ animatedWidgetRenderTests = testGroup "Animated widget rendering"
           widget2 = Animated config child2
       renderWidget rs widget1
       Just firstTree <- readIORef (rsRenderedTree rs)
-      let firstNodeId = renderedNodeIdSafe firstTree
+      let firstNodeId = renderedNodeId firstTree
       renderWidget rs widget2
       Just secondTree <- readIORef (rsRenderedTree rs)
-      let secondNodeId = renderedNodeIdSafe secondTree
+      let secondNodeId = renderedNodeId secondTree
       assertBool "Node ID should change for different node types"
         (firstNodeId /= secondNodeId)
   , testCase "Toggle-back registers tween after animation completes" $ do
@@ -366,20 +373,13 @@ animatedWidgetRenderTests = testGroup "Animated widget rendering"
       assertBool "Tween registered after toggle-back" (not (IntMap.null tweensAfter3))
   ]
 
--- | Helper: get the native node ID from a RenderedNode, following through
--- Animated and Styled wrappers.
-renderedNodeIdSafe :: RenderedNode -> Int32
-renderedNodeIdSafe (RenderedLeaf _ nodeId)        = nodeId
-renderedNodeIdSafe (RenderedContainer _ nodeId _) = nodeId
-renderedNodeIdSafe (RenderedStyled _ _ child)     = renderedNodeIdSafe child
-renderedNodeIdSafe (RenderedAnimated _ child)     = renderedNodeIdSafe child
-
 -- | Helper: produce a short string summary of a RenderedNode for error messages.
 renderedNodeSummary :: RenderedNode -> String
 renderedNodeSummary (RenderedLeaf _ nodeId)        = "RenderedLeaf " ++ show nodeId
 renderedNodeSummary (RenderedContainer _ nodeId _) = "RenderedContainer " ++ show nodeId
 renderedNodeSummary (RenderedStyled _ _ child)     = "RenderedStyled -> " ++ renderedNodeSummary child
 renderedNodeSummary (RenderedAnimated _ child)     = "RenderedAnimated -> " ++ renderedNodeSummary child
+renderedNodeSummary other                          = "node " ++ show (renderedNodeId other)
 
 -- ---------------------------------------------------------------------------
 -- normalizeAnimated
@@ -476,10 +476,10 @@ normalizeAnimatedTests = testGroup "normalizeAnimated"
           widget2 = Animated cfg (column [Styled style2 child])
       renderWidget rs widget1
       Just tree1 <- readIORef (rsRenderedTree rs)
-      let nodeId1 = renderedNodeIdSafe tree1
+      let nodeId1 = renderedNodeId tree1
       renderWidget rs widget2
       Just tree2 <- readIORef (rsRenderedTree rs)
-      let nodeId2 = renderedNodeIdSafe tree2
+      let nodeId2 = renderedNodeId tree2
       nodeId1 @?= nodeId2
   ]
 
@@ -509,10 +509,10 @@ translateAnimationTests = testGroup "Translate animation"
           widget2 = Animated config2 child2
       renderWidget rs widget1
       Just firstTree <- readIORef (rsRenderedTree rs)
-      let firstNodeId = renderedNodeIdSafe firstTree
+      let firstNodeId = renderedNodeId firstTree
       renderWidget rs widget2
       Just secondTree <- readIORef (rsRenderedTree rs)
-      let secondNodeId = renderedNodeIdSafe secondTree
+      let secondNodeId = renderedNodeId secondTree
       firstNodeId @?= secondNodeId
   , testCase "defaultStyle has no translate offsets" $ do
       wsTranslateX defaultStyle @?= Nothing
@@ -604,11 +604,8 @@ smartConstructorTests = testGroup "Smart constructors"
                   (defaultStyle { wsPadding = Just 100 })
       length (anKeyframes cfg) @?= 2
       anDuration cfg @?= 0.5
-      let [kf0, kf1] = anKeyframes cfg
-      unKeyframeAt (kfAt kf0) @?= 0
-      unKeyframeAt (kfAt kf1) @?= 1
-      wsPadding (kfStyle kf0) @?= Just 0
-      wsPadding (kfStyle kf1) @?= Just 100
+      map (unKeyframeAt . kfAt) (anKeyframes cfg) @?= [0, 1]
+      map (wsPadding . kfStyle) (anKeyframes cfg) @?= [Just 0, Just 100]
   , testCase "easeInAnimation produces 5 keyframes" $ do
       let cfg = easeInAnimation 1.0
                   (defaultStyle { wsTranslateX = Just 0 })
@@ -616,9 +613,8 @@ smartConstructorTests = testGroup "Smart constructors"
       length (anKeyframes cfg) @?= 5
       anDuration cfg @?= 1.0
       -- First keyframe should be at 0 with from-style
-      let firstKf = head (anKeyframes cfg)
-      unKeyframeAt (kfAt firstKf) @?= 0
-      wsTranslateX (kfStyle firstKf) @?= Just 0
+      fmap (unKeyframeAt . kfAt) (listToMaybe (anKeyframes cfg)) @?= Just 0
+      fmap (wsTranslateX . kfStyle) (listToMaybe (anKeyframes cfg)) @?= Just (Just 0)
       -- Midpoint should be < 50 (ease-in is slow at start)
       let midKf = anKeyframes cfg !! 2
       case wsTranslateX (kfStyle midKf) of
@@ -637,8 +633,8 @@ smartConstructorTests = testGroup "Smart constructors"
           to   = defaultStyle { wsPadding = Just 90 }
           cfg  = easeInOutAnimation 0.8 from to
           kfs  = anKeyframes cfg
-      wsPadding (kfStyle (head kfs)) @?= Just 10
-      wsPadding (kfStyle (last kfs)) @?= Just 90
+      map (wsPadding . kfStyle) (take 1 kfs) @?= [Just 10]
+      map (wsPadding . kfStyle) (take 1 (reverse kfs)) @?= [Just 90]
   , testCase "andThen combines durations" $ do
       let cfgA = linearAnimation 0.3
                    (defaultStyle { wsPadding = Just 0 })

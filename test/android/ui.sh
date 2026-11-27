@@ -10,21 +10,22 @@ EXIT_CODE=0
 
 start_app "$COUNTER_APK" "ui"
 wait_for_render "ui"
-wait_for_logcat "setStrProp.*Counter: 0" 30 || true
+wait_for_ui_text "Counter: 0" 30 || true
 collect_logcat "ui"
 
 assert_logcat "$LOGCAT_FILE" "setRoot" "initial setRoot"
-assert_logcat "$LOGCAT_FILE" "setStrProp.*Counter: 0" "initial Counter: 0"
+assert_ui_text "Counter: 0" "initial Counter: 0"
 assert_logcat "$LOGCAT_FILE" "setHandler.*click" "setHandler click"
 
 # Tap + button
 tap_button "+" || "$ADB" -s "$EMULATOR_SERIAL" shell input tap 300 600
 wait_for_logcat "Click dispatched" 15 || true
+wait_for_ui_text "Counter: 1" 15 || true
 
 collect_logcat "ui"
 
 assert_logcat "$LOGCAT_FILE" "Click dispatched" "Click dispatched after + tap"
-assert_logcat "$LOGCAT_FILE" "setStrProp.*Counter: 1" "Counter: 1 after + tap"
+assert_ui_text "Counter: 1" "Counter: 1 after + tap"
 
 "$ADB" -s "$EMULATOR_SERIAL" uninstall "$PACKAGE" 2>/dev/null || true
 

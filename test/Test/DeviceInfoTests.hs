@@ -16,6 +16,7 @@ foreign import ccall "setDeviceOsVersion" c_setDeviceOsVersion :: CString -> IO 
 foreign import ccall "setDeviceScreenDensity" c_setDeviceScreenDensity :: CString -> IO ()
 foreign import ccall "setDeviceScreenWidth" c_setDeviceScreenWidth :: CString -> IO ()
 foreign import ccall "setDeviceScreenHeight" c_setDeviceScreenHeight :: CString -> IO ()
+foreign import ccall "setDeviceGraphics" c_setDeviceGraphics :: CString -> IO ()
 
 -- | Tests run sequentially because they mutate process-wide C globals.
 deviceInfoTests :: TestTree
@@ -27,23 +28,27 @@ deviceInfoTests = sequentialTestGroup "DeviceInfo" AllFinish
       diScreenDensity info @?= 1.0
       diScreenWidth info @?= 0
       diScreenHeight info @?= 0
+      diGraphics info @?= ""
   , testCase "setDevice* / getDeviceInfo roundtrip" $ do
       cmodel   <- newCString "Pixel 7"
       cosver   <- newCString "14"
       cdensity <- newCString "2.75"
       cwidth   <- newCString "1080"
       cheight  <- newCString "2400"
+      cgraphics <- newCString "software"
       c_setDeviceModel cmodel
       c_setDeviceOsVersion cosver
       c_setDeviceScreenDensity cdensity
       c_setDeviceScreenWidth cwidth
       c_setDeviceScreenHeight cheight
+      c_setDeviceGraphics cgraphics
       info <- getDeviceInfo
       diModel info @?= "Pixel 7"
       diOsVersion info @?= "14"
       diScreenDensity info @?= 2.75
       diScreenWidth info @?= 1080
       diScreenHeight info @?= 2400
+      diGraphics info @?= "software"
   , testCase "numeric fields are parsed after setting" $ do
       info <- getDeviceInfo
       assertBool "screenDensity should be positive" (diScreenDensity info > 0)

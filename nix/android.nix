@@ -7,6 +7,7 @@
 , hpkgs ? (_: _: {})       # consumer haskellPackages overrides
 , maxNodes ? 256            # static pool size (ignored when dynamicNodePool=true)
 , dynamicNodePool ? false   # use malloc/realloc instead of fixed array
+, threadedRts ? false       # run forkIO threads between JNI callbacks too
 }:
 let
   lib = import ./lib.nix { inherit sources androidArch; };
@@ -21,5 +22,5 @@ let
   };
 in
 lib.mkAndroidLib {
-  inherit hatterSrc mainModule crossDeps maxNodes dynamicNodePool;
+  inherit hatterSrc mainModule crossDeps maxNodes dynamicNodePool threadedRts;
 }
